@@ -54,6 +54,59 @@ import { auth, db } from './firebase';
 import { cn, formatWhatsAppTime } from './lib/utils';
 import type { User, Chat, Message, Post, Status } from './types';
 
+// --- Error Handling ---
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string;
+    email?: string | null;
+    emailVerified?: boolean;
+    isAnonymous?: boolean;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  // We don't throw here to avoid crashing the whole app, but we log it clearly
+}
+
 // --- Components ---
 
 const AuthScreen = () => {
@@ -110,7 +163,11 @@ export default function App() {
           isOnline: true,
           lastSeen: serverTimestamp(),
         };
-        await setDoc(userDoc, userData, { merge: true });
+        try {
+          await setDoc(userDoc, userData, { merge: true });
+        } catch (error) {
+          handleFirestoreError(error, OperationType.WRITE, `users/${firebaseUser.uid}`);
+        }
         setUser(userData);
       } else {
         setUser(null);
@@ -130,6 +187,8 @@ export default function App() {
     );
     return onSnapshot(q, (snapshot) => {
       setChats(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'chats');
     });
   }, [user]);
 
@@ -146,6 +205,8 @@ export default function App() {
     );
     return onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, `chats/${selectedChat.id}/messages`);
     });
   }, [selectedChat]);
 
@@ -155,6 +216,8 @@ export default function App() {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(50));
     return onSnapshot(q, (snapshot) => {
       setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'posts');
     });
   }, [user, activeTab]);
 
@@ -164,6 +227,8 @@ export default function App() {
     const q = query(collection(db, 'statuses'), orderBy('createdAt', 'desc'));
     return onSnapshot(q, (snapshot) => {
       setStatuses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Status)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'statuses');
     });
   }, [user, activeTab]);
 
