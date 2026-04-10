@@ -12,6 +12,8 @@ export interface User {
     bio: string;
     interests: string[];
     photos: string[];
+    country?: string;
+    city?: string;
   };
 }
 

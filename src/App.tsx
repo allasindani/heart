@@ -380,6 +380,9 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
   const [status, setStatus] = useState(user.status || '');
   const [datingBio, setDatingBio] = useState(user.datingProfile?.bio || '');
   const [datingAge, setDatingAge] = useState(user.datingProfile?.age || 18);
+  const [gender, setGender] = useState(user.datingProfile?.gender || 'other');
+  const [country, setCountry] = useState(user.datingProfile?.country || '');
+  const [city, setCity] = useState(user.datingProfile?.city || '');
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -393,6 +396,9 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
           ...user.datingProfile,
           bio: datingBio,
           age: Number(datingAge),
+          gender,
+          country,
+          city
         }
       };
       await updateDoc(userDoc, updatedData);
@@ -466,6 +472,38 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
                   onChange={(e) => setDatingAge(Number(e.target.value))}
                   className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
                 />
+              </div>
+              <div>
+                <label className="text-[12px] text-gray-500 mb-1 block">Gender</label>
+                <select 
+                  value={gender} 
+                  onChange={(e) => setGender(e.target.value as any)}
+                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent"
+                >
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[12px] text-gray-500 mb-1 block">Country</label>
+                  <input 
+                    type="text" 
+                    value={country} 
+                    onChange={(e) => setCountry(e.target.value)}
+                    className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[12px] text-gray-500 mb-1 block">City</label>
+                  <input 
+                    type="text" 
+                    value={city} 
+                    onChange={(e) => setCity(e.target.value)}
+                    className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
+                  />
+                </div>
               </div>
               <div>
                 <label className="text-[12px] text-gray-500 mb-1 block">Bio</label>
