@@ -31,7 +31,9 @@ import {
   onAuthStateChanged, 
   signInWithPopup, 
   GoogleAuthProvider, 
-  signOut 
+  signOut,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { 
   collection, 
@@ -61,19 +63,97 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 
 // --- Auth Screen ---
 const AuthScreen = () => {
-  const handleLogin = () => signInWithPopup(auth, new GoogleAuthProvider());
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLogin, setIsLogin] = useState(true);
+  const [error, setError] = useState('');
+
+  const handleGoogleLogin = () => signInWithPopup(auth, new GoogleAuthProvider());
+  
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    try {
+      if (isLogin) {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        await createUserWithEmailAndPassword(auth, email, password);
+      }
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#00a884] flex items-center justify-center p-4">
       <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full text-center">
         <div className="w-20 h-20 bg-[#25d366] rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl">
-          <MessageCircle className="text-white w-12 h-12 fill-current" />
+          <Heart className="text-white w-12 h-12 fill-current" />
         </div>
         <h1 className="text-3xl font-bold text-[#111b21] mb-2">Heart Connect</h1>
-        <p className="text-[#667781] mb-8">Simple. Secure. Reliable messaging.</p>
-        <button onClick={handleLogin} className="w-full bg-[#00a884] hover:bg-[#008f6f] text-white font-bold py-4 rounded-full transition-all shadow-lg flex items-center justify-center gap-3">
+        <p className="text-[#667781] mb-8 font-medium">Simple. Secure. Reliable Dating.</p>
+        
+        <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
+          <input 
+            type="email" 
+            placeholder="Email" 
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:border-[#00a884]"
+            required
+          />
+          <input 
+            type="password" 
+            placeholder="Password" 
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:border-[#00a884]"
+            required
+          />
+          {error && <p className="text-red-500 text-xs">{error}</p>}
+          <button type="submit" className="w-full bg-[#00a884] text-white font-bold py-3 rounded-xl shadow-md hover:bg-[#008f6f] transition-all">
+            {isLogin ? 'Login' : 'Sign Up'}
+          </button>
+        </form>
+
+        <div className="flex items-center gap-2 mb-6">
+          <div className="flex-1 h-[1px] bg-gray-200"></div>
+          <span className="text-xs text-gray-400 uppercase font-bold">OR</span>
+          <div className="flex-1 h-[1px] bg-gray-200"></div>
+        </div>
+
+        <button onClick={handleGoogleLogin} className="w-full bg-white border border-gray-200 text-gray-700 font-bold py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-3 mb-4 hover:bg-gray-50">
           <img src="https://www.google.com/favicon.ico" className="w-5 h-5 bg-white rounded-full p-0.5" alt="Google" />
-          Get Started
+          Continue with Google
         </button>
+
+        <button 
+          onClick={() => setIsLogin(!isLogin)} 
+          className="text-[#00a884] text-sm font-bold hover:underline"
+        >
+          {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Login"}
+        </button>
+
+        <div className="mt-8 pt-6 border-t border-gray-100">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Featured Singles Online</h3>
+          <div className="flex justify-center gap-4">
+            {[
+              { city: 'Bulawayo', age: 25, seed: 'zim1' },
+              { city: 'Harare', age: 30, seed: 'zim2' },
+              { city: 'Gweru', age: 35, seed: 'zim3' }
+            ].map((s) => (
+              <div key={s.seed} className="relative">
+                <img 
+                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${s.seed}&gender=female&top=longHair,bob,curly`} 
+                  className="w-12 h-12 rounded-full border-2 border-white shadow-sm" 
+                  alt={s.city} 
+                />
+                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                <div className="text-[8px] font-bold text-gray-500 mt-1">{s.city}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </motion.div>
     </div>
   );
@@ -90,6 +170,12 @@ export default function App() {
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [showProfile, setShowProfile] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [datingFilters, setDatingFilters] = useState({
+    minAge: 18,
+    maxAge: 50,
+    gender: 'all',
+    maxDistance: 50 // km
+  });
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -97,7 +183,7 @@ export default function App() {
         const userDoc = doc(db, 'users', firebaseUser.uid);
         const userData: User = {
           uid: firebaseUser.uid,
-          displayName: firebaseUser.displayName || 'Anonymous',
+          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous',
           photoURL: firebaseUser.photoURL || null,
           role: firebaseUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
           isOnline: true,
@@ -110,6 +196,78 @@ export default function App() {
       setLoading(false);
     });
     return unsubscribe;
+  }, []);
+
+  // Seed Data for Zimbabwe Profiles
+  useEffect(() => {
+    const seedZimProfiles = async () => {
+      if (!user || user.role !== 'admin') return;
+      
+      const zimProfiles = [
+        {
+          uid: 'zim_bulawayo_25',
+          displayName: 'Thandiwe',
+          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=zim1&gender=female',
+          role: 'user',
+          isOnline: true,
+          lastSeen: serverTimestamp(),
+          status: "Looking for someone special in Bulawayo.",
+          datingProfile: {
+            bio: "Single lady from Bulawayo, love music and culture.",
+            age: 25,
+            gender: 'female',
+            country: 'Zimbabwe',
+            city: 'Bulawayo',
+            interests: ['Music', 'Culture', 'Travel']
+          }
+        },
+        {
+          uid: 'zim_harare_30',
+          displayName: 'Nyasha',
+          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=zim2&gender=female',
+          role: 'user',
+          isOnline: true,
+          lastSeen: serverTimestamp(),
+          status: "Harare vibes. Let's connect!",
+          datingProfile: {
+            bio: "Professional lady in Harare. Enjoying life and looking for a partner.",
+            age: 30,
+            gender: 'female',
+            country: 'Zimbabwe',
+            city: 'Harare',
+            interests: ['Dining', 'Business', 'Art']
+          }
+        },
+        {
+          uid: 'zim_gweru_35',
+          displayName: 'Ruvimbo',
+          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=zim3&gender=female',
+          role: 'user',
+          isOnline: true,
+          lastSeen: serverTimestamp(),
+          status: "Peaceful life in Gweru.",
+          datingProfile: {
+            bio: "Mature lady from Gweru. Family oriented and kind hearted.",
+            age: 35,
+            gender: 'female',
+            country: 'Zimbabwe',
+            city: 'Gweru',
+            interests: ['Family', 'Cooking', 'Nature']
+          }
+        }
+      ];
+
+      for (const profile of zimProfiles) {
+        try {
+          const profileDoc = doc(db, 'users', profile.uid);
+          await setDoc(profileDoc, profile, { merge: true });
+        } catch (e) {
+          console.error("Error seeding profile:", e);
+        }
+      }
+    };
+
+    seedZimProfiles();
   }, []);
 
   useEffect(() => {
@@ -220,7 +378,7 @@ export default function App() {
               </div>
             )}
             {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} />}
-            {activeTab === 'dating' && <DatingView user={user} />}
+            {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} />}
           </div>
 
           {/* Floating Action Button */}
@@ -348,27 +506,200 @@ const StatusAndWallView = ({ user, statuses, posts }: any) => {
   );
 };
 
-const DatingView = ({ user }: any) => (
-  <div className="flex-1 flex items-center justify-center p-4 bg-[#f0f2f5]">
-    <div className="max-w-sm w-full bg-white rounded-[40px] shadow-2xl overflow-hidden h-[600px] flex flex-col relative border-4 border-white">
-      <div className="flex-1 bg-gray-200 relative">
-        <img src="https://picsum.photos/seed/dating/400/600" className="w-full h-full object-cover" alt="Discovery" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 p-8 text-white">
-          <h3 className="text-3xl font-bold mb-1">Sarah, 24</h3>
-          <p className="text-sm opacity-90 leading-relaxed">Love traveling and coffee. Let's connect and share some stories!</p>
-          <div className="flex gap-2 mt-4">
-            {['Travel', 'Coffee', 'Music'].map(tag => <span key={tag} className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider">{tag}</span>)}
+const DatingView = ({ user, filters, onUpdateFilters }: any) => {
+  const [discoverUsers, setDiscoverUsers] = useState<User[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      setLoading(true);
+      try {
+        const q = query(
+          collection(db, 'users'),
+          where('role', '==', 'user'),
+          limit(50)
+        );
+        const snapshot = await getDocs(q);
+        const users = snapshot.docs
+          .map(doc => ({ uid: doc.id, ...doc.data() } as User))
+          .filter(u => u.uid !== user.uid && u.datingProfile);
+        
+        // Apply filters locally for better flexibility
+        const filtered = users.filter(u => {
+          const profile = u.datingProfile!;
+          const ageMatch = profile.age >= filters.minAge && profile.age <= filters.maxAge;
+          const genderMatch = filters.gender === 'all' || profile.gender === filters.gender;
+          
+          // Basic distance calculation if both have location
+          let distanceMatch = true;
+          if (user.datingProfile?.location && profile.location) {
+            const dist = calculateDistance(
+              user.datingProfile.location.lat,
+              user.datingProfile.location.lng,
+              profile.location.lat,
+              profile.location.lng
+            );
+            distanceMatch = dist <= filters.maxDistance;
+          }
+
+          return ageMatch && genderMatch && distanceMatch;
+        });
+
+        setDiscoverUsers(filtered);
+      } catch (error) {
+        console.error("Error fetching dating users:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, [user.uid, filters]);
+
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const handleNext = () => {
+    if (currentIndex < discoverUsers.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+    } else {
+      setCurrentIndex(0); // Loop back for demo
+    }
+  };
+
+  if (loading) return <div className="flex-1 flex items-center justify-center"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>;
+
+  const currentUser = discoverUsers[currentIndex];
+
+  return (
+    <div className="flex-1 flex flex-col p-4 bg-[#f0f2f5] relative">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-lg font-bold text-[#111b21]">Discover</h2>
+        <button 
+          onClick={() => setShowFilters(!showFilters)}
+          className="p-2 bg-white rounded-full shadow-sm text-[#00a884]"
+        >
+          <Search className="w-5 h-5" />
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {showFilters && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-white p-4 rounded-2xl shadow-lg mb-4 space-y-4 z-20"
+          >
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-gray-500 block mb-1">Min Age</label>
+                <input 
+                  type="number" 
+                  value={filters.minAge} 
+                  onChange={(e) => onUpdateFilters({...filters, minAge: Number(e.target.value)})}
+                  className="w-full border-b border-gray-200 py-1 outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 block mb-1">Max Age</label>
+                <input 
+                  type="number" 
+                  value={filters.maxAge} 
+                  onChange={(e) => onUpdateFilters({...filters, maxAge: Number(e.target.value)})}
+                  className="w-full border-b border-gray-200 py-1 outline-none"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 block mb-1">Gender Preference</label>
+              <select 
+                value={filters.gender} 
+                onChange={(e) => onUpdateFilters({...filters, gender: e.target.value})}
+                className="w-full border-b border-gray-200 py-1 outline-none bg-transparent"
+              >
+                <option value="all">All</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 block mb-1">Max Distance ({filters.maxDistance}km)</label>
+              <input 
+                type="range" 
+                min="1" 
+                max="500" 
+                value={filters.maxDistance} 
+                onChange={(e) => onUpdateFilters({...filters, maxDistance: Number(e.target.value)})}
+                className="w-full accent-[#00a884]"
+              />
+            </div>
+            <button 
+              onClick={() => setShowFilters(false)}
+              className="w-full bg-[#00a884] text-white py-2 rounded-xl font-bold"
+            >
+              Apply Filters
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {discoverUsers.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+          <Heart className="w-16 h-16 text-gray-200 mb-4" />
+          <p className="text-gray-500">No matches found with current filters. Try expanding your search!</p>
+        </div>
+      ) : (
+        <div className="max-w-sm w-full mx-auto bg-white rounded-[40px] shadow-2xl overflow-hidden h-[550px] flex flex-col relative border-4 border-white">
+          <div className="flex-1 bg-gray-200 relative">
+            <img 
+              src={currentUser.photoURL || `https://picsum.photos/seed/${currentUser.uid}/400/600`} 
+              className="w-full h-full object-cover" 
+              alt={currentUser.displayName} 
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
+            <div className="absolute bottom-0 left-0 right-0 p-8 text-white">
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="text-3xl font-bold">{currentUser.displayName}, {currentUser.datingProfile?.age}</h3>
+                {currentUser.isOnline && (
+                  <div className="w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm animate-pulse"></div>
+                )}
+              </div>
+              <p className="text-sm opacity-90 leading-relaxed line-clamp-2">{currentUser.datingProfile?.bio}</p>
+              <div className="flex gap-2 mt-4 flex-wrap">
+                {currentUser.datingProfile?.city && (
+                  <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider">
+                    {currentUser.datingProfile.city}
+                  </span>
+                )}
+                {currentUser.datingProfile?.interests?.slice(0, 2).map(tag => (
+                  <span key={tag} className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="p-6 flex justify-center gap-10 bg-white">
+            <button onClick={handleNext} className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:scale-110 transition-transform shadow-lg"><X className="w-8 h-8" /></button>
+            <button onClick={handleNext} className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center text-[#00a884] hover:scale-110 transition-transform shadow-lg"><Heart className="w-8 h-8 fill-current" /></button>
           </div>
         </div>
-      </div>
-      <div className="p-6 flex justify-center gap-10 bg-white">
-        <button className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:scale-110 transition-transform shadow-lg"><X className="w-8 h-8" /></button>
-        <button className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center text-[#00a884] hover:scale-110 transition-transform shadow-lg"><Heart className="w-8 h-8 fill-current" /></button>
-      </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () => void, onUpdate: (u: User) => void }) => {
   const [displayName, setDisplayName] = useState(user.displayName);
@@ -379,6 +710,18 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
   const [country, setCountry] = useState(user.datingProfile?.country || '');
   const [city, setCity] = useState(user.datingProfile?.city || '');
   const [saving, setSaving] = useState(false);
+
+  const updateLocation = () => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition((position) => {
+        const { latitude, longitude } = position.coords;
+        const userDoc = doc(db, 'users', user.uid);
+        updateDoc(userDoc, {
+          'datingProfile.location': { lat: latitude, lng: longitude }
+        });
+      });
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -459,6 +802,12 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
           <section className="bg-white rounded-xl p-4 shadow-sm">
             <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider mb-4 block">Dating Profile</label>
             <div className="space-y-4">
+              <button 
+                onClick={updateLocation}
+                className="w-full flex items-center justify-center gap-2 py-2 border border-[#00a884] text-[#00a884] rounded-lg text-sm font-bold hover:bg-[#00a884]/5"
+              >
+                <Search className="w-4 h-4" /> Update My Location
+              </button>
               <div>
                 <label className="text-[12px] text-gray-500 mb-1 block">Age</label>
                 <input 

@@ -1,5 +1,5 @@
 {
   "name": "Heart Connect",
   "description": "A premium WhatsApp-style hybrid app for real-time chat, status updates, and dating matches.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["geolocation"]
 }

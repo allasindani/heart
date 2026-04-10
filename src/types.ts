@@ -14,6 +14,10 @@ export interface User {
     photos: string[];
     country?: string;
     city?: string;
+    location?: {
+      lat: number;
+      lng: number;
+    };
   };
 }
 
