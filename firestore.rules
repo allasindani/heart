@@ -86,7 +86,8 @@ service cloud.firestore {
              (!('photoURL' in data) || data.photoURL == null || data.photoURL is string) &&
              (!('status' in data) || data.status == null || data.status is string) &&
              (!('isOnline' in data) || data.isOnline == null || data.isOnline is bool) &&
-             (!('lastSeen' in data) || data.lastSeen == null || data.lastSeen is timestamp);
+             (!('lastSeen' in data) || data.lastSeen == null || data.lastSeen is timestamp) &&
+             (!('datingProfile' in data) || data.datingProfile == null || data.datingProfile is map);
     }
 
     function isValidMessage(data) {

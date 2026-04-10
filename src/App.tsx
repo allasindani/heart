@@ -11,6 +11,7 @@ import {
   Mic, 
   Send,
   CheckCheck,
+  User as UserIcon,
   LogOut,
   Plus,
   Image as ImageIcon,
@@ -87,6 +88,8 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [statuses, setStatuses] = useState<Status[]>([]);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -156,16 +159,39 @@ export default function App() {
           <motion.div key="chat" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="absolute inset-0 z-50 bg-[#efeae2] flex flex-col">
             <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} />
           </motion.div>
+        ) : showProfile ? (
+          <motion.div key="profile" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
+            <ProfileSettings user={user} onBack={() => setShowProfile(false)} onUpdate={(updatedUser: User) => setUser(updatedUser)} />
+          </motion.div>
         ) : (
-          <motion.div key="main" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 flex flex-col overflow-hidden">
+          <motion.div key="main" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 flex flex-col overflow-hidden relative">
             {/* App Header */}
-            <div className="bg-[#008069] text-white p-4 pb-2 shadow-md">
+            <div className="bg-[#008069] text-white p-4 pb-2 shadow-md relative z-30">
               <div className="flex justify-between items-center mb-4">
                 <h1 className="text-xl font-medium">Heart Connect</h1>
-                <div className="flex gap-5">
+                <div className="flex gap-5 items-center">
                   <Camera className="w-6 h-6" />
                   <Search className="w-6 h-6" />
-                  <MoreVertical className="w-6 h-6" />
+                  <div className="relative">
+                    <button onClick={() => setShowMenu(!showMenu)} className="p-1"><MoreVertical className="w-6 h-6" /></button>
+                    <AnimatePresence>
+                      {showMenu && (
+                        <motion.div 
+                          initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                          className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl py-2 z-50 border border-gray-100"
+                        >
+                          <button onClick={() => { setShowProfile(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                            <UserIcon className="w-4 h-4" /> Profile
+                          </button>
+                          <button onClick={() => { signOut(auth); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3">
+                            <LogOut className="w-4 h-4" /> Log out
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
               </div>
               {/* Tabs */}
@@ -348,3 +374,120 @@ const DatingView = ({ user }: any) => (
     </div>
   </div>
 );
+
+const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () => void, onUpdate: (u: User) => void }) => {
+  const [displayName, setDisplayName] = useState(user.displayName);
+  const [status, setStatus] = useState(user.status || '');
+  const [datingBio, setDatingBio] = useState(user.datingProfile?.bio || '');
+  const [datingAge, setDatingAge] = useState(user.datingProfile?.age || 18);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const userDoc = doc(db, 'users', user.uid);
+      const updatedData = {
+        displayName,
+        status,
+        datingProfile: {
+          ...user.datingProfile,
+          bio: datingBio,
+          age: Number(datingAge),
+        }
+      };
+      await updateDoc(userDoc, updatedData);
+      onUpdate({ ...user, ...updatedData });
+      onBack();
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      alert("Failed to update profile. Please check your connection.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col h-full bg-[#f0f2f5]">
+      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+        <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
+        <h2 className="text-xl font-medium">Profile</h2>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        <div className="flex flex-col items-center py-8 bg-white mb-6">
+          <div className="relative group">
+            <img 
+              src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
+              className="w-40 h-40 rounded-full shadow-lg object-cover" 
+              alt="Profile" 
+            />
+            <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+              <Camera className="text-white w-8 h-8" />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6 px-4 pb-8">
+          <section className="bg-white rounded-xl p-4 shadow-sm">
+            <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider mb-2 block">Your Name</label>
+            <div className="flex items-center gap-3">
+              <input 
+                type="text" 
+                value={displayName} 
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="flex-1 border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
+              />
+              <Smile className="w-5 h-5 text-gray-400" />
+            </div>
+            <p className="text-[12px] text-gray-500 mt-2">This is not your username or pin. This name will be visible to your Heart Connect contacts.</p>
+          </section>
+
+          <section className="bg-white rounded-xl p-4 shadow-sm">
+            <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider mb-2 block">About / Status</label>
+            <div className="flex items-center gap-3">
+              <input 
+                type="text" 
+                value={status} 
+                onChange={(e) => setStatus(e.target.value)}
+                className="flex-1 border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
+              />
+              <Smile className="w-5 h-5 text-gray-400" />
+            </div>
+          </section>
+
+          <section className="bg-white rounded-xl p-4 shadow-sm">
+            <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider mb-4 block">Dating Profile</label>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[12px] text-gray-500 mb-1 block">Age</label>
+                <input 
+                  type="number" 
+                  value={datingAge} 
+                  onChange={(e) => setDatingAge(Number(e.target.value))}
+                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
+                />
+              </div>
+              <div>
+                <label className="text-[12px] text-gray-500 mb-1 block">Bio</label>
+                <textarea 
+                  value={datingBio} 
+                  onChange={(e) => setDatingBio(e.target.value)}
+                  placeholder="Tell others about yourself..."
+                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] resize-none h-20"
+                />
+              </div>
+            </div>
+          </section>
+
+          <button 
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full bg-[#00a884] text-white py-4 rounded-xl font-bold shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+          >
+            {saving ? "Saving..." : "Save Profile"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
