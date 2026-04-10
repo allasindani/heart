@@ -153,60 +153,55 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen bg-white flex flex-col overflow-hidden max-w-md mx-auto shadow-2xl border-x border-gray-200">
-      <AnimatePresence mode="wait">
-        {selectedChat ? (
-          <motion.div key="chat" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="absolute inset-0 z-50 bg-[#efeae2] flex flex-col">
-            <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} />
-          </motion.div>
-        ) : showProfile ? (
-          <motion.div key="profile" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
-            <ProfileSettings user={user} onBack={() => setShowProfile(false)} onUpdate={(updatedUser: User) => setUser(updatedUser)} />
-          </motion.div>
-        ) : (
-          <motion.div key="main" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 flex flex-col overflow-hidden relative">
-            {/* App Header */}
-            <div className="bg-[#008069] text-white p-4 pb-2 shadow-md relative z-30">
-              <div className="flex justify-between items-center mb-4">
-                <h1 className="text-xl font-medium">Heart Connect</h1>
-                <div className="flex gap-5 items-center">
-                  <Camera className="w-6 h-6" />
-                  <Search className="w-6 h-6" />
-                  <div className="relative">
-                    <button onClick={() => setShowMenu(!showMenu)} className="p-1"><MoreVertical className="w-6 h-6" /></button>
-                    <AnimatePresence>
-                      {showMenu && (
-                        <motion.div 
-                          initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                          className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl py-2 z-50 border border-gray-100"
-                        >
-                          <button onClick={() => { setShowProfile(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
-                            <UserIcon className="w-4 h-4" /> Profile
-                          </button>
-                          <button onClick={() => { signOut(auth); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3">
-                            <LogOut className="w-4 h-4" /> Log out
-                          </button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
+    <div className="h-screen bg-white flex flex-col overflow-hidden max-w-md mx-auto shadow-2xl border-x border-gray-200 relative">
+      {selectedChat ? (
+        <div className="absolute inset-0 z-50 bg-[#efeae2] flex flex-col">
+          <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} />
+        </div>
+      ) : showProfile ? (
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
+          <ProfileSettings user={user} onBack={() => setShowProfile(false)} onUpdate={(updatedUser: User) => setUser(updatedUser)} />
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col overflow-hidden relative">
+          {/* App Header */}
+          <div className="bg-[#008069] text-white p-4 pb-2 shadow-md relative z-30">
+            <div className="flex justify-between items-center mb-4">
+              <h1 className="text-xl font-medium">Heart Connect</h1>
+              <div className="flex gap-5 items-center">
+                <Camera className="w-6 h-6" />
+                <Search className="w-6 h-6" />
+                <div className="relative">
+                  <button onClick={() => setShowMenu(!showMenu)} className="p-1"><MoreVertical className="w-6 h-6" /></button>
+                  {showMenu && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl py-2 z-50 border border-gray-100">
+                      <button onClick={() => { setShowProfile(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                        <UserIcon className="w-4 h-4" /> Profile
+                      </button>
+                      <button onClick={() => { signOut(auth); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3">
+                        <LogOut className="w-4 h-4" /> Log out
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-              {/* Tabs */}
-              <div className="flex text-center font-medium text-sm uppercase tracking-wider">
-                <button onClick={() => setActiveTab('chats')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'chats' ? "border-white" : "border-transparent opacity-70")}>Chats</button>
-                <button onClick={() => setActiveTab('status')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'status' ? "border-white" : "border-transparent opacity-70")}>Status</button>
-                <button onClick={() => setActiveTab('dating')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'dating' ? "border-white" : "border-transparent opacity-70")}>Dating</button>
-              </div>
             </div>
+            {/* Tabs */}
+            <div className="flex text-center font-medium text-sm uppercase tracking-wider">
+              <button onClick={() => setActiveTab('chats')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'chats' ? "border-white" : "border-transparent opacity-70")}>Chats</button>
+              <button onClick={() => setActiveTab('status')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'status' ? "border-white" : "border-transparent opacity-70")}>Status</button>
+              <button onClick={() => setActiveTab('dating')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'dating' ? "border-white" : "border-transparent opacity-70")}>Dating</button>
+            </div>
+          </div>
 
-            {/* Tab Content */}
-            <div className="flex-1 overflow-y-auto">
-              {activeTab === 'chats' && (
-                <div className="divide-y divide-gray-100">
-                  {chats.map(chat => (
+          {/* Tab Content */}
+          <div className="flex-1 overflow-y-auto">
+            {activeTab === 'chats' && (
+              <div className="divide-y divide-gray-100">
+                {chats.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">No chats yet. Start a conversation!</div>
+                ) : (
+                  chats.map(chat => (
                     <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 active:bg-gray-100 transition-colors cursor-pointer">
                       <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`} className="w-14 h-14 rounded-full" alt="Chat" />
                       <div className="flex-1 min-w-0">
@@ -220,20 +215,20 @@ export default function App() {
                         </p>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-              {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} />}
-              {activeTab === 'dating' && <DatingView user={user} />}
-            </div>
+                  ))
+                )}
+              </div>
+            )}
+            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} />}
+            {activeTab === 'dating' && <DatingView user={user} />}
+          </div>
 
-            {/* Floating Action Button */}
-            <button className="absolute bottom-6 right-6 w-14 h-14 bg-[#00a884] rounded-full shadow-lg flex items-center justify-center text-white active:scale-95 transition-transform">
-              <Plus className="w-6 h-6" />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          {/* Floating Action Button */}
+          <button className="absolute bottom-6 right-6 w-14 h-14 bg-[#00a884] rounded-full shadow-lg flex items-center justify-center text-white active:scale-95 transition-transform">
+            <Plus className="w-6 h-6" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
