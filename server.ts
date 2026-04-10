@@ -2,17 +2,47 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import net from "net";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+async function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', () => resolve(false));
+    server.once('listening', () => {
+      server.close();
+      resolve(true);
+    });
+    server.listen(port, "0.0.0.0");
+  });
+}
+
+async function getAvailablePort(startPort: number): Promise<number> {
+  let port = startPort;
+  while (!(await isPortAvailable(port))) {
+    console.log(`Port ${port} is in use, trying ${port + 1}...`);
+    port++;
+    if (port > startPort + 100) {
+      throw new Error("Could not find an available port in range.");
+    }
+  }
+  return port;
+}
+
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const requestedPort = parseInt(process.env.PORT || "3007", 10);
+  const PORT = await getAvailablePort(requestedPort);
 
   // API routes can go here
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", message: "WhatsApp Welcome Server is running" });
+    res.json({ 
+      status: "ok", 
+      message: "WhatsApp Welcome Server is running",
+      port: PORT 
+    });
   });
 
   // Vite middleware for development
@@ -32,6 +62,7 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`If you are using Nginx, ensure proxy_pass points to http://127.0.0.1:${PORT}`);
   });
 }
 
