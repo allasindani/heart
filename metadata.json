@@ -1,5 +1,5 @@
 {
-  "name": "WhatsApp Welcome",
-  "description": "A polished WhatsApp-style welcome page with modern animations and responsive design.",
+  "name": "WhatsApp Hybrid",
+  "description": "A full-stack WhatsApp clone with added Social Wall, Dating, and Ad systems.",
   "requestFramePermissions": []
 }

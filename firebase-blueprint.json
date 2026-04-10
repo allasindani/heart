@@ -1,0 +1,108 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "displayName": { "type": "string", "description": "User's display name" },
+        "photoURL": { "type": "string", "description": "Profile picture URL" },
+        "status": { "type": "string", "description": "WhatsApp-style status text" },
+        "lastSeen": { "type": "string", "format": "date-time", "description": "Last online timestamp" },
+        "isOnline": { "type": "boolean", "description": "Current online status" },
+        "datingProfile": {
+          "type": "object",
+          "properties": {
+            "age": { "type": "number" },
+            "gender": { "type": "string", "enum": ["male", "female", "other"] },
+            "bio": { "type": "string" },
+            "interests": { "type": "array", "items": { "type": "string" } },
+            "distance": { "type": "number" },
+            "photos": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "role": { "type": "string", "enum": ["user", "admin"], "description": "User role for admin features" }
+      },
+      "required": ["uid", "displayName"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "A conversation between two or more users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["private", "group"] },
+        "participants": { "type": "array", "items": { "type": "string" }, "description": "Array of user UIDs" },
+        "lastMessage": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "groupName": { "type": "string" },
+        "groupPhoto": { "type": "string" }
+      }
+    },
+    "Message": {
+      "title": "Message",
+      "description": "An individual message in a chat",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "chatId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "text": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "image", "video", "voice", "document"] },
+        "fileUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["sent", "delivered", "seen"] },
+        "reactions": { "type": "object" }
+      }
+    },
+    "Status": {
+      "title": "Status",
+      "description": "A 24-hour disappearing update",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "image", "video"] },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Post": {
+      "title": "Post",
+      "description": "A wall/feed post",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "content": { "type": "string" },
+        "media": { "type": "array", "items": { "type": "string" } },
+        "likes": { "type": "array", "items": { "type": "string" } },
+        "commentsCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isAd": { "type": "boolean" },
+        "adLink": { "type": "string" }
+      }
+    },
+    "Match": {
+      "title": "Match",
+      "description": "A dating match between two users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "users": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/chats/{chatId}": { "schema": "Chat", "description": "Conversation metadata" },
+    "/chats/{chatId}/messages/{messageId}": { "schema": "Message", "description": "Messages within a chat" },
+    "/statuses/{statusId}": { "schema": "Status", "description": "Disappearing updates" },
+    "/posts/{postId}": { "schema": "Post", "description": "Wall/Feed posts" },
+    "/matches/{matchId}": { "schema": "Match", "description": "Dating matches" }
+  }
+}

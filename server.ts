@@ -33,14 +33,15 @@ async function getAvailablePort(startPort: number): Promise<number> {
 
 async function startServer() {
   const app = express();
-  const requestedPort = parseInt(process.env.PORT || "3007", 10);
-  const PORT = await getAvailablePort(requestedPort);
+  const PORT = 3000;
 
-  // API routes can go here
+  app.use(express.json());
+
+  // API routes
   app.get("/api/health", (req, res) => {
     res.json({ 
       status: "ok", 
-      message: "WhatsApp Welcome Server is running",
+      message: "WhatsApp Hybrid API is running",
       port: PORT 
     });
   });

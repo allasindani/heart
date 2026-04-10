@@ -1,0 +1,20 @@
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+export function formatWhatsAppTime(date: Date) {
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const day = 24 * 60 * 60 * 1000;
+
+  if (diff < day && now.getDate() === date.getDate()) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } else if (diff < 2 * day) {
+    return 'Yesterday';
+  } else {
+    return date.toLocaleDateString([], { day: '2-digit', month: '2-digit', year: '2-digit' });
+  }
+}

@@ -1,0 +1,155 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {userId}
+// Fields:
+//   - uid: string (required) - Firebase Auth UID
+//   - displayName: string (required) - User's display name
+//   - photoURL: string (optional) - Profile picture URL
+//   - status: string (optional) - WhatsApp-style status text
+//   - lastSeen: timestamp (optional) - Last online timestamp
+//   - isOnline: bool (optional) - Current online status
+//   - datingProfile: map (optional) - Dating specific data
+//   - role: string (required) - 'user' or 'admin'
+//
+// Collection: chats
+// Document ID: {chatId}
+// Fields:
+//   - participants: list (required) - Array of user UIDs
+//   - type: string (required) - 'private' or 'group'
+//   - lastMessage: map (optional) - Last message preview
+//   - updatedAt: timestamp (required) - Last update time
+//
+// Collection: chats/{chatId}/messages
+// Document ID: {messageId}
+// Fields:
+//   - senderId: string (required) - UID of sender
+//   - text: string (optional) - Message text
+//   - type: string (required) - 'text', 'image', etc.
+//   - timestamp: timestamp (required) - Message time
+//   - status: string (required) - 'sent', 'delivered', 'seen'
+//
+// Collection: statuses
+// Document ID: {statusId}
+// Fields:
+//   - userId: string (required) - UID of creator
+//   - type: string (required) - 'text', 'image', etc.
+//   - content: string (required) - Content or URL
+//   - createdAt: timestamp (required) - Creation time
+//   - expiresAt: timestamp (required) - Expiration time
+//
+// Collection: posts
+// Document ID: {postId}
+// Fields:
+//   - userId: string (required) - UID of creator
+//   - content: string (required) - Post text
+//   - media: list (optional) - Array of media URLs
+//   - likes: list (required) - Array of user UIDs who liked
+//   - createdAt: timestamp (required) - Creation time
+//   - isAd: bool (required) - Whether it's an ad
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "alasindani2020@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isParticipant(chatId) {
+      return isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'role']) &&
+             data.uid is string && data.uid == request.auth.uid &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
+             data.role in ['user', 'admin'];
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['senderId', 'type', 'timestamp', 'status']) &&
+             data.senderId == request.auth.uid &&
+             data.type in ['text', 'image', 'video', 'voice', 'document'] &&
+             data.status in ['sent', 'delivered', 'seen'];
+    }
+
+    function isValidPost(data) {
+      return data.keys().hasAll(['userId', 'content', 'createdAt', 'isAd', 'likes']) &&
+             data.userId == request.auth.uid &&
+             data.content is string && data.content.size() < 5000 &&
+             data.isAd == false && // Users cannot create ads
+             data.likes is list;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'user';
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role;
+      allow update, delete: if isAdmin();
+    }
+
+    match /chats/{chatId} {
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow create: if isAuthenticated() && request.auth.uid in request.resource.data.participants;
+      allow update: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isParticipant(chatId);
+        allow create: if isParticipant(chatId) && isValidMessage(request.resource.data);
+        allow update: if isParticipant(chatId) && (
+          (request.resource.data.senderId == request.auth.uid && isValidMessage(request.resource.data)) ||
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reactions']))
+        );
+      }
+    }
+
+    match /statuses/{statusId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    match /posts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (
+        (isValidPost(request.resource.data)) ||
+        (isAdmin() && request.resource.data.isAd == true)
+      );
+      allow update: if isAuthenticated() && (
+        (resource.data.userId == request.auth.uid && isValidPost(request.resource.data)) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']))
+      );
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /matches/{matchId} {
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.users;
+      allow create: if isAuthenticated() && request.auth.uid in request.resource.data.users;
+      allow delete: if isAuthenticated() && request.auth.uid in resource.data.users;
+    }
+  }
+}
