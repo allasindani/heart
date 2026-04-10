@@ -83,9 +83,10 @@ service cloud.firestore {
              data.uid is string && data.uid == request.auth.uid &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
              data.role in ['user', 'admin'] &&
-             (data.photoURL == null || data.photoURL is string) &&
-             (data.status == null || data.status is string) &&
-             (data.isOnline == null || data.isOnline is bool);
+             (!('photoURL' in data) || data.photoURL == null || data.photoURL is string) &&
+             (!('status' in data) || data.status == null || data.status is string) &&
+             (!('isOnline' in data) || data.isOnline == null || data.isOnline is bool) &&
+             (!('lastSeen' in data) || data.lastSeen == null || data.lastSeen is timestamp);
     }
 
     function isValidMessage(data) {
