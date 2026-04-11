@@ -24,7 +24,14 @@ import {
   Camera,
   Phone,
   Video,
-  ShieldCheck
+  ShieldCheck,
+  Bell,
+  Shield,
+  UserPlus,
+  UserCheck,
+  BarChart3,
+  Settings,
+  ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -53,7 +60,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { cn, formatWhatsAppTime } from './lib/utils';
-import type { User, Chat, Message, Post, Status } from './types';
+import type { User, Chat, Message, Post, Status, Notification as AppNotification } from './types';
 
 // --- Error Handling ---
 enum OperationType { CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LIST = 'list', GET = 'get', WRITE = 'write' }
@@ -168,7 +175,11 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [statuses, setStatuses] = useState<Status[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showProfile, setShowProfile] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [datingFilters, setDatingFilters] = useState({
     minAge: 18,
@@ -288,7 +299,12 @@ export default function App() {
     const qStatus = query(collection(db, 'statuses'), orderBy('createdAt', 'desc'));
     const unsubPosts = onSnapshot(qPosts, (snap) => setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Post))));
     const unsubStatus = onSnapshot(qStatus, (snap) => setStatuses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Status))));
-    return () => { unsubPosts(); unsubStatus(); };
+    
+    // Notifications listener
+    const qNotif = query(collection(db, 'notifications'), where('userId', '==', user.uid), orderBy('timestamp', 'desc'), limit(20));
+    const unsubNotif = onSnapshot(qNotif, (snap) => setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification))));
+
+    return () => { unsubPosts(); unsubStatus(); unsubNotif(); };
   }, [user, activeTab]);
 
   if (loading) return (
@@ -308,6 +324,21 @@ export default function App() {
     const msgData = { chatId: selectedChat.id, senderId: user.uid, text, type: 'text', timestamp: serverTimestamp(), status: 'sent' };
     await addDoc(collection(db, `chats/${selectedChat.id}/messages`), msgData);
     await updateDoc(doc(db, 'chats', selectedChat.id), { lastMessage: { text, senderId: user.uid, timestamp: serverTimestamp() }, updatedAt: serverTimestamp() });
+    
+    // Send notification to other participant
+    const otherId = selectedChat.participants.find(p => p !== user.uid);
+    if (otherId) {
+      await addDoc(collection(db, 'notifications'), {
+        userId: otherId,
+        fromId: user.uid,
+        fromName: user.displayName,
+        type: 'message',
+        text: `sent you a message: ${text.substring(0, 30)}${text.length > 30 ? '...' : ''}`,
+        read: false,
+        timestamp: serverTimestamp(),
+        relatedId: selectedChat.id
+      });
+    }
   };
 
   return (
@@ -320,6 +351,18 @@ export default function App() {
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
           <ProfileSettings user={user} onBack={() => setShowProfile(false)} onUpdate={(updatedUser: User) => setUser(updatedUser)} />
         </div>
+      ) : showAdmin ? (
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
+          <AdminDashboard user={user} onBack={() => setShowAdmin(false)} />
+        </div>
+      ) : viewingUser ? (
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
+          <UserProfileView user={user} targetUser={viewingUser} onBack={() => setViewingUser(null)} onStartChat={(chat) => { setViewingUser(null); setSelectedChat(chat); }} />
+        </div>
+      ) : showNotifications ? (
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
+          <NotificationCenter user={user} notifications={notifications} onBack={() => setShowNotifications(false)} />
+        </div>
       ) : (
         <div className="flex-1 flex flex-col overflow-hidden relative">
           {/* App Header */}
@@ -328,7 +371,14 @@ export default function App() {
               <h1 className="text-xl font-medium">Heart Connect</h1>
               <div className="flex gap-5 items-center">
                 <Camera className="w-6 h-6" />
-                <Search className="w-6 h-6" />
+                <div className="relative cursor-pointer" onClick={() => setShowNotifications(true)}>
+                  <Bell className="w-6 h-6" />
+                  {notifications.filter(n => !n.read).length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
+                      {notifications.filter(n => !n.read).length}
+                    </span>
+                  )}
+                </div>
                 <div className="relative">
                   <button onClick={() => setShowMenu(!showMenu)} className="p-1"><MoreVertical className="w-6 h-6" /></button>
                   {showMenu && (
@@ -336,6 +386,11 @@ export default function App() {
                       <button onClick={() => { setShowProfile(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
                         <UserIcon className="w-4 h-4" /> Profile
                       </button>
+                      {user.role === 'admin' && (
+                        <button onClick={() => { setShowAdmin(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-[#00a884] hover:bg-gray-50 flex items-center gap-3">
+                          <Shield className="w-4 h-4" /> Admin Panel
+                        </button>
+                      )}
                       <button onClick={() => { signOut(auth); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3">
                         <LogOut className="w-4 h-4" /> Log out
                       </button>
@@ -377,8 +432,8 @@ export default function App() {
                 )}
               </div>
             )}
-            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} />}
-            {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} />}
+            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} />}
+            {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} />}
           </div>
 
           {/* Floating Action Button */}
@@ -441,12 +496,37 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
   );
 };
 
-const StatusAndWallView = ({ user, statuses, posts }: any) => {
+const StatusAndWallView = ({ user, statuses, posts, onUserClick }: any) => {
   const [newPost, setNewPost] = useState('');
   const handlePost = async () => {
     if (!newPost.trim()) return;
     await addDoc(collection(db, 'posts'), { userId: user.uid, content: newPost, likes: [], createdAt: serverTimestamp(), isAd: false, user: { displayName: user.displayName, photoURL: user.photoURL } });
     setNewPost('');
+  };
+
+  const handleLike = async (post: Post) => {
+    const postRef = doc(db, 'posts', post.id);
+    const isLiked = post.likes.includes(user.uid);
+    
+    if (isLiked) {
+      await updateDoc(postRef, { likes: arrayRemove(user.uid) });
+    } else {
+      await updateDoc(postRef, { likes: arrayUnion(user.uid) });
+      
+      // Notify owner
+      if (post.userId !== user.uid) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: post.userId,
+          fromId: user.uid,
+          fromName: user.displayName,
+          type: 'like',
+          text: 'liked your post',
+          read: false,
+          timestamp: serverTimestamp(),
+          relatedId: post.id
+        });
+      }
+    }
   };
 
   return (
@@ -463,7 +543,7 @@ const StatusAndWallView = ({ user, statuses, posts }: any) => {
             <span className="text-xs text-gray-600">My Status</span>
           </div>
           {statuses.map((s: any) => (
-            <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px]">
+            <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => onUserClick({ uid: s.userId, displayName: s.user?.displayName, photoURL: s.user?.photoURL })}>
               <div className="p-0.5 rounded-full border-2 border-[#00a884]">
                 <img src={s.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} className="w-16 h-16 rounded-full border-2 border-white" alt="User" />
               </div>
@@ -487,16 +567,29 @@ const StatusAndWallView = ({ user, statuses, posts }: any) => {
         </div>
         {posts.map((post: any) => (
           <div key={post.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-4 flex items-center gap-3">
+            <div className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => onUserClick({ uid: post.userId, displayName: post.user?.displayName, photoURL: post.user?.photoURL })}>
               <img src={post.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-10 h-10 rounded-full" alt="User" />
               <div>
                 <h4 className="font-bold text-[#111b21] text-[15px]">{post.user?.displayName}</h4>
                 <p className="text-[11px] text-[#667781]">{post.createdAt?.toDate ? formatWhatsAppTime(post.createdAt.toDate()) : ''}</p>
               </div>
+              {post.isAd && <span className="ml-auto bg-yellow-100 text-yellow-800 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Sponsored</span>}
             </div>
-            <div className="px-4 pb-4 text-[15px] text-[#111b21] leading-relaxed">{post.content}</div>
+            <div className="px-4 pb-4 text-[15px] text-[#111b21] leading-relaxed">
+              {post.content}
+              {post.adLink && (
+                <a href={post.adLink} target="_blank" rel="noopener noreferrer" className="block mt-3 text-[#00a884] font-bold flex items-center gap-1">
+                  Learn More <ArrowRight className="w-4 h-4" />
+                </a>
+              )}
+            </div>
             <div className="p-2 border-t border-gray-50 flex justify-around text-[#667781] text-sm font-semibold">
-              <button className="flex items-center gap-2 py-2 px-6 rounded-xl hover:bg-gray-50 transition-colors"><ThumbsUp className="w-5 h-5" /> Like</button>
+              <button 
+                onClick={() => handleLike(post)}
+                className={cn("flex items-center gap-2 py-2 px-6 rounded-xl hover:bg-gray-50 transition-colors", post.likes.includes(user.uid) && "text-[#00a884]")}
+              >
+                <ThumbsUp className={cn("w-5 h-5", post.likes.includes(user.uid) && "fill-current")} /> {post.likes.length || ''} Like
+              </button>
               <button className="flex items-center gap-2 py-2 px-6 rounded-xl hover:bg-gray-50 transition-colors"><MessageSquare className="w-5 h-5" /> Comment</button>
             </div>
           </div>
@@ -506,7 +599,7 @@ const StatusAndWallView = ({ user, statuses, posts }: any) => {
   );
 };
 
-const DatingView = ({ user, filters, onUpdateFilters }: any) => {
+const DatingView = ({ user, filters, onUpdateFilters, onUserClick }: any) => {
   const [discoverUsers, setDiscoverUsers] = useState<User[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -693,6 +786,7 @@ const DatingView = ({ user, filters, onUpdateFilters }: any) => {
           </div>
           <div className="p-6 flex justify-center gap-10 bg-white">
             <button onClick={handleNext} className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:scale-110 transition-transform shadow-lg"><X className="w-8 h-8" /></button>
+            <button onClick={() => onUserClick(currentUser)} className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 hover:scale-110 transition-transform shadow-lg"><UserIcon className="w-8 h-8" /></button>
             <button onClick={handleNext} className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center text-[#00a884] hover:scale-110 transition-transform shadow-lg"><Heart className="w-8 h-8 fill-current" /></button>
           </div>
         </div>
@@ -701,6 +795,258 @@ const DatingView = ({ user, filters, onUpdateFilters }: any) => {
   );
 };
 
+const UserProfileView = ({ user, targetUser, onBack, onStartChat }: any) => {
+  const [fullUser, setFullUser] = useState<User | null>(null);
+  const [requestStatus, setRequestStatus] = useState<'none' | 'pending' | 'accepted'>('none');
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const docSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', targetUser.uid)));
+      if (!docSnap.empty) {
+        const u = { uid: docSnap.docs[0].id, ...docSnap.docs[0].data() } as User;
+        setFullUser(u);
+        
+        if (user.friends?.includes(u.uid)) {
+          setRequestStatus('accepted');
+        } else {
+          const q = query(collection(db, 'friend_requests'), 
+            where('fromId', '==', user.uid), 
+            where('toId', '==', u.uid),
+            where('status', '==', 'pending')
+          );
+          const reqSnap = await getDocs(q);
+          if (!reqSnap.empty) setRequestStatus('pending');
+        }
+      }
+    };
+    fetchUser();
+  }, [targetUser.uid, user.uid, user.friends]);
+
+  const sendFriendRequest = async () => {
+    if (!fullUser) return;
+    await addDoc(collection(db, 'friend_requests'), {
+      fromId: user.uid,
+      toId: fullUser.uid,
+      status: 'pending',
+      timestamp: serverTimestamp()
+    });
+    await addDoc(collection(db, 'notifications'), {
+      userId: fullUser.uid,
+      fromId: user.uid,
+      fromName: user.displayName,
+      type: 'friend_request',
+      text: 'sent you a friend request',
+      read: false,
+      timestamp: serverTimestamp()
+    });
+    setRequestStatus('pending');
+  };
+
+  const handleStartChat = async () => {
+    if (!fullUser) return;
+    // Check if chat exists
+    const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
+    const snap = await getDocs(q);
+    let existingChat = snap.docs.find(d => (d.data() as Chat).participants.includes(fullUser.uid));
+    
+    if (existingChat) {
+      onStartChat({ id: existingChat.id, ...existingChat.data() });
+    } else {
+      const newChat = await addDoc(collection(db, 'chats'), {
+        participants: [user.uid, fullUser.uid],
+        type: 'private',
+        updatedAt: serverTimestamp()
+      });
+      onStartChat({ id: newChat.id, participants: [user.uid, fullUser.uid], type: 'private' });
+    }
+  };
+
+  if (!fullUser) return <div className="flex-1 flex items-center justify-center bg-white"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>;
+
+  return (
+    <div className="flex-1 flex flex-col bg-white">
+      <div className="relative h-72">
+        <img src={fullUser.photoURL || `https://picsum.photos/seed/${fullUser.uid}/600/800`} className="w-full h-full object-cover" alt={fullUser.displayName} />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+        <button onClick={onBack} className="absolute top-4 left-4 p-2 bg-black/20 backdrop-blur-md rounded-full text-white"><ChevronLeft className="w-6 h-6" /></button>
+        <div className="absolute bottom-6 left-6 text-white">
+          <h2 className="text-3xl font-bold">{fullUser.displayName}</h2>
+          <p className="opacity-80 flex items-center gap-2">
+            {fullUser.isOnline ? <span className="w-2 h-2 bg-green-500 rounded-full"></span> : null}
+            {fullUser.isOnline ? 'Online' : 'Offline'}
+          </p>
+        </div>
+      </div>
+      <div className="p-6 space-y-6">
+        <div className="flex gap-4">
+          {requestStatus === 'none' && (
+            <button onClick={sendFriendRequest} className="flex-1 bg-[#00a884] text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+              <UserPlus className="w-5 h-5" /> Add Friend
+            </button>
+          )}
+          {requestStatus === 'pending' && (
+            <button disabled className="flex-1 bg-gray-100 text-gray-500 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+              <CircleDashed className="w-5 h-5 animate-spin" /> Request Sent
+            </button>
+          )}
+          {requestStatus === 'accepted' && (
+            <button disabled className="flex-1 bg-blue-50 text-blue-600 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+              <UserCheck className="w-5 h-5" /> Friends
+            </button>
+          )}
+          <button onClick={handleStartChat} className="flex-1 border-2 border-[#00a884] text-[#00a884] py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+            <MessageSquare className="w-5 h-5" /> Message
+          </button>
+        </div>
+        <div className="space-y-4">
+          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">About</h4>
+          <p className="text-gray-700 leading-relaxed">{fullUser.datingProfile?.bio || fullUser.status || "No bio available."}</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-gray-50 p-3 rounded-xl">
+              <span className="text-[10px] text-gray-400 uppercase font-bold block">Age</span>
+              <span className="font-bold">{fullUser.datingProfile?.age || 'N/A'}</span>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-xl">
+              <span className="text-[10px] text-gray-400 uppercase font-bold block">Location</span>
+              <span className="font-bold">{fullUser.datingProfile?.city || 'N/A'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const NotificationCenter = ({ user, notifications, onBack }: any) => {
+  const markAsRead = async (id: string) => {
+    await updateDoc(doc(db, 'notifications', id), { read: true });
+  };
+
+  return (
+    <div className="flex-1 flex flex-col bg-[#f0f2f5]">
+      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+        <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
+        <h2 className="text-xl font-medium">Notifications</h2>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {notifications.length === 0 ? (
+          <div className="text-center py-20 text-gray-500">No notifications yet.</div>
+        ) : (
+          notifications.map(n => (
+            <div 
+              key={n.id} 
+              onClick={() => markAsRead(n.id)}
+              className={cn("bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4 border-l-4 transition-all", n.read ? "border-transparent opacity-70" : "border-[#00a884]")}
+            >
+              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-[#00a884]">
+                {n.type === 'like' && <ThumbsUp className="w-6 h-6" />}
+                {n.type === 'message' && <MessageSquare className="w-6 h-6" />}
+                {n.type === 'friend_request' && <UserPlus className="w-6 h-6" />}
+              </div>
+              <div className="flex-1">
+                <p className="text-sm text-[#111b21]">
+                  <span className="font-bold">{n.fromName}</span> {n.text}
+                </p>
+                <p className="text-[10px] text-gray-400 mt-1">{n.timestamp?.toDate ? formatWhatsAppTime(n.timestamp.toDate()) : 'Just now'}</p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+const AdminDashboard = ({ user, onBack }: any) => {
+  const [users, setUsers] = useState<User[]>([]);
+  const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, activeAds: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const uSnap = await getDocs(collection(db, 'users'));
+      const pSnap = await getDocs(collection(db, 'posts'));
+      const uList = uSnap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
+      setUsers(uList);
+      setStats({
+        totalUsers: uList.length,
+        totalPosts: pSnap.docs.length,
+        activeAds: pSnap.docs.filter(d => d.data().isAd).length
+      });
+      setLoading(false);
+    };
+    fetchData();
+  }, []);
+
+  const toggleUserRole = async (targetUser: User) => {
+    const newRole = targetUser.role === 'admin' ? 'user' : 'admin';
+    await updateDoc(doc(db, 'users', targetUser.uid), { role: newRole });
+    setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, role: newRole as any } : u));
+  };
+
+  if (loading) return <div className="flex-1 flex items-center justify-center bg-white"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>;
+
+  return (
+    <div className="flex-1 flex flex-col bg-[#f0f2f5]">
+      <div className="bg-[#111b21] text-white p-4 flex items-center gap-6 shadow-md">
+        <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
+        <h2 className="text-xl font-medium flex items-center gap-2"><Shield className="w-5 h-5 text-[#00a884]" /> Admin Dashboard</h2>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {/* Stats Grid */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
+            <UserIcon className="w-5 h-5 text-blue-500 mx-auto mb-1" />
+            <div className="text-xl font-bold">{stats.totalUsers}</div>
+            <div className="text-[10px] text-gray-400 uppercase font-bold">Users</div>
+          </div>
+          <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
+            <BarChart3 className="w-5 h-5 text-green-500 mx-auto mb-1" />
+            <div className="text-xl font-bold">{stats.totalPosts}</div>
+            <div className="text-[10px] text-gray-400 uppercase font-bold">Posts</div>
+          </div>
+          <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
+            <Plus className="w-5 h-5 text-yellow-500 mx-auto mb-1" />
+            <div className="text-xl font-bold">{stats.activeAds}</div>
+            <div className="text-[10px] text-gray-400 uppercase font-bold">Ads</div>
+          </div>
+        </div>
+
+        {/* User Management */}
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+            <h3 className="font-bold text-gray-700">User Management</h3>
+            <Settings className="w-4 h-4 text-gray-400" />
+          </div>
+          <div className="divide-y divide-gray-50 max-h-[400px] overflow-y-auto">
+            {users.map(u => (
+              <div key={u.uid} className="p-4 flex items-center gap-3">
+                <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-10 h-10 rounded-full" alt="User" />
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-bold text-sm truncate">{u.displayName}</h4>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold">{u.role}</p>
+                </div>
+                <button 
+                  onClick={() => toggleUserRole(u)}
+                  className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.role === 'admin' ? "bg-red-50 text-red-500" : "bg-green-50 text-[#00a884]")}
+                >
+                  {u.role === 'admin' ? "Demote" : "Make Admin"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Ad Management Placeholder */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm text-center border-2 border-dashed border-gray-200">
+          <Plus className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+          <h3 className="font-bold text-gray-400">Create Sponsored Ad</h3>
+          <p className="text-xs text-gray-400 mt-1">Ads will appear in the Status/Wall feed for all users.</p>
+        </div>
+      </div>
+    </div>
+  );
+};
 const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () => void, onUpdate: (u: User) => void }) => {
   const [displayName, setDisplayName] = useState(user.displayName);
   const [status, setStatus] = useState(user.status || '');

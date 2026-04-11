@@ -19,6 +19,27 @@ export interface User {
       lng: number;
     };
   };
+  friends?: string[];
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  fromId: string;
+  fromName: string;
+  type: 'like' | 'comment' | 'message' | 'friend_request' | 'friend_accept';
+  text: string;
+  read: boolean;
+  timestamp: any;
+  relatedId?: string;
+}
+
+export interface FriendRequest {
+  id: string;
+  fromId: string;
+  toId: string;
+  status: 'pending' | 'accepted' | 'declined';
+  timestamp: any;
 }
 
 export interface Chat {
