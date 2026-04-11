@@ -50,6 +50,7 @@ export interface Chat {
     text: string;
     senderId: string;
     timestamp: any;
+    status: 'sent' | 'delivered' | 'seen';
   };
   updatedAt: any;
   groupName?: string;

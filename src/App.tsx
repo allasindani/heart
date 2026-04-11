@@ -10,6 +10,7 @@ import {
   Smile, 
   Mic, 
   Send,
+  Check,
   CheckCheck,
   User as UserIcon,
   LogOut,
@@ -58,6 +59,12 @@ import {
   limit,
   getDocs
 } from 'firebase/firestore';
+import { 
+  getStorage, 
+  ref, 
+  uploadBytes, 
+  getDownloadURL 
+} from 'firebase/storage';
 import { auth, db } from './firebase';
 import { cn, formatWhatsAppTime } from './lib/utils';
 import type { User, Chat, Message, Post, Status, Notification as AppNotification } from './types';
@@ -181,6 +188,8 @@ export default function App() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [showMenu, setShowMenu] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [datingFilters, setDatingFilters] = useState({
     minAge: 18,
     maxAge: 50,
@@ -216,32 +225,32 @@ export default function App() {
       
       const zimProfiles = [
         {
-          uid: 'zim_bulawayo_25',
-          displayName: 'Thandiwe',
-          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=zim1&gender=female',
+          uid: 'zim_harare_25',
+          displayName: 'Chipo',
+          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=harare1&gender=female',
           role: 'user',
           isOnline: true,
           lastSeen: serverTimestamp(),
-          status: "Looking for someone special in Bulawayo.",
+          status: "Single and searching in Harare.",
           datingProfile: {
-            bio: "Single lady from Bulawayo, love music and culture.",
+            bio: "Beautiful black female from Harare, 25. Love exploring the city.",
             age: 25,
             gender: 'female',
             country: 'Zimbabwe',
-            city: 'Bulawayo',
-            interests: ['Music', 'Culture', 'Travel']
+            city: 'Harare',
+            interests: ['Music', 'City Life', 'Dancing']
           }
         },
         {
           uid: 'zim_harare_30',
           displayName: 'Nyasha',
-          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=zim2&gender=female',
+          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=harare2&gender=female',
           role: 'user',
           isOnline: true,
           lastSeen: serverTimestamp(),
           status: "Harare vibes. Let's connect!",
           datingProfile: {
-            bio: "Professional lady in Harare. Enjoying life and looking for a partner.",
+            bio: "Professional black female in Harare, 30. Enjoying life and looking for a partner.",
             age: 30,
             gender: 'female',
             country: 'Zimbabwe',
@@ -250,19 +259,19 @@ export default function App() {
           }
         },
         {
-          uid: 'zim_gweru_35',
+          uid: 'zim_harare_35',
           displayName: 'Ruvimbo',
-          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=zim3&gender=female',
+          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=harare3&gender=female',
           role: 'user',
           isOnline: true,
           lastSeen: serverTimestamp(),
-          status: "Peaceful life in Gweru.",
+          status: "Peaceful life in Harare.",
           datingProfile: {
-            bio: "Mature lady from Gweru. Family oriented and kind hearted.",
+            bio: "Mature black female from Harare, 35. Family oriented and kind hearted.",
             age: 35,
             gender: 'female',
             country: 'Zimbabwe',
-            city: 'Gweru',
+            city: 'Harare',
             interests: ['Family', 'Cooking', 'Nature']
           }
         }
@@ -307,6 +316,28 @@ export default function App() {
     return () => { unsubPosts(); unsubStatus(); unsubNotif(); };
   }, [user, activeTab]);
 
+  // Delivered status logic
+  useEffect(() => {
+    if (!user || chats.length === 0) return;
+    
+    chats.forEach(async (chat) => {
+      if (chat.lastMessage && chat.lastMessage.senderId !== user.uid && chat.lastMessage.status === 'sent') {
+        try {
+          await updateDoc(doc(db, 'chats', chat.id), { 'lastMessage.status': 'delivered' });
+          const q = query(collection(db, `chats/${chat.id}/messages`), where('status', '==', 'sent'), limit(5));
+          const snap = await getDocs(q);
+          snap.forEach(async (d) => {
+            if (d.data().senderId !== user.uid) {
+              await updateDoc(doc(db, `chats/${chat.id}/messages`, d.id), { status: 'delivered' });
+            }
+          });
+        } catch (e) {
+          console.error("Error updating delivered status:", e);
+        }
+      }
+    });
+  }, [chats, user]);
+
   if (loading) return (
     <div className="h-screen flex flex-col items-center justify-center bg-white">
       <MessageCircle className="w-16 h-16 text-[#25d366] fill-current animate-pulse mb-8" />
@@ -319,11 +350,19 @@ export default function App() {
 
   if (!user) return <AuthScreen />;
 
-  const sendMessage = async (text: string) => {
+  const sendMessage = async (text: string, type: string = 'text') => {
     if (!selectedChat || !text.trim()) return;
-    const msgData = { chatId: selectedChat.id, senderId: user.uid, text, type: 'text', timestamp: serverTimestamp(), status: 'sent' };
+    const msgData = { chatId: selectedChat.id, senderId: user.uid, text, type, timestamp: serverTimestamp(), status: 'sent' };
     await addDoc(collection(db, `chats/${selectedChat.id}/messages`), msgData);
-    await updateDoc(doc(db, 'chats', selectedChat.id), { lastMessage: { text, senderId: user.uid, timestamp: serverTimestamp() }, updatedAt: serverTimestamp() });
+    await updateDoc(doc(db, 'chats', selectedChat.id), { 
+      lastMessage: { 
+        text: type === 'text' ? text : `Sent an ${type}`, 
+        senderId: user.uid, 
+        timestamp: serverTimestamp(),
+        status: 'sent'
+      }, 
+      updatedAt: serverTimestamp() 
+    });
     
     // Send notification to other participant
     const otherId = selectedChat.participants.find(p => p !== user.uid);
@@ -370,7 +409,8 @@ export default function App() {
             <div className="flex justify-between items-center mb-4">
               <h1 className="text-xl font-medium">Heart Connect</h1>
               <div className="flex gap-5 items-center">
-                <Camera className="w-6 h-6" />
+                <Camera className="w-6 h-6 cursor-pointer" onClick={() => setActiveTab('status')} />
+                <Search className="w-6 h-6 cursor-pointer" onClick={() => setShowSearch(!showSearch)} />
                 <div className="relative cursor-pointer" onClick={() => setShowNotifications(true)}>
                   <Bell className="w-6 h-6" />
                   {notifications.filter(n => !n.read).length > 0 && (
@@ -399,6 +439,17 @@ export default function App() {
                 </div>
               </div>
             </div>
+            {showSearch && (
+              <div className="mb-3 animate-in slide-in-from-top duration-200">
+                <input 
+                  type="text" 
+                  value={searchQuery} 
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search chats or users..." 
+                  className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-sm placeholder:text-white/50 outline-none focus:bg-white/20 transition-all"
+                />
+              </div>
+            )}
             {/* Tabs */}
             <div className="flex text-center font-medium text-sm uppercase tracking-wider">
               <button onClick={() => setActiveTab('chats')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'chats' ? "border-white" : "border-transparent opacity-70")}>Chats</button>
@@ -411,10 +462,18 @@ export default function App() {
           <div className="flex-1 overflow-y-auto">
             {activeTab === 'chats' && (
               <div className="divide-y divide-gray-100">
-                {chats.length === 0 ? (
-                  <div className="p-8 text-center text-gray-500">No chats yet. Start a conversation!</div>
+                {chats.filter(c => {
+                  if (!searchQuery) return true;
+                  const name = c.groupName || '';
+                  return name.toLowerCase().includes(searchQuery.toLowerCase());
+                }).length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">No chats found.</div>
                 ) : (
-                  chats.map(chat => (
+                  chats.filter(c => {
+                    if (!searchQuery) return true;
+                    const name = c.groupName || '';
+                    return name.toLowerCase().includes(searchQuery.toLowerCase());
+                  }).map(chat => (
                     <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 active:bg-gray-100 transition-colors cursor-pointer">
                       <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`} className="w-14 h-14 rounded-full" alt="Chat" />
                       <div className="flex-1 min-w-0">
@@ -423,7 +482,13 @@ export default function App() {
                           <span className="text-xs text-[#667781]">{chat.updatedAt?.toDate ? formatWhatsAppTime(chat.updatedAt.toDate()) : ''}</span>
                         </div>
                         <p className="text-[14px] text-[#667781] truncate flex items-center gap-1">
-                          {chat.lastMessage?.senderId === user.uid && <CheckCheck className="w-4 h-4 text-[#53bdeb]" />}
+                          {chat.lastMessage?.senderId === user.uid && (
+                            chat.lastMessage.status === 'sent' ? (
+                              <Check className="w-4 h-4 text-[#8696a0]" />
+                            ) : (
+                              <CheckCheck className={cn("w-4 h-4", chat.lastMessage.status === 'seen' ? "text-[#53bdeb]" : "text-[#8696a0]")} />
+                            )
+                          )}
                           {chat.lastMessage?.text || "Start a conversation"}
                         </p>
                       </div>
@@ -433,7 +498,7 @@ export default function App() {
               </div>
             )}
             {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} />}
-            {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} />}
+            {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} />}
           </div>
 
           {/* Floating Action Button */}
@@ -450,17 +515,72 @@ export default function App() {
 
 const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
   const [input, setInput] = useState('');
+  const [otherUser, setOtherUser] = useState<any>(null);
+  const [uploading, setUploading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const fetchOtherUser = async () => {
+      const otherId = chat.participants.find((p: string) => p !== user.uid);
+      if (otherId) {
+        const { getDoc, doc } = await import('firebase/firestore');
+        const docSnap = await getDoc(doc(db, 'users', otherId));
+        if (docSnap.exists()) setOtherUser(docSnap.data());
+      }
+    };
+    fetchOtherUser();
+  }, [chat, user.uid]);
+
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
+
+  // Seen status logic
+  useEffect(() => {
+    if (!user || !chat || messages.length === 0) return;
+    
+    const unseenMessages = messages.filter(m => m.senderId !== user.uid && m.status !== 'seen');
+    if (unseenMessages.length > 0) {
+      unseenMessages.forEach(async (m) => {
+        try {
+          await updateDoc(doc(db, `chats/${chat.id}/messages`, m.id), { status: 'seen' });
+        } catch (e) {
+          console.error("Error updating seen status:", e);
+        }
+      });
+      
+      // Update lastMessage status if it was one of these
+      if (chat.lastMessage && chat.lastMessage.senderId !== user.uid && chat.lastMessage.status !== 'seen') {
+        updateDoc(doc(db, 'chats', chat.id), { 'lastMessage.status': 'seen' });
+      }
+    }
+  }, [messages, chat, user]);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const storage = getStorage();
+      const storageRef = ref(storage, `chats/${chat.id}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      const type = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file';
+      onSendMessage(url, type);
+    } catch (error) {
+      console.error("Upload error:", error);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col h-full">
       <div className="bg-[#008069] text-white p-3 flex items-center gap-2 shadow-md">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
-        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`} className="w-10 h-10 rounded-full" alt="Chat" />
+        <img src={otherUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`} className="w-10 h-10 rounded-full" alt="Chat" />
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold truncate">{chat.groupName || "Chat"}</h3>
-          <p className="text-xs opacity-80">online</p>
+          <h3 className="font-bold truncate">{otherUser?.displayName || chat.groupName || "Chat"}</h3>
+          <p className="text-xs opacity-80">{otherUser?.isOnline ? 'online' : 'offline'}</p>
         </div>
         <div className="flex gap-5 mr-2">
           <Video className="w-6 h-6" />
@@ -472,21 +592,35 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
         {messages.map((msg: any) => (
           <div key={msg.id} className={cn("flex w-full mb-1", msg.senderId === user.uid ? "justify-end" : "justify-start")}>
             <div className={cn("max-w-[85%] p-2 px-3 rounded-lg shadow-sm relative min-w-[80px]", msg.senderId === user.uid ? "bg-[#dcf8c6] rounded-tr-none" : "bg-white rounded-tl-none")}>
-              <p className="text-[15px] text-[#111b21] pr-12 leading-relaxed">{msg.text}</p>
+              {msg.type === 'image' ? (
+                <img src={msg.text} className="rounded-lg max-w-full h-auto mb-1" alt="Sent" />
+              ) : msg.type === 'video' ? (
+                <video src={msg.text} controls className="rounded-lg max-w-full h-auto mb-1" />
+              ) : (
+                <p className="text-[15px] text-[#111b21] pr-12 leading-relaxed">{msg.text}</p>
+              )}
               <div className="absolute bottom-1 right-1.5 flex items-center gap-1">
                 <span className="text-[10px] text-[#667781] uppercase">{msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}</span>
-                {msg.senderId === user.uid && <CheckCheck className={cn("w-3.5 h-3.5", msg.status === 'seen' ? "text-[#53bdeb]" : "text-[#8696a0]")} />}
+                {msg.senderId === user.uid && (
+                  msg.status === 'sent' ? (
+                    <Check className="w-3.5 h-3.5 text-[#8696a0]" />
+                  ) : (
+                    <CheckCheck className={cn("w-3.5 h-3.5", msg.status === 'seen' ? "text-[#53bdeb]" : "text-[#8696a0]")} />
+                  )
+                )}
               </div>
             </div>
           </div>
         ))}
+        {uploading && <div className="flex justify-center"><CircleDashed className="w-6 h-6 animate-spin text-[#00a884]" /></div>}
       </div>
       <div className="bg-[#f0f2f5] p-2 flex items-center gap-2">
+        <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*,video/*" />
         <div className="bg-white flex-1 flex items-center px-3 py-2 rounded-full shadow-sm">
           <Smile className="w-6 h-6 text-gray-500 mr-2" />
           <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Message" className="flex-1 bg-transparent border-none outline-none text-[16px]" onKeyDown={(e) => { if (e.key === 'Enter' && input.trim()) { onSendMessage(input); setInput(''); } }} />
-          <Paperclip className="w-6 h-6 text-gray-500 ml-2" />
-          <Camera className="w-6 h-6 text-gray-500 ml-3" />
+          <Paperclip className="w-6 h-6 text-gray-500 ml-2 cursor-pointer" onClick={() => fileInputRef.current?.click()} />
+          <Camera className="w-6 h-6 text-gray-500 ml-3 cursor-pointer" onClick={() => fileInputRef.current?.click()} />
         </div>
         <button onClick={() => { if (input.trim()) { onSendMessage(input); setInput(''); } }} className="w-12 h-12 bg-[#00a884] rounded-full flex items-center justify-center text-white shadow-md">
           {input.trim() ? <Send className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
@@ -498,10 +632,88 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
 
 const StatusAndWallView = ({ user, statuses, posts, onUserClick }: any) => {
   const [newPost, setNewPost] = useState('');
+  const [postMedia, setPostMedia] = useState<string | null>(null);
+  const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [statusText, setStatusText] = useState('');
+  const [statusDuration, setStatusDuration] = useState('24h');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const handlePost = async () => {
-    if (!newPost.trim()) return;
-    await addDoc(collection(db, 'posts'), { userId: user.uid, content: newPost, likes: [], createdAt: serverTimestamp(), isAd: false, user: { displayName: user.displayName, photoURL: user.photoURL } });
+    if (!newPost.trim() && !postMedia) return;
+    await addDoc(collection(db, 'posts'), { 
+      userId: user.uid, 
+      content: newPost, 
+      media: postMedia ? [postMedia] : [],
+      mediaType: postMediaType,
+      likes: [], 
+      createdAt: serverTimestamp(), 
+      isAd: false, 
+      user: { displayName: user.displayName, photoURL: user.photoURL } 
+    });
     setNewPost('');
+    setPostMedia(null);
+    setPostMediaType(null);
+  };
+
+  const handlePostFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const storage = getStorage();
+      const storageRef = ref(storage, `posts/${user.uid}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      setPostMedia(url);
+      setPostMediaType(file.type.startsWith('image/') ? 'image' : 'video');
+    } catch (error) {
+      console.error("Upload error:", error);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleCreateStatus = async (mediaUrl?: string, type: string = 'text') => {
+    setUploading(true);
+    try {
+      const durationMs = statusDuration === '24h' ? 24 * 60 * 60 * 1000 : statusDuration === '1w' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+      const expiresAt = new Date(Date.now() + durationMs);
+      
+      await addDoc(collection(db, 'statuses'), {
+        userId: user.uid,
+        type,
+        content: mediaUrl || statusText,
+        createdAt: serverTimestamp(),
+        expiresAt,
+        user: { displayName: user.displayName, photoURL: user.photoURL }
+      });
+      setShowStatusModal(false);
+      setStatusText('');
+    } catch (error) {
+      console.error("Status error:", error);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleStatusFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const storage = getStorage();
+      const storageRef = ref(storage, `statuses/${user.uid}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      const type = file.type.startsWith('image/') ? 'image' : 'video';
+      handleCreateStatus(url, type);
+    } catch (error) {
+      console.error("Upload error:", error);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleLike = async (post: Post) => {
@@ -533,16 +745,21 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick }: any) => {
     <div className="bg-[#f0f2f5] min-h-full">
       {/* Status Section */}
       <div className="bg-white p-4 mb-2 shadow-sm">
-        <h4 className="text-sm font-bold text-gray-500 mb-4 uppercase tracking-wider">Status</h4>
+        <div className="flex justify-between items-center mb-4">
+          <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Status</h4>
+          <button onClick={() => setShowStatusModal(true)} className="text-[#00a884] text-xs font-bold flex items-center gap-1">
+            <Plus className="w-4 h-4" /> Add Status
+          </button>
+        </div>
         <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-          <div className="flex flex-col items-center gap-1 min-w-[70px]">
+          <div className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => setShowStatusModal(true)}>
             <div className="relative">
               <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} className="w-16 h-16 rounded-full border-2 border-gray-200" alt="Me" />
               <div className="absolute bottom-0 right-0 bg-[#00a884] rounded-full p-1 border-2 border-white"><Plus className="w-3 h-3 text-white" /></div>
             </div>
             <span className="text-xs text-gray-600">My Status</span>
           </div>
-          {statuses.map((s: any) => (
+          {statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true).map((s: any) => (
             <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => onUserClick({ uid: s.userId, displayName: s.user?.displayName, photoURL: s.user?.photoURL })}>
               <div className="p-0.5 rounded-full border-2 border-[#00a884]">
                 <img src={s.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} className="w-16 h-16 rounded-full border-2 border-white" alt="User" />
@@ -553,16 +770,98 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick }: any) => {
         </div>
       </div>
 
+      {/* Status Creation Modal */}
+      <AnimatePresence>
+        {showStatusModal && (
+          <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
+            >
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold text-[#111b21]">Create Status</h3>
+                  <button onClick={() => setShowStatusModal(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X className="w-6 h-6 text-gray-400" /></button>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Status Text</label>
+                    <textarea 
+                      value={statusText}
+                      onChange={(e) => setStatusText(e.target.value)}
+                      placeholder="What's on your mind?"
+                      className="w-full bg-gray-50 border-none outline-none p-4 rounded-2xl text-[16px] resize-none h-32 focus:ring-2 focus:ring-[#00a884]/20 transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 block">Duration</label>
+                    <div className="flex gap-2">
+                      {['24h', '1w', '1m'].map(d => (
+                        <button 
+                          key={d}
+                          onClick={() => setStatusDuration(d)}
+                          className={cn(
+                            "flex-1 py-2 rounded-xl text-sm font-bold transition-all border-2",
+                            statusDuration === d ? "bg-[#00a884] border-[#00a884] text-white shadow-md" : "bg-white border-gray-100 text-gray-500 hover:border-gray-200"
+                          )}
+                        >
+                          {d === '24h' ? '24 Hours' : d === '1w' ? '1 Week' : '1 Month'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <input type="file" ref={fileInputRef} onChange={handleStatusFileUpload} className="hidden" accept="image/*,video/*" />
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex-1 bg-gray-100 text-gray-700 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors"
+                    >
+                      <ImageIcon className="w-5 h-5" /> Photo/Video
+                    </button>
+                    <button 
+                      onClick={() => handleCreateStatus()}
+                      disabled={!statusText.trim() || uploading}
+                      className="flex-[2] bg-[#00a884] text-white py-4 rounded-2xl font-bold shadow-lg shadow-[#00a884]/20 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {uploading ? <CircleDashed className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                      Post Status
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Wall Section */}
       <div className="p-4 space-y-4">
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
           <textarea placeholder="Share an update..." value={newPost} onChange={(e) => setNewPost(e.target.value)} className="w-full bg-gray-50 border-none outline-none p-3 rounded-xl text-[15px] resize-none h-20 mb-3" />
+          {postMedia && (
+            <div className="relative mb-3">
+              {postMediaType === 'image' ? (
+                <img src={postMedia} className="w-full h-48 object-cover rounded-xl" alt="Preview" />
+              ) : (
+                <video src={postMedia} className="w-full h-48 object-cover rounded-xl" controls />
+              )}
+              <button onClick={() => setPostMedia(null)} className="absolute top-2 right-2 bg-black/50 text-white p-1 rounded-full"><X className="w-4 h-4" /></button>
+            </div>
+          )}
           <div className="flex justify-between items-center border-t border-gray-50 pt-3">
             <div className="flex gap-5 text-gray-500">
-              <ImageIcon className="w-5 h-5 cursor-pointer hover:text-[#00a884]" />
-              <VideoIcon className="w-5 h-5 cursor-pointer hover:text-[#00a884]" />
+              <input type="file" id="post-media" className="hidden" accept="image/*,video/*" onChange={handlePostFileUpload} />
+              <label htmlFor="post-media" className="cursor-pointer hover:text-[#00a884]"><ImageIcon className="w-5 h-5" /></label>
+              <label htmlFor="post-media" className="cursor-pointer hover:text-[#00a884]"><VideoIcon className="w-5 h-5" /></label>
             </div>
-            <button onClick={handlePost} className="bg-[#00a884] text-white px-6 py-1.5 rounded-full font-bold text-sm shadow-sm">Post</button>
+            <button onClick={handlePost} disabled={uploading} className="bg-[#00a884] text-white px-6 py-1.5 rounded-full font-bold text-sm shadow-sm disabled:opacity-50">
+              {uploading ? 'Uploading...' : 'Post'}
+            </button>
           </div>
         </div>
         {posts.map((post: any) => (
@@ -577,6 +876,15 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick }: any) => {
             </div>
             <div className="px-4 pb-4 text-[15px] text-[#111b21] leading-relaxed">
               {post.content}
+              {post.media?.[0] && (
+                <div className="mt-3">
+                  {post.mediaType === 'video' ? (
+                    <video src={post.media[0]} controls className="w-full rounded-xl" />
+                  ) : (
+                    <img src={post.media[0]} className="w-full rounded-xl" alt="Post media" />
+                  )}
+                </div>
+              )}
               {post.adLink && (
                 <a href={post.adLink} target="_blank" rel="noopener noreferrer" className="block mt-3 text-[#00a884] font-bold flex items-center gap-1">
                   Learn More <ArrowRight className="w-4 h-4" />
@@ -599,7 +907,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick }: any) => {
   );
 };
 
-const DatingView = ({ user, filters, onUpdateFilters, onUserClick }: any) => {
+const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery }: any) => {
   const [discoverUsers, setDiscoverUsers] = useState<User[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -624,6 +932,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick }: any) => {
           const profile = u.datingProfile!;
           const ageMatch = profile.age >= filters.minAge && profile.age <= filters.maxAge;
           const genderMatch = filters.gender === 'all' || profile.gender === filters.gender;
+          const searchMatch = !searchQuery || u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || profile.bio.toLowerCase().includes(searchQuery.toLowerCase());
           
           // Basic distance calculation if both have location
           let distanceMatch = true;
@@ -637,7 +946,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick }: any) => {
             distanceMatch = dist <= filters.maxDistance;
           }
 
-          return ageMatch && genderMatch && distanceMatch;
+          return ageMatch && genderMatch && distanceMatch && searchMatch;
         });
 
         setDiscoverUsers(filtered);
@@ -649,7 +958,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick }: any) => {
     };
 
     fetchUsers();
-  }, [user.uid, filters]);
+  }, [user.uid, filters, searchQuery]);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371; // km
