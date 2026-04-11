@@ -37,7 +37,8 @@ import {
   UserCheck,
   BarChart3,
   Settings as SettingsIcon,
-  ArrowRight
+  ArrowRight,
+  Megaphone
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -213,6 +214,7 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showCreateAd, setShowCreateAd] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [backPressCount, setBackPressCount] = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -224,6 +226,8 @@ export default function App() {
     moneyPerPoint: 0.01,
     tierPrices: { Bronze: 5, Silver: 10, Gold: 20, Platinum: 50 },
     tierDurations: { Bronze: '1 month', Silver: '1 month', Gold: '1 month', Platinum: '1 month' },
+    adPricePerDay: 2,
+    minAdDuration: 3,
     paymentMethods: [{ type: 'PayPal', details: 'alasindani2020@gmail.com' }]
   });
   const [showMenu, setShowMenu] = useState(false);
@@ -386,13 +390,14 @@ export default function App() {
       if (selectedChat) {
         setSelectedChat(null);
         window.history.pushState(null, '', window.location.pathname);
-      } else if (showProfile || showAdmin || viewingUser || showNotifications || showUpgrade || showLeaderboard) {
+      } else if (showProfile || showAdmin || viewingUser || showNotifications || showUpgrade || showLeaderboard || showCreateAd) {
         setShowProfile(false);
         setShowAdmin(false);
         setViewingUser(null);
         setShowNotifications(false);
         setShowUpgrade(false);
         setShowLeaderboard(false);
+        setShowCreateAd(false);
         window.history.pushState(null, '', window.location.pathname);
       } else {
         setBackPressCount(prev => {
@@ -410,7 +415,7 @@ export default function App() {
     window.history.pushState(null, '', window.location.pathname);
     window.addEventListener('popstate', handleBack);
     return () => window.removeEventListener('popstate', handleBack);
-  }, [selectedChat, showProfile, showAdmin, viewingUser, showNotifications, showUpgrade, showLeaderboard]);
+  }, [selectedChat, showProfile, showAdmin, viewingUser, showNotifications, showUpgrade, showLeaderboard, showCreateAd]);
 
   useEffect(() => {
     if (backPressCount > 0) {
@@ -631,6 +636,10 @@ export default function App() {
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
           <UpgradeTiers user={user} onBack={() => setShowUpgrade(false)} settings={appSettings} />
         </div>
+      ) : showCreateAd ? (
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
+          <CreateAd user={user} onBack={() => setShowCreateAd(false)} settings={appSettings} />
+        </div>
       ) : showLeaderboard ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
           <PointsLeaderboard onBack={() => setShowLeaderboard(false)} />
@@ -662,9 +671,14 @@ export default function App() {
                       <button onClick={() => { setShowLeaderboard(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
                         <Trophy className="w-4 h-4 text-yellow-600" /> Leaderboard
                       </button>
-                      <button onClick={() => { setShowUpgrade(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
-                        <Crown className="w-4 h-4 text-purple-600" /> Upgrade
+                      <button onClick={() => { setShowCreateAd(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                        <Megaphone className="w-4 h-4 text-blue-600" /> Create Ad
                       </button>
+                      {user.category === 'General' && (
+                        <button onClick={() => { setShowUpgrade(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                          <Crown className="w-4 h-4 text-purple-600" /> Upgrade
+                        </button>
+                      )}
                       {user.role === 'admin' && (
                         <button onClick={() => { setShowAdmin(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-[#00a884] hover:bg-gray-50 flex items-center gap-3">
                           <Shield className="w-4 h-4" /> Admin Panel
@@ -1786,6 +1800,185 @@ const NotificationCenter = ({ user, notifications, onBack, onNavigate }: any) =>
   );
 };
 
+const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, settings: AppSettings }) => {
+  const [content, setContent] = useState('');
+  const [link, setLink] = useState('');
+  const [duration, setDuration] = useState(settings.minAdDuration);
+  const [mediaUrl, setMediaUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const compressedFile = await compressImage(file);
+      const storageRef = ref(storage, `ads/${user.uid}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, compressedFile);
+      const url = await getDownloadURL(storageRef);
+      setMediaUrl(url);
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert("Failed to upload image.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!content.trim() || !mediaUrl) {
+      alert("Please provide ad content and an image.");
+      return;
+    }
+    
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setSubmitting(true);
+      try {
+        const compressedFile = await compressImage(file);
+        const storageRef = ref(storage, `payment_proofs/${user.uid}/ad_${Date.now()}_${file.name}`);
+        await uploadBytes(storageRef, compressedFile);
+        const proofUrl = await getDownloadURL(storageRef);
+        
+        const totalCost = duration * settings.adPricePerDay;
+        
+        await addDoc(collection(db, 'payment_proofs'), {
+          userId: user.uid,
+          userName: user.displayName,
+          type: 'ad',
+          tier: 'Ad Campaign',
+          amount: totalCost,
+          proofUrl,
+          status: 'pending',
+          adData: {
+            content,
+            link,
+            duration,
+            mediaUrl,
+            cost: totalCost
+          },
+          timestamp: serverTimestamp()
+        });
+        
+        alert("Ad submission and payment proof sent! Admin will review and publish your ad soon.");
+        onBack();
+      } catch (error) {
+        console.error("Error submitting ad:", error);
+        alert("Failed to submit ad. Please try again.");
+      } finally {
+        setSubmitting(false);
+      }
+    };
+    alert("Please upload proof of payment for the ad campaign.");
+    input.click();
+  };
+
+  const totalCost = duration * settings.adPricePerDay;
+
+  return (
+    <div className="flex-1 flex flex-col h-full bg-[#f0f2f5]">
+      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+        <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
+        <h2 className="text-xl font-medium">Create Advertisement</h2>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+          <div>
+            <label className="text-xs font-bold text-[#00a884] uppercase block mb-2">Ad Content</label>
+            <textarea 
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="What are you promoting?"
+              className="w-full p-3 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-[#00a884] resize-none h-32"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-[#00a884] uppercase block mb-2">Ad Image</label>
+            <div className="flex items-center gap-4">
+              <label className="w-24 h-24 bg-gray-100 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors border-2 border-dashed border-gray-300">
+                {mediaUrl ? (
+                  <img src={mediaUrl} className="w-full h-full object-cover rounded-xl" alt="Preview" />
+                ) : (
+                  <>
+                    <Camera className="w-6 h-6 text-gray-400" />
+                    <span className="text-[10px] text-gray-400 mt-1">Upload</span>
+                  </>
+                )}
+                <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
+              </label>
+              <div className="flex-1 text-xs text-gray-500">
+                Upload a clear image for your advertisement. High quality images perform better.
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-[#00a884] uppercase block mb-2">External Link (Optional)</label>
+            <input 
+              type="url"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              placeholder="https://example.com"
+              className="w-full p-3 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-[#00a884]"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-[#00a884] uppercase block mb-2">Duration (Days)</label>
+              <input 
+                type="number"
+                min={settings.minAdDuration}
+                value={duration}
+                onChange={(e) => setDuration(Math.max(settings.minAdDuration, parseInt(e.target.value) || settings.minAdDuration))}
+                className="w-full p-3 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-[#00a884]"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-[#00a884] uppercase block mb-2">Total Cost</label>
+              <div className="w-full p-3 bg-gray-100 rounded-xl font-bold text-lg text-[#111b21]">
+                ${totalCost.toFixed(2)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-yellow-50 rounded-2xl p-6 border border-yellow-100 space-y-4">
+          <h3 className="font-bold text-yellow-800 flex items-center gap-2">
+            <Shield className="w-5 h-5" /> Payment Instructions
+          </h3>
+          <div className="space-y-2">
+            {settings.paymentMethods.map((pm, idx) => (
+              <div key={idx} className="text-sm text-yellow-700">
+                <span className="font-bold">{pm.type}:</span> {pm.details}
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-yellow-600">
+            Pay the total amount and upload the screenshot of the transaction. Your ad will be reviewed and published within 24 hours.
+          </p>
+        </div>
+
+        <button 
+          onClick={handleSubmit}
+          disabled={uploading || submitting}
+          className="w-full bg-[#00a884] text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-[#008f6f] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+        >
+          {submitting ? <CircleDashed className="w-6 h-6 animate-spin" /> : <Megaphone className="w-6 h-6" />}
+          Submit Ad & Upload Proof
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => void, settings: AppSettings }) => {
   const [uploading, setUploading] = useState(false);
   const tiers = [
@@ -1978,9 +2171,28 @@ const AdminDashboard = ({ user, onBack }: any) => {
 
   const approvePayment = async (proof: PaymentProof) => {
     await updateDoc(doc(db, 'payment_proofs', proof.id), { status: 'approved' });
-    await updateDoc(doc(db, 'users', proof.userId), { category: proof.tier });
+    
+    if ((proof as any).type === 'ad' && (proof as any).adData) {
+      const adData = (proof as any).adData;
+      await addDoc(collection(db, 'posts'), {
+        userId: proof.userId,
+        content: adData.content,
+        media: [adData.mediaUrl],
+        adLink: adData.link,
+        adCost: adData.cost,
+        isAd: true,
+        likes: [],
+        commentCount: 0,
+        createdAt: serverTimestamp(),
+        user: { displayName: proof.userName, photoURL: users.find(u => u.uid === proof.userId)?.photoURL }
+      });
+      alert("Ad approved and published!");
+    } else {
+      await updateDoc(doc(db, 'users', proof.userId), { category: proof.tier });
+      alert("Payment approved and user tier updated!");
+    }
+    
     setPaymentProofs(paymentProofs.map(p => p.id === proof.id ? { ...p, status: 'approved' } : p));
-    alert("Payment approved and user tier updated!");
   };
 
   const deleteAd = async (adId: string) => {
@@ -2174,6 +2386,18 @@ const AdminDashboard = ({ user, onBack }: any) => {
                   </div>
                 </div>
               ))}
+            </div>
+
+            <h3 className="font-bold text-gray-700 border-b pb-2 pt-4">Advertisement Settings</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Ad Price per Day ($)</label>
+                <input type="number" value={settings.adPricePerDay} onChange={(e) => setSettings({...settings, adPricePerDay: Number(e.target.value)})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Min Ad Duration (Days)</label>
+                <input type="number" value={settings.minAdDuration} onChange={(e) => setSettings({...settings, minAdDuration: Number(e.target.value)})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+              </div>
             </div>
 
             <button onClick={() => saveSettings(settings)} className="w-full bg-[#00a884] text-white py-4 rounded-2xl font-bold shadow-lg mt-4">Save Configuration</button>

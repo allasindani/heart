@@ -109,6 +109,8 @@ export interface AppSettings {
   moneyPerPoint: number;
   tierPrices: Record<string, number>;
   tierDurations: Record<string, string>;
+  adPricePerDay: number;
+  minAdDuration: number;
   paymentMethods: { type: string, details: string }[];
 }
 
