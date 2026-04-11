@@ -269,19 +269,34 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const userDoc = doc(db, 'users', firebaseUser.uid);
-        const userData: User = {
-          uid: firebaseUser.uid,
-          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous',
-          photoURL: firebaseUser.photoURL || null,
-          role: firebaseUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
-          category: 'General',
-          points: 0,
-          isOnline: true,
-          lastSeen: serverTimestamp(),
-          status: "Hey there! I am using Heart Connect.",
-        };
-        try { await setDoc(userDoc, userData, { merge: true }); } catch (e) { handleFirestoreError(e, OperationType.WRITE, `users/${firebaseUser.uid}`); }
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        const { getDoc } = await import('firebase/firestore');
+        const userSnap = await getDoc(userDocRef);
+        
+        let userData: User;
+        if (userSnap.exists()) {
+          userData = { uid: firebaseUser.uid, ...userSnap.data() } as User;
+          // Set default dating filters based on gender
+          if (userData.datingProfile?.gender) {
+            setDatingFilters(prev => ({
+              ...prev,
+              gender: userData.datingProfile?.gender === 'male' ? 'female' : 'male'
+            }));
+          }
+        } else {
+          userData = {
+            uid: firebaseUser.uid,
+            displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous',
+            photoURL: firebaseUser.photoURL || null,
+            role: firebaseUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
+            category: 'General',
+            points: 0,
+            isOnline: true,
+            lastSeen: serverTimestamp(),
+            status: "Hey there! I am using Heart Connect.",
+          };
+          try { await setDoc(userDocRef, userData, { merge: true }); } catch (e) { handleFirestoreError(e, OperationType.WRITE, `users/${firebaseUser.uid}`); }
+        }
         setUser(userData);
       } else { setUser(null); }
       setLoading(false);
@@ -730,7 +745,7 @@ export default function App() {
               </div>
             )}
             {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} appSettings={appSettings} />}
-            {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} />}
+            {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} />}
           </div>
 
           {/* Floating Action Button */}
@@ -947,6 +962,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
   const [showStatusModal, setShowStatusModal] = useState(false);
+  const [viewingStatus, setViewingStatus] = useState<any>(null);
   const [statusText, setStatusText] = useState('');
   const [statusDuration, setStatusDuration] = useState('24h');
   const [uploading, setUploading] = useState(false);
@@ -1115,6 +1131,14 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
     }
   };
 
+  const handleViewStatus = async (status: any) => {
+    setViewingStatus(status);
+    if (status.userId !== user.uid) {
+      const { increment } = await import('firebase/firestore');
+      await updateDoc(doc(db, 'statuses', status.id), { views: increment(1) });
+    }
+  };
+
   return (
     <div className="bg-[#f0f2f5] min-h-full">
       {/* Status Section */}
@@ -1134,7 +1158,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
             <span className="text-xs text-gray-600">My Status</span>
           </div>
           {statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true).map((s: any) => (
-            <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => onUserClick({ uid: s.userId, displayName: s.user?.displayName, photoURL: s.user?.photoURL })}>
+            <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => handleViewStatus(s)}>
               <div className="p-0.5 rounded-full border-2 border-[#00a884]">
                 <img src={s.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} className="w-16 h-16 rounded-full border-2 border-white" alt="User" />
               </div>
@@ -1143,6 +1167,34 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
           ))}
         </div>
       </div>
+
+      {/* Status Viewer Modal */}
+      <AnimatePresence>
+        {viewingStatus && (
+          <div className="fixed inset-0 z-[200] bg-black flex flex-col">
+            <div className="absolute top-0 left-0 right-0 p-4 flex items-center gap-3 z-10 bg-gradient-to-b from-black/60 to-transparent">
+              <button onClick={() => setViewingStatus(null)} className="p-1"><ChevronLeft className="w-6 h-6 text-white" /></button>
+              <img src={viewingStatus.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStatus.userId}`} className="w-10 h-10 rounded-full border border-white/20" alt="User" />
+              <div className="flex-1">
+                <h4 className="text-white font-bold text-sm">{viewingStatus.user?.displayName}</h4>
+                <p className="text-white/60 text-[10px]">{viewingStatus.createdAt?.toDate ? formatWhatsAppTime(viewingStatus.createdAt.toDate()) : ''}</p>
+              </div>
+            </div>
+            <div className="flex-1 flex items-center justify-center p-4">
+              {viewingStatus.type === 'text' ? (
+                <div className="text-white text-2xl font-bold text-center px-6">{viewingStatus.content}</div>
+              ) : viewingStatus.type === 'image' ? (
+                <img src={viewingStatus.content} className="max-w-full max-h-full object-contain rounded-xl" alt="Status" />
+              ) : (
+                <video src={viewingStatus.content} className="max-w-full max-h-full object-contain rounded-xl" autoPlay controls />
+              )}
+            </div>
+            <div className="p-6 bg-gradient-to-t from-black/60 to-transparent flex justify-center items-center gap-2 text-white/80 text-xs">
+              <Search className="w-4 h-4" /> {viewingStatus.views || 0} views
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Status Creation Modal */}
       <AnimatePresence>
@@ -1354,11 +1406,13 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
   );
 };
 
-const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery }: any) => {
+const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, onOpenProfile }: any) => {
   const [discoverUsers, setDiscoverUsers] = useState<User[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
+
+  const hasGender = user.datingProfile?.gender && user.datingProfile.gender !== '';
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -1504,13 +1558,24 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery }
         )}
       </AnimatePresence>
 
+      {!hasGender && (
+        <div className="bg-yellow-50 border border-yellow-100 p-4 rounded-2xl mb-4 flex items-center gap-3">
+          <ShieldAlert className="w-5 h-5 text-yellow-600" />
+          <div className="flex-1">
+            <p className="text-xs font-bold text-yellow-800">Complete Your Profile</p>
+            <p className="text-[10px] text-yellow-700">Set your gender to get better matches.</p>
+          </div>
+          <button onClick={onOpenProfile} className="text-xs font-bold text-yellow-800 underline">Update</button>
+        </div>
+      )}
+
       {discoverUsers.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
           <Heart className="w-16 h-16 text-gray-200 mb-4" />
           <p className="text-gray-500">No matches found with current filters. Try expanding your search!</p>
         </div>
       ) : (
-        <div className="max-w-sm w-full mx-auto bg-white rounded-[40px] shadow-2xl overflow-hidden h-[550px] flex flex-col relative border-4 border-white">
+        <div className="max-w-sm w-full mx-auto bg-white rounded-[40px] shadow-2xl overflow-hidden h-[480px] flex flex-col relative border-4 border-white">
           <div className="flex-1 bg-gray-200 relative">
             <img 
               src={currentUser.photoURL || `https://picsum.photos/seed/${currentUser.uid}/400/600`} 
@@ -1518,32 +1583,32 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery }
               alt={currentUser.displayName} 
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
-            <div className="absolute bottom-0 left-0 right-0 p-8 text-white">
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-3xl font-bold">{currentUser.displayName}, {currentUser.datingProfile?.age}</h3>
+            <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-2xl font-bold">{currentUser.displayName}, {currentUser.datingProfile?.age}</h3>
                 {currentUser.isOnline && (
-                  <div className="w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm animate-pulse"></div>
+                  <div className="w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white shadow-sm animate-pulse"></div>
                 )}
               </div>
-              <p className="text-sm opacity-90 leading-relaxed line-clamp-2">{currentUser.datingProfile?.bio}</p>
-              <div className="flex gap-2 mt-4 flex-wrap">
+              <p className="text-xs opacity-90 leading-relaxed line-clamp-2">{currentUser.datingProfile?.bio}</p>
+              <div className="flex gap-2 mt-3 flex-wrap">
                 {currentUser.datingProfile?.city && (
-                  <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider">
+                  <span className="bg-white/20 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wider">
                     {currentUser.datingProfile.city}
                   </span>
                 )}
                 {currentUser.datingProfile?.interests?.slice(0, 2).map(tag => (
-                  <span key={tag} className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider">
+                  <span key={tag} className="bg-white/20 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wider">
                     {tag}
                   </span>
                 ))}
               </div>
             </div>
           </div>
-          <div className="p-6 flex justify-center gap-10 bg-white">
-            <button onClick={handleNext} className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:scale-110 transition-transform shadow-lg"><X className="w-8 h-8" /></button>
-            <button onClick={() => onUserClick(currentUser)} className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 hover:scale-110 transition-transform shadow-lg"><UserIcon className="w-8 h-8" /></button>
-            <button onClick={handleNext} className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center text-[#00a884] hover:scale-110 transition-transform shadow-lg"><Heart className="w-8 h-8 fill-current" /></button>
+          <div className="p-4 flex justify-center gap-8 bg-white">
+            <button onClick={handleNext} className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:scale-110 transition-transform shadow-lg"><X className="w-7 h-7" /></button>
+            <button onClick={() => onUserClick(currentUser)} className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 hover:scale-110 transition-transform shadow-lg"><UserIcon className="w-7 h-7" /></button>
+            <button onClick={handleNext} className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center text-[#00a884] hover:scale-110 transition-transform shadow-lg"><Heart className="w-7 h-7 fill-current" /></button>
           </div>
         </div>
       )}
