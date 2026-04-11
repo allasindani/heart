@@ -12,6 +12,8 @@ import {
   Send,
   Check,
   CheckCheck,
+  ShieldAlert,
+  Trash2,
   User as UserIcon,
   LogOut,
   Plus,
@@ -22,7 +24,10 @@ import {
   Share2,
   X,
   ChevronLeft,
+  ChevronRight,
   Camera,
+  Trophy,
+  Crown,
   Phone,
   Video,
   ShieldCheck,
@@ -54,10 +59,12 @@ import {
   doc, 
   setDoc, 
   updateDoc, 
+  deleteDoc,
   arrayUnion, 
   arrayRemove,
   limit,
-  getDocs
+  getDocs,
+  writeBatch
 } from 'firebase/firestore';
 import { 
   getStorage, 
@@ -67,7 +74,7 @@ import {
 } from 'firebase/storage';
 import { auth, db } from './firebase';
 import { cn, formatWhatsAppTime } from './lib/utils';
-import type { User, Chat, Message, Post, Status, Notification as AppNotification } from './types';
+import type { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment } from './types';
 
 // --- Error Handling ---
 enum OperationType { CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LIST = 'list', GET = 'get', WRITE = 'write' }
@@ -186,10 +193,25 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const awardPoints = async (amount: number) => {
+    if (!user) return;
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const { increment } = await import('firebase/firestore');
+      await updateDoc(userRef, { points: increment(amount) });
+      setUser({ ...user, points: (user.points || 0) + amount });
+    } catch (e) {
+      console.error("Error awarding points:", e);
+    }
+  };
+
   const [datingFilters, setDatingFilters] = useState({
     minAge: 18,
     maxAge: 50,
@@ -206,6 +228,8 @@ export default function App() {
           displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous',
           photoURL: firebaseUser.photoURL || null,
           role: firebaseUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
+          category: 'General',
+          points: 0,
           isOnline: true,
           lastSeen: serverTimestamp(),
           status: "Hey there! I am using Heart Connect.",
@@ -229,6 +253,8 @@ export default function App() {
           displayName: 'Chipo',
           photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=harare1&gender=female',
           role: 'user',
+          category: 'General',
+          points: 100,
           isOnline: true,
           lastSeen: serverTimestamp(),
           status: "Single and searching in Harare.",
@@ -246,6 +272,8 @@ export default function App() {
           displayName: 'Nyasha',
           photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=harare2&gender=female',
           role: 'user',
+          category: 'General',
+          points: 150,
           isOnline: true,
           lastSeen: serverTimestamp(),
           status: "Harare vibes. Let's connect!",
@@ -263,6 +291,8 @@ export default function App() {
           displayName: 'Ruvimbo',
           photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=harare3&gender=female',
           role: 'user',
+          category: 'General',
+          points: 200,
           isOnline: true,
           lastSeen: serverTimestamp(),
           status: "Peaceful life in Harare.",
@@ -316,26 +346,50 @@ export default function App() {
     return () => { unsubPosts(); unsubStatus(); unsubNotif(); };
   }, [user, activeTab]);
 
-  // Delivered status logic
+  // Optimized Delivered status logic
   useEffect(() => {
     if (!user || chats.length === 0) return;
     
-    chats.forEach(async (chat) => {
-      if (chat.lastMessage && chat.lastMessage.senderId !== user.uid && chat.lastMessage.status === 'sent') {
+    const processDelivered = async () => {
+      const pendingChats = chats.filter(chat => 
+        chat.lastMessage && 
+        chat.lastMessage.senderId !== user.uid && 
+        chat.lastMessage.status === 'sent'
+      );
+
+      if (pendingChats.length === 0) return;
+
+      for (const chat of pendingChats) {
         try {
+          // Update chat lastMessage status
           await updateDoc(doc(db, 'chats', chat.id), { 'lastMessage.status': 'delivered' });
-          const q = query(collection(db, `chats/${chat.id}/messages`), where('status', '==', 'sent'), limit(5));
+          
+          // Update individual messages that are still 'sent'
+          const q = query(
+            collection(db, `chats/${chat.id}/messages`), 
+            where('status', '==', 'sent'),
+            limit(10)
+          );
           const snap = await getDocs(q);
-          snap.forEach(async (d) => {
+          
+          const batch = writeBatch(db);
+          let hasUpdates = false;
+          
+          snap.forEach((d) => {
             if (d.data().senderId !== user.uid) {
-              await updateDoc(doc(db, `chats/${chat.id}/messages`, d.id), { status: 'delivered' });
+              batch.update(doc(db, `chats/${chat.id}/messages`, d.id), { status: 'delivered' });
+              hasUpdates = true;
             }
           });
+          
+          if (hasUpdates) await batch.commit();
         } catch (e) {
           console.error("Error updating delivered status:", e);
         }
       }
-    });
+    };
+
+    processDelivered();
   }, [chats, user]);
 
   if (loading) return (
@@ -350,11 +404,31 @@ export default function App() {
 
   if (!user) return <AuthScreen />;
 
+  if (user.suspended) return (
+    <div className="h-screen flex flex-col items-center justify-center bg-white p-8 text-center">
+      <ShieldAlert className="w-16 h-16 text-red-500 mb-6" />
+      <h1 className="text-2xl font-bold text-gray-900 mb-2">Account Suspended</h1>
+      <p className="text-gray-500 mb-8">Your account has been suspended for violating our terms of service. If you believe this is a mistake, please contact support.</p>
+      <button onClick={() => auth.signOut()} className="bg-[#00a884] text-white px-8 py-3 rounded-full font-bold shadow-lg">Sign Out</button>
+    </div>
+  );
+
   const sendMessage = async (text: string, type: string = 'text') => {
     if (!selectedChat || !text.trim()) return;
-    const msgData = { chatId: selectedChat.id, senderId: user.uid, text, type, timestamp: serverTimestamp(), status: 'sent' };
-    await addDoc(collection(db, `chats/${selectedChat.id}/messages`), msgData);
-    await updateDoc(doc(db, 'chats', selectedChat.id), { 
+    
+    const msgData = { 
+      chatId: selectedChat.id, 
+      senderId: user.uid, 
+      text, 
+      type, 
+      timestamp: serverTimestamp(), 
+      status: 'sent' 
+    };
+
+    // Parallelize writes for better performance and reduced latency
+    const messagePromise = addDoc(collection(db, `chats/${selectedChat.id}/messages`), msgData);
+    
+    const chatUpdatePromise = updateDoc(doc(db, 'chats', selectedChat.id), { 
       lastMessage: { 
         text: type === 'text' ? text : `Sent an ${type}`, 
         senderId: user.uid, 
@@ -363,11 +437,11 @@ export default function App() {
       }, 
       updatedAt: serverTimestamp() 
     });
-    
-    // Send notification to other participant
+
     const otherId = selectedChat.participants.find(p => p !== user.uid);
+    let notificationPromise: Promise<any> = Promise.resolve();
     if (otherId) {
-      await addDoc(collection(db, 'notifications'), {
+      notificationPromise = addDoc(collection(db, 'notifications'), {
         userId: otherId,
         fromId: user.uid,
         fromName: user.displayName,
@@ -377,6 +451,12 @@ export default function App() {
         timestamp: serverTimestamp(),
         relatedId: selectedChat.id
       });
+    }
+
+    try {
+      await Promise.all([messagePromise, chatUpdatePromise, notificationPromise]);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `chats/${selectedChat.id}/messages`);
     }
   };
 
@@ -402,6 +482,14 @@ export default function App() {
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
           <NotificationCenter user={user} notifications={notifications} onBack={() => setShowNotifications(false)} />
         </div>
+      ) : showUpgrade ? (
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
+          <UpgradeTiers user={user} onBack={() => setShowUpgrade(false)} />
+        </div>
+      ) : showLeaderboard ? (
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
+          <PointsLeaderboard onBack={() => setShowLeaderboard(false)} />
+        </div>
       ) : (
         <div className="flex-1 flex flex-col overflow-hidden relative">
           {/* App Header */}
@@ -425,6 +513,12 @@ export default function App() {
                     <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl py-2 z-50 border border-gray-100">
                       <button onClick={() => { setShowProfile(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
                         <UserIcon className="w-4 h-4" /> Profile
+                      </button>
+                      <button onClick={() => { setShowLeaderboard(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                        <Trophy className="w-4 h-4 text-yellow-600" /> Leaderboard
+                      </button>
+                      <button onClick={() => { setShowUpgrade(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                        <Crown className="w-4 h-4 text-purple-600" /> Upgrade
                       </button>
                       {user.role === 'admin' && (
                         <button onClick={() => { setShowAdmin(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-[#00a884] hover:bg-gray-50 flex items-center gap-3">
@@ -497,7 +591,7 @@ export default function App() {
                 )}
               </div>
             )}
-            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} />}
+            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} />}
             {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} />}
           </div>
 
@@ -517,8 +611,12 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
   const [input, setInput] = useState('');
   const [otherUser, setOtherUser] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
+  const [reactingTo, setReactingTo] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const longPressTimer = useRef<any>(null);
+
+  const emojis = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
 
   useEffect(() => {
     const fetchOtherUser = async () => {
@@ -534,24 +632,23 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
 
-  // Seen status logic
+  // Optimized Seen status logic
   useEffect(() => {
     if (!user || !chat || messages.length === 0) return;
     
     const unseenMessages = messages.filter(m => m.senderId !== user.uid && m.status !== 'seen');
     if (unseenMessages.length > 0) {
-      unseenMessages.forEach(async (m) => {
-        try {
-          await updateDoc(doc(db, `chats/${chat.id}/messages`, m.id), { status: 'seen' });
-        } catch (e) {
-          console.error("Error updating seen status:", e);
-        }
+      const batch = writeBatch(db);
+      unseenMessages.forEach((m) => {
+        batch.update(doc(db, `chats/${chat.id}/messages`, m.id), { status: 'seen' });
       });
       
       // Update lastMessage status if it was one of these
       if (chat.lastMessage && chat.lastMessage.senderId !== user.uid && chat.lastMessage.status !== 'seen') {
-        updateDoc(doc(db, 'chats', chat.id), { 'lastMessage.status': 'seen' });
+        batch.update(doc(db, 'chats', chat.id), { 'lastMessage.status': 'seen' });
       }
+      
+      batch.commit().catch(e => console.error("Error updating seen status:", e));
     }
   }, [messages, chat, user]);
 
@@ -573,8 +670,29 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
     }
   };
 
+  const handleReaction = async (messageId: string, emoji: string) => {
+    try {
+      await updateDoc(doc(db, `chats/${chat.id}/messages`, messageId), {
+        [`reactions.${user.uid}`]: emoji
+      });
+      setReactingTo(null);
+    } catch (e) {
+      console.error("Error adding reaction:", e);
+    }
+  };
+
+  const startLongPress = (id: string) => {
+    longPressTimer.current = setTimeout(() => {
+      setReactingTo(id);
+    }, 500);
+  };
+
+  const endLongPress = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+  };
+
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div className="flex-1 flex flex-col h-full relative">
       <div className="bg-[#008069] text-white p-3 flex items-center gap-2 shadow-md">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <img src={otherUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`} className="w-10 h-10 rounded-full" alt="Chat" />
@@ -588,10 +706,43 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
           <MoreVertical className="w-6 h-6" />
         </div>
       </div>
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat">
+      <div 
+        ref={scrollRef} 
+        className="flex-1 overflow-y-auto p-4 space-y-2 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat"
+        onClick={() => setReactingTo(null)}
+      >
         {messages.map((msg: any) => (
           <div key={msg.id} className={cn("flex w-full mb-1", msg.senderId === user.uid ? "justify-end" : "justify-start")}>
-            <div className={cn("max-w-[85%] p-2 px-3 rounded-lg shadow-sm relative min-w-[80px]", msg.senderId === user.uid ? "bg-[#dcf8c6] rounded-tr-none" : "bg-white rounded-tl-none")}>
+            <div 
+              onMouseDown={() => startLongPress(msg.id)}
+              onMouseUp={endLongPress}
+              onMouseLeave={endLongPress}
+              onTouchStart={() => startLongPress(msg.id)}
+              onTouchEnd={endLongPress}
+              className={cn(
+                "max-w-[85%] p-2 px-3 rounded-lg shadow-sm relative min-w-[80px] transition-all",
+                msg.senderId === user.uid ? "bg-[#dcf8c6] rounded-tr-none" : "bg-white rounded-tl-none",
+                reactingTo === msg.id && "scale-105 ring-2 ring-[#00a884]/30"
+              )}
+            >
+              {reactingTo === msg.id && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: -45 }}
+                  className="absolute left-0 right-0 mx-auto w-fit bg-white rounded-full shadow-xl p-1 flex gap-1 z-50 border border-gray-100"
+                >
+                  {emojis.map(emoji => (
+                    <button 
+                      key={emoji} 
+                      onClick={(e) => { e.stopPropagation(); handleReaction(msg.id, emoji); }}
+                      className="hover:scale-125 transition-transform p-1 text-xl"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+
               {msg.type === 'image' ? (
                 <img src={msg.text} className="rounded-lg max-w-full h-auto mb-1" alt="Sent" />
               ) : msg.type === 'video' ? (
@@ -599,6 +750,17 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
               ) : (
                 <p className="text-[15px] text-[#111b21] pr-12 leading-relaxed">{msg.text}</p>
               )}
+              
+              {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                <div className="flex -space-x-1 mt-1">
+                  {Object.entries(msg.reactions).map(([uid, emoji]: any) => (
+                    <div key={uid} className="bg-white rounded-full shadow-sm border border-gray-100 px-1 text-xs">
+                      {emoji}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="absolute bottom-1 right-1.5 flex items-center gap-1">
                 <span className="text-[10px] text-[#667781] uppercase">{msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}</span>
                 {msg.senderId === user.uid && (
@@ -630,7 +792,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
   );
 };
 
-const StatusAndWallView = ({ user, statuses, posts, onUserClick }: any) => {
+const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints }: any) => {
   const [newPost, setNewPost] = useState('');
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
@@ -640,6 +802,64 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick }: any) => {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const handleLike = async (post: Post) => {
+    if (!user) return;
+    const postRef = doc(db, 'posts', post.id);
+    const isLiked = post.likes.includes(user.uid);
+    const { arrayUnion, arrayRemove } = await import('firebase/firestore');
+    
+    await updateDoc(postRef, {
+      likes: isLiked ? arrayRemove(user.uid) : arrayUnion(user.uid)
+    });
+
+    if (!isLiked) {
+      awardPoints(2); // 2 points for liking
+      // Notify author
+      if (post.userId !== user.uid) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: post.userId,
+          fromId: user.uid,
+          fromName: user.displayName,
+          type: 'like',
+          text: 'liked your post',
+          read: false,
+          timestamp: serverTimestamp()
+        });
+      }
+    }
+  };
+
+  const [showComments, setShowComments] = useState<string | null>(null);
+  const [comments, setComments] = useState<PostComment[]>([]);
+  const [commentInput, setCommentInput] = useState('');
+
+  useEffect(() => {
+    if (!showComments) return;
+    const q = query(collection(db, `posts/${showComments}/comments`), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snap) => {
+      setComments(snap.docs.map(d => ({ id: d.id, ...d.data() } as PostComment)));
+    });
+  }, [showComments]);
+
+  const handleAddComment = async () => {
+    if (!commentInput.trim() || !showComments) return;
+    const postRef = doc(db, 'posts', showComments);
+    const { increment } = await import('firebase/firestore');
+    
+    await addDoc(collection(db, `posts/${showComments}/comments`), {
+      postId: showComments,
+      userId: user.uid,
+      userName: user.displayName,
+      userPhoto: user.photoURL,
+      text: commentInput,
+      createdAt: serverTimestamp()
+    });
+
+    await updateDoc(postRef, { commentCount: increment(1) });
+    setCommentInput('');
+    awardPoints(5); // 5 points for commenting
+  };
+
   const handlePost = async () => {
     if (!newPost.trim() && !postMedia) return;
     await addDoc(collection(db, 'posts'), { 
@@ -648,6 +868,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick }: any) => {
       media: postMedia ? [postMedia] : [],
       mediaType: postMediaType,
       likes: [], 
+      commentCount: 0,
       createdAt: serverTimestamp(), 
       isAd: false, 
       user: { displayName: user.displayName, photoURL: user.photoURL } 
@@ -655,6 +876,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick }: any) => {
     setNewPost('');
     setPostMedia(null);
     setPostMediaType(null);
+    awardPoints(10); // 10 points for posting
   };
 
   const handlePostFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -713,31 +935,6 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick }: any) => {
       console.error("Upload error:", error);
     } finally {
       setUploading(false);
-    }
-  };
-
-  const handleLike = async (post: Post) => {
-    const postRef = doc(db, 'posts', post.id);
-    const isLiked = post.likes.includes(user.uid);
-    
-    if (isLiked) {
-      await updateDoc(postRef, { likes: arrayRemove(user.uid) });
-    } else {
-      await updateDoc(postRef, { likes: arrayUnion(user.uid) });
-      
-      // Notify owner
-      if (post.userId !== user.uid) {
-        await addDoc(collection(db, 'notifications'), {
-          userId: post.userId,
-          fromId: user.uid,
-          fromName: user.displayName,
-          type: 'like',
-          text: 'liked your post',
-          read: false,
-          timestamp: serverTimestamp(),
-          relatedId: post.id
-        });
-      }
     }
   };
 
@@ -898,11 +1095,49 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick }: any) => {
               >
                 <ThumbsUp className={cn("w-5 h-5", post.likes.includes(user.uid) && "fill-current")} /> {post.likes.length || ''} Like
               </button>
-              <button className="flex items-center gap-2 py-2 px-6 rounded-xl hover:bg-gray-50 transition-colors"><MessageSquare className="w-5 h-5" /> Comment</button>
+              <button 
+                onClick={() => setShowComments(post.id)}
+                className="flex items-center gap-2 py-2 px-6 rounded-xl hover:bg-gray-50 transition-colors"
+              >
+                <MessageSquare className="w-5 h-5" /> {post.commentCount || ''} Comment
+              </button>
             </div>
           </div>
         ))}
       </div>
+
+      {showComments && (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl h-[80vh] flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="font-bold text-lg">Comments</h3>
+              <button onClick={() => setShowComments(null)} className="p-2 bg-gray-100 rounded-full"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {comments.map(c => (
+                <div key={c.id} className="flex gap-3">
+                  <img src={c.userPhoto || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.userId}`} className="w-8 h-8 rounded-full" alt="User" />
+                  <div className="flex-1 bg-gray-50 p-3 rounded-2xl">
+                    <h4 className="font-bold text-xs mb-1">{c.userName}</h4>
+                    <p className="text-sm text-gray-700">{c.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 bg-white border-t border-gray-100 flex gap-2">
+              <input 
+                type="text" 
+                value={commentInput} 
+                onChange={(e) => setCommentInput(e.target.value)} 
+                placeholder="Write a comment..." 
+                className="flex-1 bg-gray-50 px-4 py-2 rounded-full outline-none focus:ring-2 focus:ring-[#00a884]/20"
+                onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
+              />
+              <button onClick={handleAddComment} className="w-10 h-10 bg-[#00a884] rounded-full flex items-center justify-center text-white"><Send className="w-5 h-5" /></button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1266,10 +1501,103 @@ const NotificationCenter = ({ user, notifications, onBack }: any) => {
   );
 };
 
+const UpgradeTiers = ({ user, onBack }: any) => {
+  const tiers = [
+    { name: 'General', price: 'Free', color: 'bg-gray-100 text-gray-600', benefits: ['Standard Chat', 'Basic Profile', 'Wall Access'] },
+    { name: 'Bronze', price: '$5/mo', color: 'bg-orange-100 text-orange-600', benefits: ['Priority Support', 'Bronze Badge', 'Ad-Free Feed'] },
+    { name: 'Silver', price: '$10/mo', color: 'bg-blue-100 text-blue-600', benefits: ['Silver Badge', 'Profile Boost', 'Unlimited Likes'] },
+    { name: 'Gold', price: '$20/mo', color: 'bg-yellow-100 text-yellow-600', benefits: ['Gold Badge', 'Exclusive Events', 'See Who Liked You'] },
+    { name: 'Platinum', price: '$50/mo', color: 'bg-purple-100 text-purple-600', benefits: ['Platinum Badge', 'VIP Concierge', 'Incognito Mode'] },
+  ];
+
+  return (
+    <div className="flex-1 flex flex-col bg-[#f0f2f5]">
+      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+        <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
+        <h2 className="text-xl font-medium">Upgrade Membership</h2>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="bg-white p-6 rounded-3xl shadow-sm text-center">
+          <h3 className="text-lg font-bold text-gray-700 mb-2">Current Tier: <span className="text-[#00a884]">{user.category}</span></h3>
+          <p className="text-sm text-gray-500">Upgrade to unlock premium features and support the community.</p>
+        </div>
+        {tiers.map(tier => (
+          <div key={tier.name} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+            <div className="flex justify-between items-center mb-4">
+              <span className={cn("px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest", tier.color)}>{tier.name}</span>
+              <span className="text-xl font-bold text-[#111b21]">{tier.price}</span>
+            </div>
+            <ul className="space-y-2 mb-6">
+              {tier.benefits.map(b => (
+                <li key={b} className="flex items-center gap-2 text-sm text-gray-600">
+                  <Check className="w-4 h-4 text-[#00a884]" /> {b}
+                </li>
+              ))}
+            </ul>
+            {user.category !== tier.name && (
+              <div className="space-y-3">
+                <p className="text-[10px] text-gray-400 text-center uppercase font-bold">Manual Payment Method</p>
+                <p className="text-xs text-center text-gray-500 bg-gray-50 p-3 rounded-xl">Send payment to: <span className="font-bold">alasindani2020@gmail.com</span> via PayPal or EcoCash. Include your UID: <span className="font-mono bg-white px-1 rounded">{user.uid}</span></p>
+                <button className="w-full bg-[#00a884] text-white py-3 rounded-xl font-bold shadow-md hover:bg-[#008f6f] transition-all">Notify Admin of Payment</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const PointsLeaderboard = ({ onBack }: any) => {
+  const [leaders, setLeaders] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, 'users'), orderBy('points', 'desc'), limit(10));
+    const unsub = onSnapshot(q, (snap) => {
+      setLeaders(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
+      setLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  return (
+    <div className="flex-1 flex flex-col bg-[#f0f2f5]">
+      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+        <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
+        <h2 className="text-xl font-medium">Points Leaderboard</h2>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {loading ? (
+          <div className="flex justify-center py-20"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>
+        ) : (
+          leaders.map((u, i) => (
+            <div key={u.uid} className="bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4">
+              <div className={cn("w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm", i === 0 ? "bg-yellow-100 text-yellow-700" : i === 1 ? "bg-gray-100 text-gray-700" : i === 2 ? "bg-orange-100 text-orange-700" : "text-gray-400")}>
+                {i + 1}
+              </div>
+              <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-12 h-12 rounded-full" alt="User" />
+              <div className="flex-1">
+                <h4 className="font-bold text-[#111b21]">{u.displayName}</h4>
+                <p className="text-xs text-gray-400">{u.category} Member</p>
+              </div>
+              <div className="text-right">
+                <div className="text-lg font-bold text-[#00a884]">{u.points}</div>
+                <div className="text-[10px] text-gray-400 uppercase font-bold">Points</div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
 const AdminDashboard = ({ user, onBack }: any) => {
   const [users, setUsers] = useState<User[]>([]);
-  const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, activeAds: 0 });
+  const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, activeAds: 0, totalPoints: 0 });
   const [loading, setLoading] = useState(true);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1280,7 +1608,8 @@ const AdminDashboard = ({ user, onBack }: any) => {
       setStats({
         totalUsers: uList.length,
         totalPosts: pSnap.docs.length,
-        activeAds: pSnap.docs.filter(d => d.data().isAd).length
+        activeAds: pSnap.docs.filter(d => d.data().isAd).length,
+        totalPoints: uList.reduce((acc, curr) => acc + (curr.points || 0), 0)
       });
       setLoading(false);
     };
@@ -1293,7 +1622,31 @@ const AdminDashboard = ({ user, onBack }: any) => {
     setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, role: newRole as any } : u));
   };
 
+  const setUserCategory = async (targetUser: User, category: string) => {
+    await updateDoc(doc(db, 'users', targetUser.uid), { category });
+    setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, category: category as any } : u));
+  };
+
+  const toggleUserSuspension = async (targetUser: User) => {
+    const newSuspended = !targetUser.suspended;
+    await updateDoc(doc(db, 'users', targetUser.uid), { suspended: newSuspended });
+    setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, suspended: newSuspended } : u));
+  };
+
+  const deleteUser = async (targetUser: User) => {
+    await deleteDoc(doc(db, 'users', targetUser.uid));
+    setUsers(users.filter(u => u.uid !== targetUser.uid));
+    setStats({ ...stats, totalUsers: stats.totalUsers - 1 });
+  };
+
+  const handleUpdateUser = async (updatedUser: User) => {
+    await updateDoc(doc(db, 'users', updatedUser.uid), updatedUser as any);
+    setUsers(users.map(u => u.uid === updatedUser.uid ? updatedUser : u));
+    setEditingUser(null);
+  };
+
   if (loading) return <div className="flex-1 flex items-center justify-center bg-white"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>;
+  if (editingUser) return <ProfileSettings user={editingUser} onBack={() => setEditingUser(null)} onUpdate={handleUpdateUser} />;
 
   return (
     <div className="flex-1 flex flex-col bg-[#f0f2f5]">
@@ -1303,7 +1656,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         {/* Stats Grid */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
             <UserIcon className="w-5 h-5 text-blue-500 mx-auto mb-1" />
             <div className="text-xl font-bold">{stats.totalUsers}</div>
@@ -1311,13 +1664,18 @@ const AdminDashboard = ({ user, onBack }: any) => {
           </div>
           <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
             <BarChart3 className="w-5 h-5 text-green-500 mx-auto mb-1" />
-            <div className="text-xl font-bold">{stats.totalPosts}</div>
-            <div className="text-[10px] text-gray-400 uppercase font-bold">Posts</div>
+            <div className="text-xl font-bold">{stats.totalPoints}</div>
+            <div className="text-[10px] text-gray-400 uppercase font-bold">Total Points</div>
           </div>
           <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
             <Plus className="w-5 h-5 text-yellow-500 mx-auto mb-1" />
             <div className="text-xl font-bold">{stats.activeAds}</div>
             <div className="text-[10px] text-gray-400 uppercase font-bold">Ads</div>
+          </div>
+          <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
+            <MessageSquare className="w-5 h-5 text-purple-500 mx-auto mb-1" />
+            <div className="text-xl font-bold">{stats.totalPosts}</div>
+            <div className="text-[10px] text-gray-400 uppercase font-bold">Posts</div>
           </div>
         </div>
 
@@ -1327,30 +1685,73 @@ const AdminDashboard = ({ user, onBack }: any) => {
             <h3 className="font-bold text-gray-700">User Management</h3>
             <Settings className="w-4 h-4 text-gray-400" />
           </div>
-          <div className="divide-y divide-gray-50 max-h-[400px] overflow-y-auto">
+          <div className="divide-y divide-gray-50 max-h-[500px] overflow-y-auto">
             {users.map(u => (
-              <div key={u.uid} className="p-4 flex items-center gap-3">
-                <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-10 h-10 rounded-full" alt="User" />
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-sm truncate">{u.displayName}</h4>
-                  <p className="text-[10px] text-gray-400 uppercase font-bold">{u.role}</p>
+              <div key={u.uid} className="p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-10 h-10 rounded-full" alt="User" />
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-sm truncate">{u.displayName}</h4>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-400 uppercase font-bold">{u.role}</span>
+                      <span className="text-[10px] text-[#00a884] font-bold">{u.points} pts</span>
+                    </div>
+                  </div>
+                  <button onClick={() => setEditingUser(u)} className="p-2 text-gray-400 hover:text-[#00a884]"><Settings className="w-4 h-4" /></button>
                 </div>
-                <button 
-                  onClick={() => toggleUserRole(u)}
-                  className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.role === 'admin' ? "bg-red-50 text-red-500" : "bg-green-50 text-[#00a884]")}
-                >
-                  {u.role === 'admin' ? "Demote" : "Make Admin"}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <select 
+                    value={u.category} 
+                    onChange={(e) => setUserCategory(u, e.target.value)}
+                    className="text-[10px] font-bold bg-gray-50 border-none rounded-full px-2 py-1 outline-none"
+                  >
+                    {['General', 'Bronze', 'Silver', 'Gold', 'Platinum'].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <button 
+                    onClick={() => toggleUserRole(u)}
+                    className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.role === 'admin' ? "bg-red-50 text-red-500" : "bg-green-50 text-[#00a884]")}
+                  >
+                    {u.role === 'admin' ? "Demote" : "Make Admin"}
+                  </button>
+                  <button 
+                    onClick={() => toggleUserSuspension(u)}
+                    className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.suspended ? "bg-green-50 text-[#00a884]" : "bg-yellow-50 text-yellow-600")}
+                  >
+                    {u.suspended ? "Unsuspend" : "Suspend"}
+                  </button>
+                  <button 
+                    onClick={() => deleteUser(u)}
+                    className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Ad Management Placeholder */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm text-center border-2 border-dashed border-gray-200">
-          <Plus className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-          <h3 className="font-bold text-gray-400">Create Sponsored Ad</h3>
-          <p className="text-xs text-gray-400 mt-1">Ads will appear in the Status/Wall feed for all users.</p>
+        {/* Ad Management */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm">
+          <h3 className="font-bold text-gray-700 mb-4">Ad Management</h3>
+          <div className="space-y-4">
+            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+              <h4 className="font-bold text-sm mb-1">Standard Ad</h4>
+              <p className="text-xs text-gray-500 mb-3">Visible to all users in the wall feed.</p>
+              <div className="flex justify-between items-center">
+                <span className="text-lg font-bold text-[#00a884]">$10 / day</span>
+                <button className="bg-[#00a884] text-white px-4 py-2 rounded-xl text-xs font-bold">Create Ad</button>
+              </div>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+              <h4 className="font-bold text-sm mb-1">Premium Ad</h4>
+              <p className="text-xs text-gray-500 mb-3">Pinned at the top of the wall feed.</p>
+              <div className="flex justify-between items-center">
+                <span className="text-lg font-bold text-[#00a884]">$25 / day</span>
+                <button className="bg-[#00a884] text-white px-4 py-2 rounded-xl text-xs font-bold">Create Ad</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1423,6 +1824,21 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
             <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
               <Camera className="text-white w-8 h-8" />
             </div>
+          </div>
+          <h3 className="mt-4 text-xl font-bold">{user.displayName}</h3>
+          <div className="flex gap-2 mt-2">
+            <span className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider", 
+              user.category === 'Platinum' ? "bg-purple-100 text-purple-700" :
+              user.category === 'Gold' ? "bg-yellow-100 text-yellow-700" :
+              user.category === 'Silver' ? "bg-gray-100 text-gray-700" :
+              user.category === 'Bronze' ? "bg-orange-100 text-orange-700" :
+              "bg-blue-100 text-blue-700"
+            )}>
+              {user.category} Member
+            </span>
+            <span className="px-3 py-1 bg-green-100 text-[#00a884] rounded-full text-[10px] font-bold uppercase tracking-wider">
+              {user.points} Points
+            </span>
           </div>
         </div>
 

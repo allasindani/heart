@@ -5,7 +5,10 @@ export interface User {
   status?: string;
   lastSeen?: any;
   isOnline?: boolean;
+  suspended?: boolean;
   role: 'user' | 'admin';
+  category: 'General' | 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
+  points: number;
   datingProfile?: {
     age: number;
     gender: 'male' | 'female' | 'other';
@@ -79,10 +82,22 @@ export interface Post {
   createdAt: any;
   isAd: boolean;
   adLink?: string;
+  adCost?: number;
+  commentCount: number;
   user?: {
     displayName: string;
     photoURL?: string;
   };
+}
+
+export interface PostComment {
+  id: string;
+  postId: string;
+  userId: string;
+  userName: string;
+  userPhoto?: string;
+  text: string;
+  createdAt: any;
 }
 
 export interface Status {
