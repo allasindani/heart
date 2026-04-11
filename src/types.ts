@@ -102,6 +102,27 @@ export interface PostComment {
   createdAt: any;
 }
 
+export interface AppSettings {
+  pointsPerPost: number;
+  pointsPerComment: number;
+  pointsPerLike: number;
+  moneyPerPoint: number;
+  tierPrices: Record<string, number>;
+  tierDurations: Record<string, string>;
+  paymentMethods: { type: string, details: string }[];
+}
+
+export interface PaymentProof {
+  id: string;
+  userId: string;
+  userName: string;
+  tier: string;
+  amount: number;
+  proofUrl: string;
+  status: 'pending' | 'approved' | 'rejected';
+  timestamp: any;
+}
+
 export interface Status {
   id: string;
   userId: string;

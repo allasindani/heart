@@ -36,7 +36,7 @@ import {
   UserPlus,
   UserCheck,
   BarChart3,
-  Settings,
+  Settings as SettingsIcon,
   ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -76,7 +76,7 @@ import { auth, db } from './firebase';
 import { cn, formatWhatsAppTime } from './lib/utils';
 import { COUNTRIES } from './constants';
 import imageCompression from 'browser-image-compression';
-import type { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment } from './types';
+import { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment, AppSettings, PaymentProof } from './types';
 
 // --- Error Handling ---
 enum OperationType { CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LIST = 'list', GET = 'get', WRITE = 'write' }
@@ -201,6 +201,7 @@ const AuthScreen = () => {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'chats' | 'status' | 'dating'>('chats');
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
@@ -217,6 +218,15 @@ export default function App() {
   const [backPressCount, setBackPressCount] = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
+  const [appSettings, setAppSettings] = useState<AppSettings>({
+    pointsPerPost: 10,
+    pointsPerComment: 5,
+    pointsPerLike: 2,
+    moneyPerPoint: 0.01,
+    tierPrices: { Bronze: 5, Silver: 10, Gold: 20, Platinum: 50 },
+    tierDurations: { Bronze: '1 month', Silver: '1 month', Gold: '1 month', Platinum: '1 month' },
+    paymentMethods: [{ type: 'PayPal', details: 'alasindani2020@gmail.com' }]
+  });
   const [showMenu, setShowMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -239,6 +249,22 @@ export default function App() {
     gender: 'all',
     maxDistance: 50 // km
   });
+
+  useEffect(() => {
+    const q = query(collection(db, 'users'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, 'users'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -378,6 +404,19 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [backPressCount]);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const docSnap = await getDocs(collection(db, 'settings'));
+      if (!docSnap.empty) {
+        setAppSettings(docSnap.docs[0].data() as AppSettings);
+      } else {
+        // Initialize settings if they don't exist
+        await addDoc(collection(db, 'settings'), appSettings);
+      }
+    };
+    fetchSettings();
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -557,11 +596,26 @@ export default function App() {
         </div>
       ) : showNotifications ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
-          <NotificationCenter user={user} notifications={notifications} onBack={() => setShowNotifications(false)} />
+          <NotificationCenter 
+            user={user} 
+            notifications={notifications} 
+            onBack={() => setShowNotifications(false)} 
+            onNavigate={(tab: string, id: string | null) => {
+              setShowNotifications(false);
+              if (tab === 'chat' && id) {
+                const chat = chats.find(c => c.id === id);
+                if (chat) setSelectedChat(chat);
+              } else if (tab === 'dating') {
+                setActiveTab('dating');
+              } else if (tab === 'status') {
+                setActiveTab('status');
+              }
+            }}
+          />
         </div>
       ) : showUpgrade ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
-          <UpgradeTiers user={user} onBack={() => setShowUpgrade(false)} />
+          <UpgradeTiers user={user} onBack={() => setShowUpgrade(false)} settings={appSettings} />
         </div>
       ) : showLeaderboard ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
@@ -644,31 +698,38 @@ export default function App() {
                     if (!searchQuery) return true;
                     const name = c.groupName || '';
                     return name.toLowerCase().includes(searchQuery.toLowerCase());
-                  }).map(chat => (
-                    <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 active:bg-gray-100 transition-colors cursor-pointer">
-                      <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`} className="w-14 h-14 rounded-full" alt="Chat" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-center mb-1">
-                          <h3 className="font-bold text-[#111b21] truncate">{chat.groupName || "Chat"}</h3>
-                          <span className="text-xs text-[#667781]">{chat.updatedAt?.toDate ? formatWhatsAppTime(chat.updatedAt.toDate()) : ''}</span>
+                  }).map(chat => {
+                    const otherId = chat.participants.find((p: string) => p !== user.uid);
+                    const otherUser = users.find(u => u.uid === otherId);
+                    const chatName = chat.groupName || otherUser?.displayName || "Chat";
+                    const chatPhoto = otherUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`;
+                    
+                    return (
+                      <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 active:bg-gray-100 transition-colors cursor-pointer">
+                        <img src={chatPhoto} className="w-14 h-14 rounded-full object-cover" alt="Chat" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-center mb-1">
+                            <h3 className="font-bold text-[#111b21] truncate">{chatName}</h3>
+                            <span className="text-xs text-[#667781]">{chat.updatedAt?.toDate ? formatWhatsAppTime(chat.updatedAt.toDate()) : ''}</span>
+                          </div>
+                          <p className="text-[14px] text-[#667781] truncate flex items-center gap-1">
+                            {chat.lastMessage?.senderId === user.uid && (
+                              chat.lastMessage.status === 'sent' ? (
+                                <Check className="w-4 h-4 text-[#8696a0]" />
+                              ) : (
+                                <CheckCheck className={cn("w-4 h-4", chat.lastMessage.status === 'seen' ? "text-[#53bdeb]" : "text-[#8696a0]")} />
+                              )
+                            )}
+                            {chat.lastMessage?.text || "Start a conversation"}
+                          </p>
                         </div>
-                        <p className="text-[14px] text-[#667781] truncate flex items-center gap-1">
-                          {chat.lastMessage?.senderId === user.uid && (
-                            chat.lastMessage.status === 'sent' ? (
-                              <Check className="w-4 h-4 text-[#8696a0]" />
-                            ) : (
-                              <CheckCheck className={cn("w-4 h-4", chat.lastMessage.status === 'seen' ? "text-[#53bdeb]" : "text-[#8696a0]")} />
-                            )
-                          )}
-                          {chat.lastMessage?.text || "Start a conversation"}
-                        </p>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}
-            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} />}
+            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} appSettings={appSettings} />}
             {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} />}
           </div>
 
@@ -709,15 +770,13 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
   const emojis = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
 
   useEffect(() => {
-    const fetchOtherUser = async () => {
-      const otherId = chat.participants.find((p: string) => p !== user.uid);
-      if (otherId) {
-        const { getDoc, doc } = await import('firebase/firestore');
-        const docSnap = await getDoc(doc(db, 'users', otherId));
-        if (docSnap.exists()) setOtherUser(docSnap.data());
-      }
-    };
-    fetchOtherUser();
+    const otherId = chat.participants.find((p: string) => p !== user.uid);
+    if (!otherId) return;
+    
+    const unsub = onSnapshot(doc(db, 'users', otherId), (snap) => {
+      if (snap.exists()) setOtherUser({ uid: snap.id, ...snap.data() });
+    });
+    return unsub;
   }, [chat, user.uid]);
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
@@ -867,7 +926,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
         ))}
         {uploading && <div className="flex justify-center"><CircleDashed className="w-6 h-6 animate-spin text-[#00a884]" /></div>}
       </div>
-      <div className="bg-[#f0f2f5] p-2 flex items-center gap-2">
+      <div className="bg-[#f0f2f5] p-3 pb-8 flex items-center gap-2">
         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*,video/*" />
         <div className="bg-white flex-1 flex items-center px-3 py-2 rounded-full shadow-sm">
           <Smile className="w-6 h-6 text-gray-500 mr-2" />
@@ -883,7 +942,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
   );
 };
 
-const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints }: any) => {
+const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, appSettings }: any) => {
   const [newPost, setNewPost] = useState('');
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
@@ -929,7 +988,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints }: 
     });
 
     if (!isLiked) {
-      awardPoints(2); // 2 points for liking
+      awardPoints(appSettings.pointsPerLike);
       // Notify author
       if (post.userId !== user.uid) {
         await addDoc(collection(db, 'notifications'), {
@@ -973,7 +1032,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints }: 
 
     await updateDoc(postRef, { commentCount: increment(1) });
     setCommentInput('');
-    awardPoints(5); // 5 points for commenting
+    awardPoints(appSettings.pointsPerComment);
   };
 
   const handlePost = async () => {
@@ -992,7 +1051,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints }: 
     setNewPost('');
     setPostMedia(null);
     setPostMediaType(null);
-    awardPoints(10); // 10 points for posting
+    awardPoints(appSettings.pointsPerPost);
   };
 
   const handlePostFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1191,7 +1250,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints }: 
               {!post.isAd && post.userId === user.uid && (
                 <div className="ml-auto flex gap-2">
                   <button onClick={() => { setEditingPost(post); setEditContent(post.content); }} className="p-1.5 text-gray-400 hover:text-[#00a884] transition-colors">
-                    <Settings className="w-4 h-4" />
+                    <SettingsIcon className="w-4 h-4" />
                   </button>
                   <button onClick={() => handleDeletePost(post.id)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors">
                     <Trash2 className="w-4 h-4" />
@@ -1520,7 +1579,7 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat }: any) => {
   }, [targetUser.uid, user.uid, user.friends]);
 
   const sendFriendRequest = async () => {
-    if (!fullUser) return;
+    if (!fullUser || fullUser.uid === user.uid) return;
     await addDoc(collection(db, 'friend_requests'), {
       fromId: user.uid,
       toId: fullUser.uid,
@@ -1614,9 +1673,20 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat }: any) => {
   );
 };
 
-const NotificationCenter = ({ user, notifications, onBack }: any) => {
+const NotificationCenter = ({ user, notifications, onBack, onNavigate }: any) => {
   const markAsRead = async (id: string) => {
     await updateDoc(doc(db, 'notifications', id), { read: true });
+  };
+
+  const handleNotificationClick = (n: any) => {
+    markAsRead(n.id);
+    if (n.type === 'message' && n.relatedId) {
+      onNavigate('chat', n.relatedId);
+    } else if (n.type === 'friend_request') {
+      onNavigate('dating', null); // Or a specific friend requests view if we had one
+    } else if (n.type === 'like' || n.type === 'comment') {
+      onNavigate('status', null);
+    }
   };
 
   return (
@@ -1632,8 +1702,8 @@ const NotificationCenter = ({ user, notifications, onBack }: any) => {
           notifications.map(n => (
             <div 
               key={n.id} 
-              onClick={() => markAsRead(n.id)}
-              className={cn("bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4 border-l-4 transition-all", n.read ? "border-transparent opacity-70" : "border-[#00a884]")}
+              onClick={() => handleNotificationClick(n)}
+              className={cn("bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4 border-l-4 transition-all cursor-pointer", n.read ? "border-transparent opacity-70" : "border-[#00a884]")}
             >
               <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-[#00a884]">
                 {n.type === 'like' && <ThumbsUp className="w-6 h-6" />}
@@ -1654,14 +1724,50 @@ const NotificationCenter = ({ user, notifications, onBack }: any) => {
   );
 };
 
-const UpgradeTiers = ({ user, onBack }: any) => {
+const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => void, settings: AppSettings }) => {
+  const [uploading, setUploading] = useState(false);
   const tiers = [
     { name: 'General', price: 'Free', color: 'bg-gray-100 text-gray-600', benefits: ['Standard Chat', 'Basic Profile', 'Wall Access'] },
-    { name: 'Bronze', price: '$5/mo', color: 'bg-orange-100 text-orange-600', benefits: ['Priority Support', 'Bronze Badge', 'Ad-Free Feed'] },
-    { name: 'Silver', price: '$10/mo', color: 'bg-blue-100 text-blue-600', benefits: ['Silver Badge', 'Profile Boost', 'Unlimited Likes'] },
-    { name: 'Gold', price: '$20/mo', color: 'bg-yellow-100 text-yellow-600', benefits: ['Gold Badge', 'Exclusive Events', 'See Who Liked You'] },
-    { name: 'Platinum', price: '$50/mo', color: 'bg-purple-100 text-purple-600', benefits: ['Platinum Badge', 'VIP Concierge', 'Incognito Mode'] },
+    { name: 'Bronze', price: `$${settings.tierPrices.Bronze}/${settings.tierDurations.Bronze}`, color: 'bg-orange-100 text-orange-600', benefits: ['Priority Support', 'Bronze Badge', 'Ad-Free Feed'] },
+    { name: 'Silver', price: `$${settings.tierPrices.Silver}/${settings.tierDurations.Silver}`, color: 'bg-blue-100 text-blue-600', benefits: ['Silver Badge', 'Profile Boost', 'Unlimited Likes'] },
+    { name: 'Gold', price: `$${settings.tierPrices.Gold}/${settings.tierDurations.Gold}`, color: 'bg-yellow-100 text-yellow-600', benefits: ['Gold Badge', 'Exclusive Events', 'See Who Liked You'] },
+    { name: 'Platinum', price: `$${settings.tierPrices.Platinum}/${settings.tierDurations.Platinum}`, color: 'bg-purple-100 text-purple-600', benefits: ['Platinum Badge', 'VIP Concierge', 'Incognito Mode'] },
   ];
+
+  const handleNotifyPayment = async (tier: any) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setUploading(true);
+      try {
+        const storage = getStorage();
+        const storageRef = ref(storage, `payment_proofs/${user.uid}/${Date.now()}_${file.name}`);
+        await uploadBytes(storageRef, file);
+        const url = await getDownloadURL(storageRef);
+        
+        await addDoc(collection(db, 'payment_proofs'), {
+          userId: user.uid,
+          userName: user.displayName,
+          tier: tier.name,
+          amount: settings.tierPrices[tier.name],
+          proofUrl: url,
+          status: 'pending',
+          timestamp: serverTimestamp()
+        });
+        
+        alert("Payment proof submitted! Admin will verify and update your tier soon.");
+      } catch (error) {
+        console.error("Error submitting proof:", error);
+        alert("Failed to submit proof. Please try again.");
+      } finally {
+        setUploading(false);
+      }
+    };
+    input.click();
+  };
 
   return (
     <div className="flex-1 flex flex-col bg-[#f0f2f5]">
@@ -1687,11 +1793,25 @@ const UpgradeTiers = ({ user, onBack }: any) => {
                 </li>
               ))}
             </ul>
-            {user.category !== tier.name && (
+            {user.category !== tier.name && tier.name !== 'General' && (
               <div className="space-y-3">
                 <p className="text-[10px] text-gray-400 text-center uppercase font-bold">Manual Payment Method</p>
-                <p className="text-xs text-center text-gray-500 bg-gray-50 p-3 rounded-xl">Send payment to: <span className="font-bold">alasindani2020@gmail.com</span> via PayPal or EcoCash. Include your UID: <span className="font-mono bg-white px-1 rounded">{user.uid}</span></p>
-                <button className="w-full bg-[#00a884] text-white py-3 rounded-xl font-bold shadow-md hover:bg-[#008f6f] transition-all">Notify Admin of Payment</button>
+                <div className="space-y-2">
+                  {settings.paymentMethods.map((m, i) => (
+                    <p key={i} className="text-xs text-center text-gray-500 bg-gray-50 p-3 rounded-xl">
+                      {m.type}: <span className="font-bold">{m.details}</span>
+                    </p>
+                  ))}
+                </div>
+                <p className="text-[10px] text-center text-gray-400">Include your UID: <span className="font-mono bg-white px-1 rounded">{user.uid}</span></p>
+                <button 
+                  onClick={() => handleNotifyPayment(tier)}
+                  disabled={uploading}
+                  className="w-full bg-[#00a884] text-white py-3 rounded-xl font-bold shadow-md hover:bg-[#008f6f] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {uploading ? <CircleDashed className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
+                  Upload Payment Proof
+                </button>
               </div>
             )}
           </div>
@@ -1751,23 +1871,61 @@ const AdminDashboard = ({ user, onBack }: any) => {
   const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, activeAds: 0, totalPoints: 0 });
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [activeTab, setActiveTab] = useState<'users' | 'ads' | 'config' | 'payments'>('users');
+  const [ads, setAds] = useState<Post[]>([]);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [paymentProofs, setPaymentProofs] = useState<PaymentProof[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
-      const uSnap = await getDocs(collection(db, 'users'));
-      const pSnap = await getDocs(collection(db, 'posts'));
+      const [uSnap, pSnap, sSnap, paySnap] = await Promise.all([
+        getDocs(collection(db, 'users')),
+        getDocs(collection(db, 'posts')),
+        getDocs(collection(db, 'settings')),
+        getDocs(collection(db, 'payment_proofs'))
+      ]);
+
       const uList = uSnap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
+      const pList = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Post));
       setUsers(uList);
+      setAds(pList.filter(p => p.isAd));
+      if (!sSnap.empty) setSettings(sSnap.docs[0].data() as AppSettings);
+      setPaymentProofs(paySnap.docs.map(d => ({ id: d.id, ...d.data() } as PaymentProof)));
+
       setStats({
         totalUsers: uList.length,
-        totalPosts: pSnap.docs.length,
-        activeAds: pSnap.docs.filter(d => d.data().isAd).length,
+        totalPosts: pList.length,
+        activeAds: pList.filter(d => d.isAd).length,
         totalPoints: uList.reduce((acc, curr) => acc + (curr.points || 0), 0)
       });
       setLoading(false);
     };
     fetchData();
   }, []);
+
+  const saveSettings = async (newSettings: AppSettings) => {
+    const sSnap = await getDocs(collection(db, 'settings'));
+    if (!sSnap.empty) {
+      await updateDoc(doc(db, 'settings', sSnap.docs[0].id), newSettings as any);
+    } else {
+      await addDoc(collection(db, 'settings'), newSettings);
+    }
+    setSettings(newSettings);
+    alert("Settings saved successfully!");
+  };
+
+  const approvePayment = async (proof: PaymentProof) => {
+    await updateDoc(doc(db, 'payment_proofs', proof.id), { status: 'approved' });
+    await updateDoc(doc(db, 'users', proof.userId), { category: proof.tier });
+    setPaymentProofs(paymentProofs.map(p => p.id === proof.id ? { ...p, status: 'approved' } : p));
+    alert("Payment approved and user tier updated!");
+  };
+
+  const deleteAd = async (adId: string) => {
+    await deleteDoc(doc(db, 'posts', adId));
+    setAds(ads.filter(a => a.id !== adId));
+    setStats({ ...stats, activeAds: stats.activeAds - 1 });
+  };
 
   const toggleUserRole = async (targetUser: User) => {
     const newRole = targetUser.role === 'admin' ? 'user' : 'admin';
@@ -1807,105 +1965,192 @@ const AdminDashboard = ({ user, onBack }: any) => {
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium flex items-center gap-2"><Shield className="w-5 h-5 text-[#00a884]" /> Admin Dashboard</h2>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
-            <UserIcon className="w-5 h-5 text-blue-500 mx-auto mb-1" />
-            <div className="text-xl font-bold">{stats.totalUsers}</div>
-            <div className="text-[10px] text-gray-400 uppercase font-bold">Users</div>
-          </div>
-          <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
-            <BarChart3 className="w-5 h-5 text-green-500 mx-auto mb-1" />
-            <div className="text-xl font-bold">{stats.totalPoints}</div>
-            <div className="text-[10px] text-gray-400 uppercase font-bold">Total Points</div>
-          </div>
-          <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
-            <Plus className="w-5 h-5 text-yellow-500 mx-auto mb-1" />
-            <div className="text-xl font-bold">{stats.activeAds}</div>
-            <div className="text-[10px] text-gray-400 uppercase font-bold">Ads</div>
-          </div>
-          <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
-            <MessageSquare className="w-5 h-5 text-purple-500 mx-auto mb-1" />
-            <div className="text-xl font-bold">{stats.totalPosts}</div>
-            <div className="text-[10px] text-gray-400 uppercase font-bold">Posts</div>
-          </div>
-        </div>
+      
+      <div className="flex bg-white border-b border-gray-100">
+        {['users', 'ads', 'config', 'payments'].map((t) => (
+          <button 
+            key={t}
+            onClick={() => setActiveTab(t as any)}
+            className={cn("flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2", activeTab === t ? "border-[#00a884] text-[#00a884]" : "border-transparent text-gray-400")}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
 
-        {/* User Management */}
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-            <h3 className="font-bold text-gray-700">User Management</h3>
-            <Settings className="w-4 h-4 text-gray-400" />
-          </div>
-          <div className="divide-y divide-gray-50 max-h-[500px] overflow-y-auto">
-            {users.map(u => (
-              <div key={u.uid} className="p-4 space-y-3">
-                <div className="flex items-center gap-3">
-                  <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-10 h-10 rounded-full" alt="User" />
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-sm truncate">{u.displayName}</h4>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-gray-400 uppercase font-bold">{u.role}</span>
-                      <span className="text-[10px] text-[#00a884] font-bold">{u.points} pts</span>
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {activeTab === 'users' && (
+          <>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
+                <UserIcon className="w-5 h-5 text-blue-500 mx-auto mb-1" />
+                <div className="text-xl font-bold">{stats.totalUsers}</div>
+                <div className="text-[10px] text-gray-400 uppercase font-bold">Users</div>
+              </div>
+              <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
+                <BarChart3 className="w-5 h-5 text-green-500 mx-auto mb-1" />
+                <div className="text-xl font-bold">{stats.totalPoints}</div>
+                <div className="text-[10px] text-gray-400 uppercase font-bold">Total Points</div>
+              </div>
+            </div>
+
+            {/* User Management */}
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+                <h3 className="font-bold text-gray-700">User Management</h3>
+                <SettingsIcon className="w-4 h-4 text-gray-400" />
+              </div>
+              <div className="divide-y divide-gray-50 max-h-[500px] overflow-y-auto">
+                {users.map(u => (
+                  <div key={u.uid} className="p-4 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-10 h-10 rounded-full" alt="User" />
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-bold text-sm truncate">{u.displayName}</h4>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-gray-400 uppercase font-bold">{u.role}</span>
+                          <span className="text-[10px] text-[#00a884] font-bold">{u.points} pts</span>
+                        </div>
+                      </div>
+                      <button onClick={() => setEditingUser(u)} className="p-2 text-gray-400 hover:text-[#00a884]"><SettingsIcon className="w-4 h-4" /></button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <select 
+                        value={u.category} 
+                        onChange={(e) => setUserCategory(u, e.target.value)}
+                        className="text-[10px] font-bold bg-gray-50 border-none rounded-full px-2 py-1 outline-none"
+                      >
+                        {['General', 'Bronze', 'Silver', 'Gold', 'Platinum'].map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <button 
+                        onClick={() => toggleUserRole(u)}
+                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.role === 'admin' ? "bg-red-50 text-red-500" : "bg-green-50 text-[#00a884]")}
+                      >
+                        {u.role === 'admin' ? "Demote" : "Make Admin"}
+                      </button>
+                      <button 
+                        onClick={() => toggleUserSuspension(u)}
+                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.suspended ? "bg-green-50 text-[#00a884]" : "bg-yellow-50 text-yellow-600")}
+                      >
+                        {u.suspended ? "Unsuspend" : "Suspend"}
+                      </button>
+                      <button 
+                        onClick={() => deleteUser(u)}
+                        className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
                     </div>
                   </div>
-                  <button onClick={() => setEditingUser(u)} className="p-2 text-gray-400 hover:text-[#00a884]"><Settings className="w-4 h-4" /></button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <select 
-                    value={u.category} 
-                    onChange={(e) => setUserCategory(u, e.target.value)}
-                    className="text-[10px] font-bold bg-gray-50 border-none rounded-full px-2 py-1 outline-none"
-                  >
-                    {['General', 'Bronze', 'Silver', 'Gold', 'Platinum'].map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <button 
-                    onClick={() => toggleUserRole(u)}
-                    className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.role === 'admin' ? "bg-red-50 text-red-500" : "bg-green-50 text-[#00a884]")}
-                  >
-                    {u.role === 'admin' ? "Demote" : "Make Admin"}
-                  </button>
-                  <button 
-                    onClick={() => toggleUserSuspension(u)}
-                    className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.suspended ? "bg-green-50 text-[#00a884]" : "bg-yellow-50 text-yellow-600")}
-                  >
-                    {u.suspended ? "Unsuspend" : "Suspend"}
-                  </button>
-                  <button 
-                    onClick={() => deleteUser(u)}
-                    className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
+          </>
+        )}
 
-        {/* Ad Management */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm">
-          <h3 className="font-bold text-gray-700 mb-4">Ad Management</h3>
+        {activeTab === 'ads' && (
           <div className="space-y-4">
-            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
-              <h4 className="font-bold text-sm mb-1">Standard Ad</h4>
-              <p className="text-xs text-gray-500 mb-3">Visible to all users in the wall feed.</p>
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-bold text-[#00a884]">$10 / day</span>
-                <button className="bg-[#00a884] text-white px-4 py-2 rounded-xl text-xs font-bold">Create Ad</button>
-              </div>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
-              <h4 className="font-bold text-sm mb-1">Premium Ad</h4>
-              <p className="text-xs text-gray-500 mb-3">Pinned at the top of the wall feed.</p>
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-bold text-[#00a884]">$25 / day</span>
-                <button className="bg-[#00a884] text-white px-4 py-2 rounded-xl text-xs font-bold">Create Ad</button>
-              </div>
-            </div>
+            <h3 className="font-bold text-gray-700">Active Advertisements</h3>
+            {ads.length === 0 ? (
+              <div className="bg-white p-8 rounded-2xl text-center text-gray-500">No active ads.</div>
+            ) : (
+              ads.map(ad => (
+                <div key={ad.id} className="bg-white p-4 rounded-2xl shadow-sm space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-3">
+                      <img src={ad.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${ad.userId}`} className="w-8 h-8 rounded-full" alt="Ad" />
+                      <div>
+                        <h4 className="font-bold text-sm">{ad.user?.displayName}</h4>
+                        <p className="text-[10px] text-gray-400">Sponsored</p>
+                      </div>
+                    </div>
+                    <button onClick={() => deleteAd(ad.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-full"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                  <p className="text-sm text-gray-700">{ad.content}</p>
+                  {ad.media?.[0] && <img src={ad.media[0]} className="w-full h-32 object-cover rounded-xl" alt="Ad Media" />}
+                  {ad.adLink && <div className="text-xs text-[#00a884] font-bold truncate">{ad.adLink}</div>}
+                </div>
+              ))
+            )}
           </div>
-        </div>
+        )}
+
+        {activeTab === 'config' && settings && (
+          <div className="bg-white p-6 rounded-2xl shadow-sm space-y-6">
+            <h3 className="font-bold text-gray-700 border-b pb-2">Point System Configuration</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Points per Post</label>
+                <input type="number" value={settings.pointsPerPost} onChange={(e) => setSettings({...settings, pointsPerPost: Number(e.target.value)})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Points per Comment</label>
+                <input type="number" value={settings.pointsPerComment} onChange={(e) => setSettings({...settings, pointsPerComment: Number(e.target.value)})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Points per Like</label>
+                <input type="number" value={settings.pointsPerLike} onChange={(e) => setSettings({...settings, pointsPerLike: Number(e.target.value)})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Money per Point ($)</label>
+                <input type="number" step="0.001" value={settings.moneyPerPoint} onChange={(e) => setSettings({...settings, moneyPerPoint: Number(e.target.value)})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+              </div>
+            </div>
+
+            <h3 className="font-bold text-gray-700 border-b pb-2 pt-4">Tier Pricing & Duration</h3>
+            <div className="space-y-4">
+              {['Bronze', 'Silver', 'Gold', 'Platinum'].map(tier => (
+                <div key={tier} className="flex gap-3 items-end">
+                  <div className="flex-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">{tier} Price ($)</label>
+                    <input type="number" value={settings.tierPrices[tier]} onChange={(e) => setSettings({...settings, tierPrices: {...settings.tierPrices, [tier]: Number(e.target.value)}})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">{tier} Duration</label>
+                    <input type="text" value={settings.tierDurations[tier]} onChange={(e) => setSettings({...settings, tierDurations: {...settings.tierDurations, [tier]: e.target.value}})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => saveSettings(settings)} className="w-full bg-[#00a884] text-white py-4 rounded-2xl font-bold shadow-lg mt-4">Save Configuration</button>
+          </div>
+        )}
+
+        {activeTab === 'payments' && (
+          <div className="space-y-4">
+            <h3 className="font-bold text-gray-700">Manual Payment Verification</h3>
+            {paymentProofs.length === 0 ? (
+              <div className="bg-white p-8 rounded-2xl text-center text-gray-500">No payment proofs submitted.</div>
+            ) : (
+              paymentProofs.map(proof => (
+                <div key={proof.id} className="bg-white p-4 rounded-2xl shadow-sm space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-bold text-sm">{proof.userName}</h4>
+                      <p className="text-[10px] text-gray-400 uppercase font-bold">{proof.tier} - ${proof.amount}</p>
+                    </div>
+                    <span className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase", proof.status === 'pending' ? "bg-yellow-50 text-yellow-600" : proof.status === 'approved' ? "bg-green-50 text-[#00a884]" : "bg-red-50 text-red-500")}>
+                      {proof.status}
+                    </span>
+                  </div>
+                  {proof.proofUrl && (
+                    <a href={proof.proofUrl} target="_blank" rel="noopener noreferrer" className="block">
+                      <img src={proof.proofUrl} className="w-full h-40 object-cover rounded-xl border border-gray-100" alt="Proof" />
+                    </a>
+                  )}
+                  {proof.status === 'pending' && (
+                    <div className="flex gap-2">
+                      <button onClick={() => approvePayment(proof)} className="flex-1 bg-[#00a884] text-white py-2 rounded-xl text-xs font-bold">Approve</button>
+                      <button onClick={() => updateDoc(doc(db, 'payment_proofs', proof.id), { status: 'rejected' })} className="flex-1 bg-red-50 text-red-500 py-2 rounded-xl text-xs font-bold">Reject</button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1941,11 +2186,15 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
     try {
       const storage = getStorage();
       const storageRef = ref(storage, `profiles/${user.uid}/${Date.now()}_${file.name}`);
+      console.log("Starting upload to:", storageRef.fullPath);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
+      console.log("Upload complete, URL:", url);
       setPhotoURL(url);
+      alert("Photo uploaded successfully! Click Save to persist changes.");
     } catch (error) {
       console.error("Upload error:", error);
+      alert("Upload failed. Please try again.");
     } finally {
       setUploading(false);
     }
