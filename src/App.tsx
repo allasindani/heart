@@ -891,7 +891,32 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints }: 
   const [statusText, setStatusText] = useState('');
   const [statusDuration, setStatusDuration] = useState('24h');
   const [uploading, setUploading] = useState(false);
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [editContent, setEditContent] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDeletePost = async (postId: string) => {
+    if (!window.confirm("Are you sure you want to delete this post?")) return;
+    try {
+      await deleteDoc(doc(db, 'posts', postId));
+    } catch (error) {
+      console.error("Error deleting post:", error);
+    }
+  };
+
+  const handleUpdatePost = async () => {
+    if (!editingPost || !editContent.trim()) return;
+    try {
+      await updateDoc(doc(db, 'posts', editingPost.id), {
+        content: editContent,
+        updatedAt: serverTimestamp()
+      });
+      setEditingPost(null);
+      setEditContent('');
+    } catch (error) {
+      console.error("Error updating post:", error);
+    }
+  };
 
   const handleLike = async (post: Post) => {
     if (!user) return;
@@ -1163,6 +1188,16 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints }: 
                 <p className="text-[11px] text-[#667781]">{post.createdAt?.toDate ? formatWhatsAppTime(post.createdAt.toDate()) : ''}</p>
               </div>
               {post.isAd && <span className="ml-auto bg-yellow-100 text-yellow-800 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Sponsored</span>}
+              {!post.isAd && post.userId === user.uid && (
+                <div className="ml-auto flex gap-2">
+                  <button onClick={() => { setEditingPost(post); setEditContent(post.content); }} className="p-1.5 text-gray-400 hover:text-[#00a884] transition-colors">
+                    <Settings className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => handleDeletePost(post.id)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
             <div className="px-4 pb-4 text-[15px] text-[#111b21] leading-relaxed">
               {post.content}
@@ -1227,6 +1262,31 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints }: 
                 onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
               />
               <button onClick={handleAddComment} className="w-10 h-10 bg-[#00a884] rounded-full flex items-center justify-center text-white"><Send className="w-5 h-5" /></button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {editingPost && (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-lg rounded-3xl overflow-hidden">
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="font-bold text-lg">Edit Post</h3>
+              <button onClick={() => setEditingPost(null)} className="p-2 bg-gray-100 rounded-full"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4">
+              <textarea 
+                value={editContent} 
+                onChange={(e) => setEditContent(e.target.value)} 
+                className="w-full bg-gray-50 border-none outline-none p-4 rounded-2xl text-[15px] resize-none h-40 mb-4"
+                placeholder="What's on your mind?"
+              />
+              <button 
+                onClick={handleUpdatePost}
+                className="w-full bg-[#00a884] text-white py-4 rounded-2xl font-bold shadow-lg active:scale-[0.98] transition-all"
+              >
+                Save Changes
+              </button>
             </div>
           </motion.div>
         </div>
