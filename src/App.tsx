@@ -67,12 +67,11 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { 
-  getStorage, 
   ref, 
   uploadBytes, 
   getDownloadURL 
 } from 'firebase/storage';
-import { auth, db } from './firebase';
+import { auth, db, storage } from './firebase';
 import { cn, formatWhatsAppTime } from './lib/utils';
 import { COUNTRIES } from './constants';
 import imageCompression from 'browser-image-compression';
@@ -822,7 +821,6 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
     setUploading(true);
     try {
       file = await compressImage(file);
-      const storage = getStorage();
       const storageRef = ref(storage, `chats/${chat.id}/${Date.now()}_${file.name}`);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
@@ -1076,7 +1074,6 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
     setUploading(true);
     try {
       file = await compressImage(file);
-      const storage = getStorage();
       const storageRef = ref(storage, `posts/${user.uid}/${Date.now()}_${file.name}`);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
@@ -1118,12 +1115,12 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
     setUploading(true);
     try {
       file = await compressImage(file);
-      const storage = getStorage();
       const storageRef = ref(storage, `statuses/${user.uid}/${Date.now()}_${file.name}`);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
       const type = file.type.startsWith('image/') ? 'image' : 'video';
-      handleCreateStatus(url, type);
+      await handleCreateStatus(url, type);
+      alert("Status uploaded successfully!");
     } catch (error) {
       console.error("Upload error:", error);
     } finally {
@@ -1808,9 +1805,9 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
       if (!file) return;
       setUploading(true);
       try {
-        const storage = getStorage();
+        const compressedFile = await compressImage(file);
         const storageRef = ref(storage, `payment_proofs/${user.uid}/${Date.now()}_${file.name}`);
-        await uploadBytes(storageRef, file);
+        await uploadBytes(storageRef, compressedFile);
         const url = await getDownloadURL(storageRef);
         
         await addDoc(collection(db, 'payment_proofs'), {
@@ -2234,25 +2231,12 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
   const [uploading, setUploading] = useState(false);
 
   const compressAndUpload = async (file: File) => {
-    if (file.size > 0.5 * 1024 * 1024) {
-      const options = {
-        maxSizeMB: 0.5,
-        maxWidthOrHeight: 1920,
-        useWebWorker: true
-      };
-      try {
-        file = await imageCompression(file, options);
-      } catch (error) {
-        console.error("Compression error:", error);
-      }
-    }
-
     setUploading(true);
     try {
-      const storage = getStorage();
+      const compressedFile = await compressImage(file);
       const storageRef = ref(storage, `profiles/${user.uid}/${Date.now()}_${file.name}`);
       console.log("Starting upload to:", storageRef.fullPath);
-      await uploadBytes(storageRef, file);
+      await uploadBytes(storageRef, compressedFile);
       const url = await getDownloadURL(storageRef);
       console.log("Upload complete, URL:", url);
       setPhotoURL(url);
@@ -2333,7 +2317,18 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
             />
             <label className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
               <Camera className="text-white w-8 h-8" />
-              <input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && compressAndUpload(e.target.files[0])} />
+              <input 
+                type="file" 
+                className="hidden" 
+                accept="image/*" 
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    compressAndUpload(file);
+                    e.target.value = ''; // Clear input
+                  }
+                }} 
+              />
             </label>
             {uploading && <div className="absolute inset-0 bg-white/50 rounded-full flex items-center justify-center"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>}
           </div>
