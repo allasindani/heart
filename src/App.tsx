@@ -74,6 +74,8 @@ import {
 } from 'firebase/storage';
 import { auth, db } from './firebase';
 import { cn, formatWhatsAppTime } from './lib/utils';
+import { COUNTRIES } from './constants';
+import imageCompression from 'browser-image-compression';
 import type { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment } from './types';
 
 // --- Error Handling ---
@@ -81,6 +83,23 @@ enum OperationType { CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LI
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   console.error('Firestore Error: ', JSON.stringify({ error: error instanceof Error ? error.message : String(error), operationType, path }));
 }
+
+const compressImage = async (file: File) => {
+  if (file.size > 0.5 * 1024 * 1024 && file.type.startsWith('image/')) {
+    const options = {
+      maxSizeMB: 0.5,
+      maxWidthOrHeight: 1920,
+      useWebWorker: true
+    };
+    try {
+      return await imageCompression(file, options);
+    } catch (error) {
+      console.error("Compression error:", error);
+      return file;
+    }
+  }
+  return file;
+};
 
 // --- Auth Screen ---
 const AuthScreen = () => {
@@ -195,6 +214,8 @@ export default function App() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [backPressCount, setBackPressCount] = useState(0);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -321,6 +342,44 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const handleBack = (e: PopStateEvent) => {
+      if (selectedChat) {
+        setSelectedChat(null);
+        window.history.pushState(null, '', window.location.pathname);
+      } else if (showProfile || showAdmin || viewingUser || showNotifications || showUpgrade || showLeaderboard) {
+        setShowProfile(false);
+        setShowAdmin(false);
+        setViewingUser(null);
+        setShowNotifications(false);
+        setShowUpgrade(false);
+        setShowLeaderboard(false);
+        window.history.pushState(null, '', window.location.pathname);
+      } else {
+        setBackPressCount(prev => {
+          const next = prev + 1;
+          if (next >= 3) {
+            setShowExitConfirm(true);
+            return 0;
+          }
+          return next;
+        });
+        window.history.pushState(null, '', window.location.pathname);
+      }
+    };
+
+    window.history.pushState(null, '', window.location.pathname);
+    window.addEventListener('popstate', handleBack);
+    return () => window.removeEventListener('popstate', handleBack);
+  }, [selectedChat, showProfile, showAdmin, viewingUser, showNotifications, showUpgrade, showLeaderboard]);
+
+  useEffect(() => {
+    if (backPressCount > 0) {
+      const timer = setTimeout(() => setBackPressCount(0), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [backPressCount]);
+
+  useEffect(() => {
     if (!user) return;
     const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid), orderBy('updatedAt', 'desc'));
     return onSnapshot(q, (snapshot) => setChats(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat))), (e) => handleFirestoreError(e, OperationType.LIST, 'chats'));
@@ -416,10 +475,15 @@ export default function App() {
   const sendMessage = async (text: string, type: string = 'text') => {
     if (!selectedChat || !text.trim()) return;
     
+    // Scramble phone numbers
+    const scrambledText = text.replace(/\d{8,}/g, (match) => {
+      return match.split('').sort(() => Math.random() - 0.5).join('');
+    });
+
     const msgData = { 
       chatId: selectedChat.id, 
       senderId: user.uid, 
-      text, 
+      text: scrambledText, 
       type, 
       timestamp: serverTimestamp(), 
       status: 'sent' 
@@ -430,7 +494,7 @@ export default function App() {
     
     const chatUpdatePromise = updateDoc(doc(db, 'chats', selectedChat.id), { 
       lastMessage: { 
-        text: type === 'text' ? text : `Sent an ${type}`, 
+        text: type === 'text' ? scrambledText : `Sent an ${type}`, 
         senderId: user.uid, 
         timestamp: serverTimestamp(),
         status: 'sent'
@@ -446,11 +510,24 @@ export default function App() {
         fromId: user.uid,
         fromName: user.displayName,
         type: 'message',
-        text: `sent you a message: ${text.substring(0, 30)}${text.length > 30 ? '...' : ''}`,
+        text: `sent you a message: ${scrambledText.substring(0, 30)}${scrambledText.length > 30 ? '...' : ''}`,
         read: false,
         timestamp: serverTimestamp(),
         relatedId: selectedChat.id
       });
+      
+      // If phone number was detected, send warning notification
+      if (text !== scrambledText) {
+        addDoc(collection(db, 'notifications'), {
+          userId: user.uid,
+          fromId: 'system',
+          fromName: 'Heart Connect',
+          type: 'message',
+          text: 'Please Use Heart Connect for chats. Phone numbers are scrambled for your safety.',
+          read: false,
+          timestamp: serverTimestamp()
+        });
+      }
     }
 
     try {
@@ -601,6 +678,19 @@ export default function App() {
           </button>
         </div>
       )}
+      {showExitConfirm && (
+        <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white p-6 rounded-3xl shadow-2xl max-w-xs w-full text-center">
+            <LogOut className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-bold mb-2">Exit App?</h3>
+            <p className="text-gray-500 text-sm mb-6">Are you sure you want to exit Heart Connect?</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowExitConfirm(false)} className="flex-1 py-3 bg-gray-100 rounded-xl font-bold">Cancel</button>
+              <button onClick={() => window.close()} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold">Exit</button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
@@ -653,10 +743,11 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
   }, [messages, chat, user]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    let file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
+      file = await compressImage(file);
       const storage = getStorage();
       const storageRef = ref(storage, `chats/${chat.id}/${Date.now()}_${file.name}`);
       await uploadBytes(storageRef, file);
@@ -880,10 +971,11 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints }: 
   };
 
   const handlePostFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    let file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
+      file = await compressImage(file);
       const storage = getStorage();
       const storageRef = ref(storage, `posts/${user.uid}/${Date.now()}_${file.name}`);
       await uploadBytes(storageRef, file);
@@ -921,10 +1013,11 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints }: 
   };
 
   const handleStatusFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    let file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
+      file = await compressImage(file);
       const storage = getStorage();
       const storageRef = ref(storage, `statuses/${user.uid}/${Date.now()}_${file.name}`);
       await uploadBytes(storageRef, file);
@@ -1758,33 +1851,60 @@ const AdminDashboard = ({ user, onBack }: any) => {
   );
 };
 const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () => void, onUpdate: (u: User) => void }) => {
-  const [displayName, setDisplayName] = useState(user.displayName);
+  const [firstName, setFirstName] = useState(user.firstName || user.displayName.split(' ')[0] || '');
+  const [lastName, setLastName] = useState(user.lastName || user.displayName.split(' ')[1] || '');
   const [status, setStatus] = useState(user.status || '');
   const [datingBio, setDatingBio] = useState(user.datingProfile?.bio || '');
   const [datingAge, setDatingAge] = useState(user.datingProfile?.age || 18);
   const [gender, setGender] = useState(user.datingProfile?.gender || 'other');
   const [country, setCountry] = useState(user.datingProfile?.country || '');
   const [city, setCity] = useState(user.datingProfile?.city || '');
+  const [photoURL, setPhotoURL] = useState(user.photoURL || '');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  const updateLocation = () => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition((position) => {
-        const { latitude, longitude } = position.coords;
-        const userDoc = doc(db, 'users', user.uid);
-        updateDoc(userDoc, {
-          'datingProfile.location': { lat: latitude, lng: longitude }
-        });
-      });
+  const compressAndUpload = async (file: File) => {
+    if (file.size > 0.5 * 1024 * 1024) {
+      const options = {
+        maxSizeMB: 0.5,
+        maxWidthOrHeight: 1920,
+        useWebWorker: true
+      };
+      try {
+        file = await imageCompression(file, options);
+      } catch (error) {
+        console.error("Compression error:", error);
+      }
+    }
+
+    setUploading(true);
+    try {
+      const storage = getStorage();
+      const storageRef = ref(storage, `profiles/${user.uid}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      setPhotoURL(url);
+    } catch (error) {
+      console.error("Upload error:", error);
+    } finally {
+      setUploading(false);
     }
   };
 
   const handleSave = async () => {
+    if (!firstName.trim() || !lastName.trim()) {
+      alert("Please enter both Name and Surname");
+      return;
+    }
     setSaving(true);
     try {
       const userDoc = doc(db, 'users', user.uid);
+      const displayName = `${firstName.trim()} ${lastName.trim()}`;
       const updatedData = {
         displayName,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        photoURL,
         status,
         datingProfile: {
           ...user.datingProfile,
@@ -1796,6 +1916,20 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
         }
       };
       await updateDoc(userDoc, updatedData);
+
+      // Update existing posts and statuses for consistency
+      try {
+        const postsQuery = query(collection(db, 'posts'), where('userId', '==', user.uid));
+        const statusesQuery = query(collection(db, 'statuses'), where('userId', '==', user.uid));
+        const [postsSnap, statusesSnap] = await Promise.all([getDocs(postsQuery), getDocs(statusesQuery)]);
+        const batch = writeBatch(db);
+        postsSnap.docs.forEach(d => batch.update(d.ref, { 'user.displayName': displayName, 'user.photoURL': photoURL }));
+        statusesSnap.docs.forEach(d => batch.update(d.ref, { 'user.displayName': displayName, 'user.photoURL': photoURL }));
+        await batch.commit();
+      } catch (e) {
+        console.error("Error updating related documents:", e);
+      }
+
       onUpdate({ ...user, ...updatedData });
       onBack();
     } catch (error) {
@@ -1806,79 +1940,69 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
     }
   };
 
+  const selectedCountry = COUNTRIES.find(c => c.name === country);
+
   return (
     <div className="flex-1 flex flex-col h-full bg-[#f0f2f5]">
       <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
-        <h2 className="text-xl font-medium">Profile</h2>
+        <h2 className="text-xl font-medium">Edit Profile</h2>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col items-center py-8 bg-white mb-6">
           <div className="relative group">
             <img 
-              src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
+              src={photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
               className="w-40 h-40 rounded-full shadow-lg object-cover" 
               alt="Profile" 
             />
-            <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+            <label className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
               <Camera className="text-white w-8 h-8" />
-            </div>
+              <input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && compressAndUpload(e.target.files[0])} />
+            </label>
+            {uploading && <div className="absolute inset-0 bg-white/50 rounded-full flex items-center justify-center"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>}
           </div>
-          <h3 className="mt-4 text-xl font-bold">{user.displayName}</h3>
-          <div className="flex gap-2 mt-2">
-            <span className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider", 
-              user.category === 'Platinum' ? "bg-purple-100 text-purple-700" :
-              user.category === 'Gold' ? "bg-yellow-100 text-yellow-700" :
-              user.category === 'Silver' ? "bg-gray-100 text-gray-700" :
-              user.category === 'Bronze' ? "bg-orange-100 text-orange-700" :
-              "bg-blue-100 text-blue-700"
-            )}>
-              {user.category} Member
-            </span>
-            <span className="px-3 py-1 bg-green-100 text-[#00a884] rounded-full text-[10px] font-bold uppercase tracking-wider">
-              {user.points} Points
-            </span>
-          </div>
+          <h3 className="mt-4 text-xl font-bold">{firstName} {lastName}</h3>
         </div>
 
         <div className="space-y-6 px-4 pb-8">
-          <section className="bg-white rounded-xl p-4 shadow-sm">
-            <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider mb-2 block">Your Name</label>
-            <div className="flex items-center gap-3">
-              <input 
-                type="text" 
-                value={displayName} 
-                onChange={(e) => setDisplayName(e.target.value)}
-                className="flex-1 border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
-              />
-              <Smile className="w-5 h-5 text-gray-400" />
+          <section className="bg-white rounded-xl p-4 shadow-sm space-y-4">
+            <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider block">Personal Information</label>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[12px] text-gray-500 mb-1 block">First Name</label>
+                <input 
+                  type="text" 
+                  value={firstName} 
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
+                />
+              </div>
+              <div>
+                <label className="text-[12px] text-gray-500 mb-1 block">Surname</label>
+                <input 
+                  type="text" 
+                  value={lastName} 
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
+                />
+              </div>
             </div>
-            <p className="text-[12px] text-gray-500 mt-2">This is not your username or pin. This name will be visible to your Heart Connect contacts.</p>
-          </section>
-
-          <section className="bg-white rounded-xl p-4 shadow-sm">
-            <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider mb-2 block">About / Status</label>
-            <div className="flex items-center gap-3">
+            <div>
+              <label className="text-[12px] text-gray-500 mb-1 block">Status</label>
               <input 
                 type="text" 
                 value={status} 
                 onChange={(e) => setStatus(e.target.value)}
-                className="flex-1 border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
+                className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
               />
-              <Smile className="w-5 h-5 text-gray-400" />
             </div>
           </section>
 
-          <section className="bg-white rounded-xl p-4 shadow-sm">
-            <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider mb-4 block">Dating Profile</label>
-            <div className="space-y-4">
-              <button 
-                onClick={updateLocation}
-                className="w-full flex items-center justify-center gap-2 py-2 border border-[#00a884] text-[#00a884] rounded-lg text-sm font-bold hover:bg-[#00a884]/5"
-              >
-                <Search className="w-4 h-4" /> Update My Location
-              </button>
+          <section className="bg-white rounded-xl p-4 shadow-sm space-y-4">
+            <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider block">Dating Details</label>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-[12px] text-gray-500 mb-1 block">Age</label>
                 <input 
@@ -1900,41 +2024,45 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
                   <option value="other">Other</option>
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[12px] text-gray-500 mb-1 block">Country</label>
-                  <input 
-                    type="text" 
-                    value={country} 
-                    onChange={(e) => setCountry(e.target.value)}
-                    className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
-                  />
-                </div>
-                <div>
-                  <label className="text-[12px] text-gray-500 mb-1 block">City</label>
-                  <input 
-                    type="text" 
-                    value={city} 
-                    onChange={(e) => setCity(e.target.value)}
-                    className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
-                  />
-                </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[12px] text-gray-500 mb-1 block">Country</label>
+                <select 
+                  value={country} 
+                  onChange={(e) => { setCountry(e.target.value); setCity(''); }}
+                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent"
+                >
+                  <option value="">Select Country</option>
+                  {COUNTRIES.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                </select>
               </div>
               <div>
-                <label className="text-[12px] text-gray-500 mb-1 block">Bio</label>
-                <textarea 
-                  value={datingBio} 
-                  onChange={(e) => setDatingBio(e.target.value)}
-                  placeholder="Tell others about yourself..."
-                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] resize-none h-20"
-                />
+                <label className="text-[12px] text-gray-500 mb-1 block">City</label>
+                <select 
+                  value={city} 
+                  onChange={(e) => setCity(e.target.value)}
+                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent"
+                  disabled={!country}
+                >
+                  <option value="">Select City</option>
+                  {selectedCountry?.cities.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
               </div>
+            </div>
+            <div>
+              <label className="text-[12px] text-gray-500 mb-1 block">Bio</label>
+              <textarea 
+                value={datingBio} 
+                onChange={(e) => setDatingBio(e.target.value)}
+                className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] resize-none h-20"
+              />
             </div>
           </section>
 
           <button 
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || uploading}
             className="w-full bg-[#00a884] text-white py-4 rounded-xl font-bold shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-70"
           >
             {saving ? "Saving..." : "Save Profile"}
