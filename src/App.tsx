@@ -247,6 +247,19 @@ export default function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved ? JSON.parse(saved) : false;
+  });
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
+  }, [darkMode]);
 
   const awardPoints = async (amount: number) => {
     if (!user) return;
@@ -616,8 +629,14 @@ export default function App() {
           <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} />
         </div>
       ) : showProfile ? (
-        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
-          <ProfileSettings user={user} onBack={() => setShowProfile(false)} onUpdate={(updatedUser: User) => setUser(updatedUser)} />
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
+          <ProfileSettings 
+            user={user} 
+            onBack={() => setShowProfile(false)} 
+            onUpdate={(updatedUser: User) => setUser(updatedUser)} 
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
+          />
         </div>
       ) : showAdmin ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
@@ -628,7 +647,7 @@ export default function App() {
           <UserProfileView user={user} targetUser={viewingUser} onBack={() => setViewingUser(null)} onStartChat={(chat) => { setViewingUser(null); setSelectedChat(chat); }} />
         </div>
       ) : showNotifications ? (
-        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
           <NotificationCenter 
             user={user} 
             notifications={notifications} 
@@ -647,15 +666,15 @@ export default function App() {
           />
         </div>
       ) : showUpgrade ? (
-        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
           <UpgradeTiers user={user} onBack={() => setShowUpgrade(false)} settings={appSettings} />
         </div>
       ) : showCreateAd ? (
-        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
           <CreateAd user={user} onBack={() => setShowCreateAd(false)} settings={appSettings} />
         </div>
       ) : showLeaderboard ? (
-        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
           <PointsLeaderboard onBack={() => setShowLeaderboard(false)} />
         </div>
       ) : (
@@ -678,27 +697,27 @@ export default function App() {
                 <div className="relative">
                   <button onClick={() => setShowMenu(!showMenu)} className="p-1"><MoreVertical className="w-6 h-6" /></button>
                   {showMenu && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl py-2 z-50 border border-gray-100">
-                      <button onClick={() => { setShowProfile(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[#202c33] rounded-lg shadow-xl py-2 z-50 border border-gray-100 dark:border-gray-800">
+                      <button onClick={() => { setShowProfile(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
                         <UserIcon className="w-4 h-4" /> Profile
                       </button>
-                      <button onClick={() => { setShowLeaderboard(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                      <button onClick={() => { setShowLeaderboard(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
                         <Trophy className="w-4 h-4 text-yellow-600" /> Leaderboard
                       </button>
-                      <button onClick={() => { setShowCreateAd(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                      <button onClick={() => { setShowCreateAd(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
                         <Megaphone className="w-4 h-4 text-blue-600" /> Create Ad
                       </button>
                       {user.category === 'General' && (
-                        <button onClick={() => { setShowUpgrade(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                        <button onClick={() => { setShowUpgrade(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
                           <Crown className="w-4 h-4 text-purple-600" /> Upgrade
                         </button>
                       )}
                       {user.role === 'admin' && (
-                        <button onClick={() => { setShowAdmin(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-[#00a884] hover:bg-gray-50 flex items-center gap-3">
+                        <button onClick={() => { setShowAdmin(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-[#00a884] hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
                           <Shield className="w-4 h-4" /> Admin Panel
                         </button>
                       )}
-                      <button onClick={() => { signOut(auth); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3">
+                      <button onClick={() => { signOut(auth); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3">
                         <LogOut className="w-4 h-4" /> Log out
                       </button>
                     </div>
@@ -726,9 +745,9 @@ export default function App() {
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21]">
             {activeTab === 'chats' && (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
                 {chats.filter(c => {
                   if (!searchQuery) return true;
                   const name = c.groupName || '';
@@ -909,7 +928,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
       </div>
       <div 
         ref={scrollRef} 
-        className="flex-1 overflow-y-auto p-4 space-y-2 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat"
+        className="flex-1 overflow-y-auto p-4 space-y-2 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] dark:bg-none dark:bg-[#0b141a] bg-repeat"
         onClick={() => setReactingTo(null)}
       >
         {messages.map((msg: any) => (
@@ -922,7 +941,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
               onTouchEnd={endLongPress}
               className={cn(
                 "max-w-[85%] p-2 px-3 rounded-lg shadow-sm relative min-w-[80px] transition-all",
-                msg.senderId === user.uid ? "bg-[#dcf8c6] rounded-tr-none" : "bg-white rounded-tl-none",
+                msg.senderId === user.uid ? "bg-[#dcf8c6] dark:bg-[#005c4b] rounded-tr-none" : "bg-white dark:bg-[#202c33] rounded-tl-none",
                 reactingTo === msg.id && "scale-105 ring-2 ring-[#00a884]/30"
               )}
             >
@@ -949,13 +968,13 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
               ) : msg.type === 'video' ? (
                 <video src={msg.text} controls className="rounded-lg max-w-full h-auto mb-1" />
               ) : (
-                <p className="text-[15px] text-[#111b21] pr-12 leading-relaxed">{msg.text}</p>
+                <p className="text-[15px] text-[#111b21] dark:text-[#e9edef] pr-12 leading-relaxed">{msg.text}</p>
               )}
               
               {msg.reactions && Object.keys(msg.reactions).length > 0 && (
                 <div className="flex -space-x-1 mt-1">
                   {Object.entries(msg.reactions).map(([uid, emoji]: any) => (
-                    <div key={uid} className="bg-white rounded-full shadow-sm border border-gray-100 px-1 text-xs">
+                    <div key={uid} className="bg-white dark:bg-[#202c33] rounded-full shadow-sm border border-gray-100 dark:border-gray-800 px-1 text-xs">
                       {emoji}
                     </div>
                   ))}
@@ -963,7 +982,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
               )}
 
               <div className="absolute bottom-1 right-1.5 flex items-center gap-1">
-                <span className="text-[10px] text-[#667781] uppercase">{msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] uppercase">{msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}</span>
                 {msg.senderId === user.uid && (
                   msg.status === 'sent' ? (
                     <Check className="w-3.5 h-3.5 text-[#8696a0]" />
@@ -977,13 +996,13 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
         ))}
         {uploading && <div className="flex justify-center"><CircleDashed className="w-6 h-6 animate-spin text-[#00a884]" /></div>}
       </div>
-      <div className="bg-[#f0f2f5] p-3 pb-8 flex items-center gap-2">
+      <div className="bg-[#f0f2f5] dark:bg-[#111b21] p-3 pb-8 flex items-center gap-2">
         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*,video/*" />
-        <div className="bg-white flex-1 flex items-center px-3 py-2 rounded-full shadow-sm">
-          <Smile className="w-6 h-6 text-gray-500 mr-2" />
-          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Message" className="flex-1 bg-transparent border-none outline-none text-[16px]" onKeyDown={(e) => { if (e.key === 'Enter' && input.trim()) { onSendMessage(input); setInput(''); } }} />
-          <Paperclip className="w-6 h-6 text-gray-500 ml-2 cursor-pointer" onClick={() => fileInputRef.current?.click()} />
-          <Camera className="w-6 h-6 text-gray-500 ml-3 cursor-pointer" onClick={() => fileInputRef.current?.click()} />
+        <div className="bg-white dark:bg-[#2a3942] flex-1 flex items-center px-3 py-2 rounded-full shadow-sm">
+          <Smile className="w-6 h-6 text-gray-500 dark:text-[#8696a0] mr-2" />
+          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Message" className="flex-1 bg-transparent border-none outline-none text-[16px] dark:text-[#e9edef]" onKeyDown={(e) => { if (e.key === 'Enter' && input.trim()) { onSendMessage(input); setInput(''); } }} />
+          <Paperclip className="w-6 h-6 text-gray-500 dark:text-[#8696a0] ml-2 cursor-pointer" onClick={() => fileInputRef.current?.click()} />
+          <Camera className="w-6 h-6 text-gray-500 dark:text-[#8696a0] ml-3 cursor-pointer" onClick={() => fileInputRef.current?.click()} />
         </div>
         <button onClick={() => { if (input.trim()) { onSendMessage(input); setInput(''); } }} className="w-12 h-12 bg-[#00a884] rounded-full flex items-center justify-center text-white shadow-md">
           {input.trim() ? <Send className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
@@ -1182,11 +1201,11 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
   };
 
   return (
-    <div className="bg-[#f0f2f5] min-h-full">
+    <div className="bg-[#f0f2f5] dark:bg-[#0b141a] min-h-full">
       {/* Status Section */}
-      <div className="bg-white p-4 mb-2 shadow-sm">
+      <div className="bg-white dark:bg-[#111b21] p-4 mb-2 shadow-sm">
         <div className="flex justify-between items-center mb-4">
-          <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Status</h4>
+          <h4 className="text-sm font-bold text-gray-500 dark:text-[#8696a0] uppercase tracking-wider">Status</h4>
           <button onClick={() => setShowStatusModal(true)} className="text-[#00a884] text-xs font-bold flex items-center gap-1">
             <Plus className="w-4 h-4" /> Add Status
           </button>
@@ -1194,17 +1213,17 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
         <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
           <div className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => setShowStatusModal(true)}>
             <div className="relative">
-              <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} className="w-16 h-16 rounded-full border-2 border-gray-200" alt="Me" referrerPolicy="no-referrer" />
-              <div className="absolute bottom-0 right-0 bg-[#00a884] rounded-full p-1 border-2 border-white"><Plus className="w-3 h-3 text-white" /></div>
+              <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} className="w-16 h-16 rounded-full border-2 border-gray-200 dark:border-gray-800" alt="Me" referrerPolicy="no-referrer" />
+              <div className="absolute bottom-0 right-0 bg-[#00a884] rounded-full p-1 border-2 border-white dark:border-[#111b21]"><Plus className="w-3 h-3 text-white" /></div>
             </div>
-            <span className="text-xs text-gray-600">My Status</span>
+            <span className="text-xs text-gray-600 dark:text-[#8696a0]">My Status</span>
           </div>
           {statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true).map((s: any) => (
             <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => handleViewStatus(s)}>
               <div className="p-0.5 rounded-full border-2 border-[#00a884]">
-                <img src={s.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} className="w-16 h-16 rounded-full border-2 border-white" alt="User" referrerPolicy="no-referrer" />
+                <img src={s.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} className="w-16 h-16 rounded-full border-2 border-white dark:border-[#111b21]" alt="User" referrerPolicy="no-referrer" />
               </div>
-              <span className="text-xs text-gray-600 truncate w-16 text-center">{s.user?.displayName || "User"}</span>
+              <span className="text-xs text-gray-600 dark:text-[#8696a0] truncate w-16 text-center">{s.user?.displayName || "User"}</span>
             </div>
           ))}
         </div>
@@ -1246,12 +1265,12 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
+              className="bg-white dark:bg-[#202c33] w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
             >
               <div className="p-6">
                 <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-xl font-bold text-[#111b21]">Create Status</h3>
-                  <button onClick={() => setShowStatusModal(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X className="w-6 h-6 text-gray-400" /></button>
+                  <h3 className="text-xl font-bold text-[#111b21] dark:text-[#e9edef]">Create Status</h3>
+                  <button onClick={() => setShowStatusModal(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"><X className="w-6 h-6 text-gray-400" /></button>
                 </div>
 
                 <div className="space-y-6">
@@ -1261,7 +1280,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
                       value={statusText}
                       onChange={(e) => setStatusText(e.target.value)}
                       placeholder="What's on your mind?"
-                      className="w-full bg-gray-50 border-none outline-none p-4 rounded-2xl text-[16px] resize-none h-32 focus:ring-2 focus:ring-[#00a884]/20 transition-all"
+                      className="w-full bg-gray-50 dark:bg-[#2a3942] border-none outline-none p-4 rounded-2xl text-[16px] dark:text-[#e9edef] resize-none h-32 focus:ring-2 focus:ring-[#00a884]/20 transition-all"
                     />
                   </div>
 
@@ -1309,8 +1328,8 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
 
       {/* Wall Section */}
       <div className="p-4 space-y-4">
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-          <textarea placeholder="Share an update..." value={newPost} onChange={(e) => setNewPost(e.target.value)} className="w-full bg-gray-50 border-none outline-none p-3 rounded-xl text-[15px] resize-none h-20 mb-3" />
+        <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+          <textarea placeholder="Share an update..." value={newPost} onChange={(e) => setNewPost(e.target.value)} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none outline-none p-3 rounded-xl text-[15px] dark:text-[#e9edef] resize-none h-20 mb-3" />
           {postMedia && (
             <div className="relative mb-3">
               {postMediaType === 'image' ? (
@@ -1321,8 +1340,8 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
               <button onClick={() => setPostMedia(null)} className="absolute top-2 right-2 bg-black/50 text-white p-1 rounded-full"><X className="w-4 h-4" /></button>
             </div>
           )}
-          <div className="flex justify-between items-center border-t border-gray-50 pt-3">
-            <div className="flex gap-5 text-gray-500">
+          <div className="flex justify-between items-center border-t border-gray-50 dark:border-gray-800 pt-3">
+            <div className="flex gap-5 text-gray-500 dark:text-[#8696a0]">
               <input type="file" id="post-media" className="hidden" accept="image/*,video/*" onChange={handlePostFileUpload} />
               <label htmlFor="post-media" className="cursor-pointer hover:text-[#00a884]"><ImageIcon className="w-5 h-5" /></label>
               <label htmlFor="post-media" className="cursor-pointer hover:text-[#00a884]"><VideoIcon className="w-5 h-5" /></label>
@@ -1333,14 +1352,14 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
           </div>
         </div>
         {posts.map((post: any) => (
-          <div key={post.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div key={post.id} className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
             <div className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => onUserClick({ uid: post.userId, displayName: post.user?.displayName, photoURL: post.user?.photoURL })}>
               <img src={post.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-10 h-10 rounded-full" alt="User" referrerPolicy="no-referrer" />
               <div>
-                <h4 className="font-bold text-[#111b21] text-[15px]">{post.user?.displayName}</h4>
-                <p className="text-[11px] text-[#667781]">{post.createdAt?.toDate ? formatWhatsAppTime(post.createdAt.toDate()) : ''}</p>
+                <h4 className="font-bold text-[#111b21] dark:text-[#e9edef] text-[15px]">{post.user?.displayName}</h4>
+                <p className="text-[11px] text-[#667781] dark:text-[#8696a0]">{post.createdAt?.toDate ? formatWhatsAppTime(post.createdAt.toDate()) : ''}</p>
               </div>
-              {post.isAd && <span className="ml-auto bg-yellow-100 text-yellow-800 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Sponsored</span>}
+              {post.isAd && <span className="ml-auto bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Sponsored</span>}
               {!post.isAd && post.userId === user.uid && (
                 <div className="ml-auto flex gap-2">
                   <button onClick={() => { setEditingPost(post); setEditContent(post.content); }} className="p-1.5 text-gray-400 hover:text-[#00a884] transition-colors">
@@ -1352,7 +1371,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
                 </div>
               )}
             </div>
-            <div className="px-4 pb-4 text-[15px] text-[#111b21] leading-relaxed">
+            <div className="px-4 pb-4 text-[15px] text-[#111b21] dark:text-[#e9edef] leading-relaxed">
               {post.content}
               {post.media?.[0] && (
                 <div className="mt-3">
@@ -1369,17 +1388,17 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
                 </a>
               )}
             </div>
-            <div className="p-2 border-t border-gray-50 flex justify-around text-[#667781] text-xs font-bold uppercase tracking-wider">
+            <div className="p-2 border-t border-gray-50 dark:border-gray-800 flex justify-around text-[#667781] dark:text-[#8696a0] text-xs font-bold uppercase tracking-wider">
               <button 
                 onClick={() => handleLike(post)}
-                className={cn("flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 transition-colors", post.likes.includes(user.uid) && "text-[#00a884]")}
+                className={cn("flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors", post.likes.includes(user.uid) && "text-[#00a884]")}
               >
                 <ThumbsUp className={cn("w-5 h-5", post.likes.includes(user.uid) && "fill-current")} />
                 <span>{post.likes.length || ''} Like</span>
               </button>
               <button 
                 onClick={() => setShowComments(post.id)}
-                className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 transition-colors"
+                className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
                 <MessageSquare className="w-5 h-5" />
                 <span>{post.commentCount || ''} Comment</span>
@@ -1396,7 +1415,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
                     alert("Sharing not supported on this browser.");
                   }
                 }}
-                className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 transition-colors"
+                className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
                 <Share2 className="w-5 h-5" />
                 <span>Share</span>
@@ -1404,7 +1423,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
               {post.userId === user.uid && !post.isAd && (
                 <button 
                   onClick={() => setShowCreateAd(true)}
-                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 transition-colors text-purple-600"
+                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-purple-600"
                 >
                   <Megaphone className="w-5 h-5" />
                   <span>Boost</span>
@@ -1556,12 +1575,12 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
   const currentUser = discoverUsers[currentIndex];
 
   return (
-    <div className="flex-1 flex flex-col p-4 bg-[#f0f2f5] relative">
+    <div className="flex-1 flex flex-col p-4 bg-[#f0f2f5] dark:bg-[#0b141a] relative">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-bold text-[#111b21]">Discover</h2>
+        <h2 className="text-lg font-bold text-[#111b21] dark:text-[#e9edef]">Discover</h2>
         <button 
           onClick={() => setShowFilters(!showFilters)}
-          className="p-2 bg-white rounded-full shadow-sm text-[#00a884]"
+          className="p-2 bg-white dark:bg-[#202c33] rounded-full shadow-sm text-[#00a884]"
         >
           <Search className="w-5 h-5" />
         </button>
@@ -1573,7 +1592,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="bg-white p-4 rounded-2xl shadow-lg mb-4 space-y-4 z-20"
+            className="bg-white dark:bg-[#202c33] p-4 rounded-2xl shadow-lg mb-4 space-y-4 z-20"
           >
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1582,7 +1601,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
                   type="number" 
                   value={filters.minAge} 
                   onChange={(e) => onUpdateFilters({...filters, minAge: Number(e.target.value)})}
-                  className="w-full border-b border-gray-200 py-1 outline-none"
+                  className="w-full border-b border-gray-200 dark:border-gray-800 py-1 outline-none dark:bg-transparent dark:text-[#e9edef]"
                 />
               </div>
               <div>
@@ -1591,7 +1610,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
                   type="number" 
                   value={filters.maxAge} 
                   onChange={(e) => onUpdateFilters({...filters, maxAge: Number(e.target.value)})}
-                  className="w-full border-b border-gray-200 py-1 outline-none"
+                  className="w-full border-b border-gray-200 dark:border-gray-800 py-1 outline-none dark:bg-transparent dark:text-[#e9edef]"
                 />
               </div>
             </div>
@@ -1600,7 +1619,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
               <select 
                 value={filters.gender} 
                 onChange={(e) => onUpdateFilters({...filters, gender: e.target.value})}
-                className="w-full border-b border-gray-200 py-1 outline-none bg-transparent"
+                className="w-full border-b border-gray-200 dark:border-gray-800 py-1 outline-none bg-transparent dark:text-[#e9edef]"
               >
                 <option value="all">All</option>
                 <option value="male">Male</option>
@@ -1629,24 +1648,24 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
       </AnimatePresence>
 
       {!hasGender && (
-        <div className="bg-yellow-50 border border-yellow-100 p-4 rounded-2xl mb-4 flex items-center gap-3">
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-900/30 p-4 rounded-2xl mb-4 flex items-center gap-3">
           <ShieldAlert className="w-5 h-5 text-yellow-600" />
           <div className="flex-1">
-            <p className="text-xs font-bold text-yellow-800">Complete Your Profile</p>
-            <p className="text-[10px] text-yellow-700">Set your gender to get better matches.</p>
+            <p className="text-xs font-bold text-yellow-800 dark:text-yellow-200">Complete Your Profile</p>
+            <p className="text-[10px] text-yellow-700 dark:text-yellow-300">Set your gender to get better matches.</p>
           </div>
-          <button onClick={onOpenProfile} className="text-xs font-bold text-yellow-800 underline">Update</button>
+          <button onClick={onOpenProfile} className="text-xs font-bold text-yellow-800 dark:text-yellow-200 underline">Update</button>
         </div>
       )}
 
       {discoverUsers.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-          <Heart className="w-16 h-16 text-gray-200 mb-4" />
-          <p className="text-gray-500">No matches found with current filters. Try expanding your search!</p>
+          <Heart className="w-16 h-16 text-gray-200 dark:text-gray-800 mb-4" />
+          <p className="text-gray-500 dark:text-[#8696a0]">No matches found with current filters. Try expanding your search!</p>
         </div>
       ) : (
-        <div className="max-w-sm w-full mx-auto bg-white rounded-[40px] shadow-2xl overflow-hidden h-[480px] flex flex-col relative border-4 border-white">
-          <div className="flex-1 bg-gray-200 relative">
+        <div className="max-w-sm w-full mx-auto bg-white dark:bg-[#202c33] rounded-[40px] shadow-2xl overflow-hidden h-[480px] flex flex-col relative border-4 border-white dark:border-[#202c33]">
+          <div className="flex-1 bg-gray-200 dark:bg-gray-800 relative">
             <img 
               src={currentUser.photoURL || `https://picsum.photos/seed/${currentUser.uid}/400/600`} 
               className="w-full h-full object-cover" 
@@ -1676,10 +1695,10 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
               </div>
             </div>
           </div>
-          <div className="p-6 flex justify-center gap-10 bg-white border-t border-gray-50">
-            <button onClick={handleNext} className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white"><X className="w-8 h-8" /></button>
-            <button onClick={() => onUserClick(currentUser)} className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white"><UserIcon className="w-8 h-8" /></button>
-            <button onClick={handleNext} className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center text-[#00a884] hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white"><Heart className="w-8 h-8 fill-current" /></button>
+          <div className="p-6 flex justify-center gap-10 bg-white dark:bg-[#202c33] border-t border-gray-50 dark:border-gray-800">
+            <button onClick={handleNext} className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center text-red-500 hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white dark:border-[#202c33]"><X className="w-8 h-8" /></button>
+            <button onClick={() => onUserClick(currentUser)} className="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-500 hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white dark:border-[#202c33]"><UserIcon className="w-8 h-8" /></button>
+            <button onClick={handleNext} className="w-16 h-16 rounded-full bg-green-50 dark:bg-green-900/20 flex items-center justify-center text-[#00a884] hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white dark:border-[#202c33]"><Heart className="w-8 h-8 fill-current" /></button>
           </div>
         </div>
       )}
@@ -1753,10 +1772,10 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat }: any) => {
     }
   };
 
-  if (!fullUser) return <div className="flex-1 flex items-center justify-center bg-white"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>;
+  if (!fullUser) return <div className="flex-1 flex items-center justify-center bg-white dark:bg-[#0b141a]"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>;
 
   return (
-    <div className="flex-1 flex flex-col bg-white">
+    <div className="flex-1 flex flex-col bg-white dark:bg-[#0b141a]">
       <div className="relative h-72">
         <img src={fullUser.photoURL || `https://picsum.photos/seed/${fullUser.uid}/600/800`} className="w-full h-full object-cover" alt={fullUser.displayName} referrerPolicy="no-referrer" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
@@ -1777,12 +1796,12 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat }: any) => {
             </button>
           )}
           {requestStatus === 'pending' && (
-            <button disabled className="flex-1 bg-gray-100 text-gray-500 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+            <button disabled className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-500 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
               <CircleDashed className="w-5 h-5 animate-spin" /> Request Sent
             </button>
           )}
           {requestStatus === 'accepted' && (
-            <button disabled className="flex-1 bg-blue-50 text-blue-600 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+            <button disabled className="flex-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
               <UserCheck className="w-5 h-5" /> Friends
             </button>
           )}
@@ -1792,15 +1811,15 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat }: any) => {
         </div>
         <div className="space-y-4">
           <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">About</h4>
-          <p className="text-gray-700 leading-relaxed">{fullUser.datingProfile?.bio || fullUser.status || "No bio available."}</p>
+          <p className="text-gray-700 dark:text-[#e9edef] leading-relaxed">{fullUser.datingProfile?.bio || fullUser.status || "No bio available."}</p>
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-gray-50 p-3 rounded-xl">
+            <div className="bg-gray-50 dark:bg-[#111b21] p-3 rounded-xl">
               <span className="text-[10px] text-gray-400 uppercase font-bold block">Age</span>
-              <span className="font-bold">{fullUser.datingProfile?.age || 'N/A'}</span>
+              <span className="font-bold dark:text-[#e9edef]">{fullUser.datingProfile?.age || 'N/A'}</span>
             </div>
-            <div className="bg-gray-50 p-3 rounded-xl">
+            <div className="bg-gray-50 dark:bg-[#111b21] p-3 rounded-xl">
               <span className="text-[10px] text-gray-400 uppercase font-bold block">Location</span>
-              <span className="font-bold">{fullUser.datingProfile?.city || 'N/A'}</span>
+              <span className="font-bold dark:text-[#e9edef]">{fullUser.datingProfile?.city || 'N/A'}</span>
             </div>
           </div>
         </div>
@@ -1826,28 +1845,28 @@ const NotificationCenter = ({ user, notifications, onBack, onNavigate }: any) =>
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#f0f2f5]">
+    <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a]">
       <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Notifications</h2>
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {notifications.length === 0 ? (
-          <div className="text-center py-20 text-gray-500">No notifications yet.</div>
+          <div className="text-center py-20 text-gray-500 dark:text-[#8696a0]">No notifications yet.</div>
         ) : (
           notifications.map(n => (
             <div 
               key={n.id} 
               onClick={() => handleNotificationClick(n)}
-              className={cn("bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4 border-l-4 transition-all cursor-pointer", n.read ? "border-transparent opacity-70" : "border-[#00a884]")}
+              className={cn("bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm flex items-center gap-4 border-l-4 transition-all cursor-pointer", n.read ? "border-transparent opacity-70" : "border-[#00a884]")}
             >
-              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-[#00a884]">
+              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-[#00a884]">
                 {n.type === 'like' && <ThumbsUp className="w-6 h-6" />}
                 {n.type === 'message' && <MessageSquare className="w-6 h-6" />}
                 {n.type === 'friend_request' && <UserPlus className="w-6 h-6" />}
               </div>
               <div className="flex-1">
-                <p className="text-sm text-[#111b21]">
+                <p className="text-sm text-[#111b21] dark:text-[#e9edef]">
                   <span className="font-bold">{n.fromName}</span> {n.text}
                 </p>
                 <p className="text-[10px] text-gray-400 mt-1">{n.timestamp?.toDate ? formatWhatsAppTime(n.timestamp.toDate()) : 'Just now'}</p>
@@ -1945,28 +1964,28 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
   const totalCost = duration * settings.adPricePerDay;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#f0f2f5]">
+    <div className="flex-1 flex flex-col h-full bg-[#f0f2f5] dark:bg-[#0b141a]">
       <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Create Advertisement</h2>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-[#111b21] rounded-2xl p-6 shadow-sm space-y-4">
           <div>
             <label className="text-xs font-bold text-[#00a884] uppercase block mb-2">Ad Content</label>
             <textarea 
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="What are you promoting?"
-              className="w-full p-3 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-[#00a884] resize-none h-32"
+              className="w-full p-3 bg-gray-50 dark:bg-[#2a3942] rounded-xl border-none focus:ring-2 focus:ring-[#00a884] dark:text-[#e9edef] resize-none h-32"
             />
           </div>
 
           <div>
             <label className="text-xs font-bold text-[#00a884] uppercase block mb-2">Ad Image</label>
             <div className="flex items-center gap-4">
-              <label className="w-24 h-24 bg-gray-100 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors border-2 border-dashed border-gray-300">
+              <label className="w-24 h-24 bg-gray-100 dark:bg-[#2a3942] rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors border-2 border-dashed border-gray-300 dark:border-gray-700">
                 {mediaUrl ? (
                   <img src={mediaUrl} className="w-full h-full object-cover rounded-xl" alt="Preview" referrerPolicy="no-referrer" />
                 ) : (
@@ -1977,7 +1996,7 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
                 )}
                 <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
               </label>
-              <div className="flex-1 text-xs text-gray-500">
+              <div className="flex-1 text-xs text-gray-500 dark:text-[#8696a0]">
                 Upload a clear image for your advertisement. High quality images perform better.
               </div>
             </div>
@@ -1990,7 +2009,7 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
               value={link}
               onChange={(e) => setLink(e.target.value)}
               placeholder="https://example.com"
-              className="w-full p-3 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-[#00a884]"
+              className="w-full p-3 bg-gray-50 dark:bg-[#2a3942] rounded-xl border-none focus:ring-2 focus:ring-[#00a884] dark:text-[#e9edef]"
             />
           </div>
 
@@ -2002,30 +2021,30 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
                 min={settings.minAdDuration}
                 value={duration}
                 onChange={(e) => setDuration(Math.max(settings.minAdDuration, parseInt(e.target.value) || settings.minAdDuration))}
-                className="w-full p-3 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-[#00a884]"
+                className="w-full p-3 bg-gray-50 dark:bg-[#2a3942] rounded-xl border-none focus:ring-2 focus:ring-[#00a884] dark:text-[#e9edef]"
               />
             </div>
             <div>
               <label className="text-xs font-bold text-[#00a884] uppercase block mb-2">Total Cost</label>
-              <div className="w-full p-3 bg-gray-100 rounded-xl font-bold text-lg text-[#111b21]">
+              <div className="w-full p-3 bg-gray-100 dark:bg-[#2a3942] rounded-xl font-bold text-lg text-[#111b21] dark:text-[#e9edef]">
                 ${totalCost.toFixed(2)}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="bg-yellow-50 rounded-2xl p-6 border border-yellow-100 space-y-4">
-          <h3 className="font-bold text-yellow-800 flex items-center gap-2">
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-2xl p-6 border border-yellow-100 dark:border-yellow-900/30 space-y-4">
+          <h3 className="font-bold text-yellow-800 dark:text-yellow-200 flex items-center gap-2">
             <Shield className="w-5 h-5" /> Payment Instructions
           </h3>
           <div className="space-y-2">
             {settings.paymentMethods.map((pm, idx) => (
-              <div key={idx} className="text-sm text-yellow-700">
+              <div key={idx} className="text-sm text-yellow-700 dark:text-yellow-300">
                 <span className="font-bold">{pm.type}:</span> {pm.details}
               </div>
             ))}
           </div>
-          <p className="text-xs text-yellow-600">
+          <p className="text-xs text-yellow-600 dark:text-yellow-400">
             Pay the total amount and upload the screenshot of the transaction. Your ad will be reviewed and published within 24 hours.
           </p>
         </div>
@@ -2316,18 +2335,18 @@ const AdminDashboard = ({ user, onBack }: any) => {
   if (editingUser) return <ProfileSettings user={editingUser} onBack={() => setEditingUser(null)} onUpdate={handleUpdateUser} />;
 
   return (
-    <div className="flex-1 flex flex-col bg-[#f0f2f5]">
+    <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a]">
       <div className="bg-[#111b21] text-white p-4 flex items-center gap-6 shadow-md">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium flex items-center gap-2"><Shield className="w-5 h-5 text-[#00a884]" /> Admin Dashboard</h2>
       </div>
       
-      <div className="flex bg-white border-b border-gray-100">
+      <div className="flex bg-white dark:bg-[#111b21] border-b border-gray-100 dark:border-gray-800">
         {['users', 'ads', 'config', 'payments'].map((t) => (
           <button 
             key={t}
             onClick={() => setActiveTab(t as any)}
-            className={cn("flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2", activeTab === t ? "border-[#00a884] text-[#00a884]" : "border-transparent text-gray-400")}
+            className={cn("flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2", activeTab === t ? "border-[#00a884] text-[#00a884]" : "border-transparent text-gray-400 dark:text-[#8696a0]")}
           >
             {t}
           </button>
@@ -2339,33 +2358,33 @@ const AdminDashboard = ({ user, onBack }: any) => {
           <>
             {/* Stats Grid */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
+              <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm text-center">
                 <UserIcon className="w-5 h-5 text-blue-500 mx-auto mb-1" />
-                <div className="text-xl font-bold">{stats.totalUsers}</div>
-                <div className="text-[10px] text-gray-400 uppercase font-bold">Users</div>
+                <div className="text-xl font-bold dark:text-[#e9edef]">{stats.totalUsers}</div>
+                <div className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">Users</div>
               </div>
-              <div className="bg-white p-4 rounded-2xl shadow-sm text-center">
+              <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm text-center">
                 <BarChart3 className="w-5 h-5 text-green-500 mx-auto mb-1" />
-                <div className="text-xl font-bold">{stats.totalPoints}</div>
-                <div className="text-[10px] text-gray-400 uppercase font-bold">Total Points</div>
+                <div className="text-xl font-bold dark:text-[#e9edef]">{stats.totalPoints}</div>
+                <div className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">Total Points</div>
               </div>
             </div>
 
             {/* User Management */}
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-                <h3 className="font-bold text-gray-700">User Management</h3>
+            <div className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+                <h3 className="font-bold text-gray-700 dark:text-[#e9edef]">User Management</h3>
                 <SettingsIcon className="w-4 h-4 text-gray-400" />
               </div>
-              <div className="divide-y divide-gray-50 max-h-[500px] overflow-y-auto">
+              <div className="divide-y divide-gray-50 dark:divide-gray-800 max-h-[500px] overflow-y-auto">
                 {users.map(u => (
                   <div key={u.uid} className="p-4 space-y-3">
                     <div className="flex items-center gap-3">
                       <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-10 h-10 rounded-full" alt="User" referrerPolicy="no-referrer" />
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-bold text-sm truncate">{u.displayName}</h4>
+                        <h4 className="font-bold text-sm truncate dark:text-[#e9edef]">{u.displayName}</h4>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-gray-400 uppercase font-bold">{u.role}</span>
+                          <span className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">{u.role}</span>
                           <span className="text-[10px] text-[#00a884] font-bold">{u.points} pts</span>
                         </div>
                       </div>
@@ -2375,25 +2394,25 @@ const AdminDashboard = ({ user, onBack }: any) => {
                       <select 
                         value={u.category} 
                         onChange={(e) => setUserCategory(u, e.target.value)}
-                        className="text-[10px] font-bold bg-gray-50 border-none rounded-full px-2 py-1 outline-none"
+                        className="text-[10px] font-bold bg-gray-50 dark:bg-[#2a3942] border-none rounded-full px-2 py-1 outline-none dark:text-[#e9edef]"
                       >
                         {['General', 'Bronze', 'Silver', 'Gold', 'Platinum'].map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                       <button 
                         onClick={() => toggleUserRole(u)}
-                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.role === 'admin' ? "bg-red-50 text-red-500" : "bg-green-50 text-[#00a884]")}
+                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.role === 'admin' ? "bg-red-50 dark:bg-red-900/20 text-red-500" : "bg-green-50 dark:bg-green-900/20 text-[#00a884]")}
                       >
                         {u.role === 'admin' ? "Demote" : "Make Admin"}
                       </button>
                       <button 
                         onClick={() => toggleUserSuspension(u)}
-                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.suspended ? "bg-green-50 text-[#00a884]" : "bg-yellow-50 text-yellow-600")}
+                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.suspended ? "bg-green-50 dark:bg-green-900/20 text-[#00a884]" : "bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600")}
                       >
                         {u.suspended ? "Unsuspend" : "Suspend"}
                       </button>
                       <button 
                         onClick={() => deleteUser(u)}
-                        className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors"
+                        className="p-2 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full hover:bg-red-100 transition-colors"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -2407,23 +2426,23 @@ const AdminDashboard = ({ user, onBack }: any) => {
 
         {activeTab === 'ads' && (
           <div className="space-y-4">
-            <h3 className="font-bold text-gray-700">Active Advertisements</h3>
+            <h3 className="font-bold text-gray-700 dark:text-[#e9edef]">Active Advertisements</h3>
             {ads.length === 0 ? (
-              <div className="bg-white p-8 rounded-2xl text-center text-gray-500">No active ads.</div>
+              <div className="bg-white dark:bg-[#111b21] p-8 rounded-2xl text-center text-gray-500 dark:text-[#8696a0]">No active ads.</div>
             ) : (
               ads.map(ad => (
-                <div key={ad.id} className="bg-white p-4 rounded-2xl shadow-sm space-y-3">
+                <div key={ad.id} className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm space-y-3">
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-3">
                       <img src={ad.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${ad.userId}`} className="w-8 h-8 rounded-full" alt="Ad" referrerPolicy="no-referrer" />
                       <div>
-                        <h4 className="font-bold text-sm">{ad.user?.displayName}</h4>
-                        <p className="text-[10px] text-gray-400">Sponsored</p>
+                        <h4 className="font-bold text-sm dark:text-[#e9edef]">{ad.user?.displayName}</h4>
+                        <p className="text-[10px] text-gray-400 dark:text-[#8696a0]">Sponsored</p>
                       </div>
                     </div>
-                    <button onClick={() => deleteAd(ad.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-full"><Trash2 className="w-4 h-4" /></button>
+                    <button onClick={() => deleteAd(ad.id)} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full"><Trash2 className="w-4 h-4" /></button>
                   </div>
-                  <p className="text-sm text-gray-700">{ad.content}</p>
+                  <p className="text-sm text-gray-700 dark:text-[#e9edef]">{ad.content}</p>
                   {ad.media?.[0] && <img src={ad.media[0]} className="w-full h-32 object-cover rounded-xl" alt="Ad Media" referrerPolicy="no-referrer" />}
                   {ad.adLink && <div className="text-xs text-[#00a884] font-bold truncate">{ad.adLink}</div>}
                 </div>
@@ -2433,52 +2452,52 @@ const AdminDashboard = ({ user, onBack }: any) => {
         )}
 
         {activeTab === 'config' && settings && (
-          <div className="bg-white p-6 rounded-2xl shadow-sm space-y-6">
-            <h3 className="font-bold text-gray-700 border-b pb-2">Point System Configuration</h3>
+          <div className="bg-white dark:bg-[#111b21] p-6 rounded-2xl shadow-sm space-y-6">
+            <h3 className="font-bold text-gray-700 dark:text-[#e9edef] border-b dark:border-gray-800 pb-2">Point System Configuration</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Points per Post</label>
-                <input type="number" value={settings.pointsPerPost} onChange={(e) => setSettings({...settings, pointsPerPost: Number(e.target.value)})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Points per Post</label>
+                <input type="number" value={settings.pointsPerPost} onChange={(e) => setSettings({...settings, pointsPerPost: Number(e.target.value)})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Points per Comment</label>
-                <input type="number" value={settings.pointsPerComment} onChange={(e) => setSettings({...settings, pointsPerComment: Number(e.target.value)})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Points per Comment</label>
+                <input type="number" value={settings.pointsPerComment} onChange={(e) => setSettings({...settings, pointsPerComment: Number(e.target.value)})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Points per Like</label>
-                <input type="number" value={settings.pointsPerLike} onChange={(e) => setSettings({...settings, pointsPerLike: Number(e.target.value)})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Points per Like</label>
+                <input type="number" value={settings.pointsPerLike} onChange={(e) => setSettings({...settings, pointsPerLike: Number(e.target.value)})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Money per Point ($)</label>
-                <input type="number" step="0.001" value={settings.moneyPerPoint} onChange={(e) => setSettings({...settings, moneyPerPoint: Number(e.target.value)})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Money per Point ($)</label>
+                <input type="number" step="0.001" value={settings.moneyPerPoint} onChange={(e) => setSettings({...settings, moneyPerPoint: Number(e.target.value)})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
               </div>
             </div>
 
-            <h3 className="font-bold text-gray-700 border-b pb-2 pt-4">Tier Pricing & Duration</h3>
+            <h3 className="font-bold text-gray-700 dark:text-[#e9edef] border-b dark:border-gray-800 pb-2 pt-4">Tier Pricing & Duration</h3>
             <div className="space-y-4">
               {['Bronze', 'Silver', 'Gold', 'Platinum'].map(tier => (
                 <div key={tier} className="flex gap-3 items-end">
                   <div className="flex-1">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">{tier} Price ($)</label>
-                    <input type="number" value={settings.tierPrices[tier]} onChange={(e) => setSettings({...settings, tierPrices: {...settings.tierPrices, [tier]: Number(e.target.value)}})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+                    <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">{tier} Price ($)</label>
+                    <input type="number" value={settings.tierPrices[tier]} onChange={(e) => setSettings({...settings, tierPrices: {...settings.tierPrices, [tier]: Number(e.target.value)}})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
                   </div>
                   <div className="flex-1">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">{tier} Duration</label>
-                    <input type="text" value={settings.tierDurations[tier]} onChange={(e) => setSettings({...settings, tierDurations: {...settings.tierDurations, [tier]: e.target.value}})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+                    <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">{tier} Duration</label>
+                    <input type="text" value={settings.tierDurations[tier]} onChange={(e) => setSettings({...settings, tierDurations: {...settings.tierDurations, [tier]: e.target.value}})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
                   </div>
                 </div>
               ))}
             </div>
 
-            <h3 className="font-bold text-gray-700 border-b pb-2 pt-4">Advertisement Settings</h3>
+            <h3 className="font-bold text-gray-700 dark:text-[#e9edef] border-b dark:border-gray-800 pb-2 pt-4">Advertisement Settings</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Ad Price per Day ($)</label>
-                <input type="number" value={settings.adPricePerDay} onChange={(e) => setSettings({...settings, adPricePerDay: Number(e.target.value)})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Ad Price per Day ($)</label>
+                <input type="number" value={settings.adPricePerDay} onChange={(e) => setSettings({...settings, adPricePerDay: Number(e.target.value)})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Min Ad Duration (Days)</label>
-                <input type="number" value={settings.minAdDuration} onChange={(e) => setSettings({...settings, minAdDuration: Number(e.target.value)})} className="w-full bg-gray-50 border-none p-3 rounded-xl outline-none" />
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Min Ad Duration (Days)</label>
+                <input type="number" value={settings.minAdDuration} onChange={(e) => setSettings({...settings, minAdDuration: Number(e.target.value)})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
               </div>
             </div>
 
@@ -2488,30 +2507,30 @@ const AdminDashboard = ({ user, onBack }: any) => {
 
         {activeTab === 'payments' && (
           <div className="space-y-4">
-            <h3 className="font-bold text-gray-700">Manual Payment Verification</h3>
+            <h3 className="font-bold text-gray-700 dark:text-[#e9edef]">Manual Payment Verification</h3>
             {paymentProofs.length === 0 ? (
-              <div className="bg-white p-8 rounded-2xl text-center text-gray-500">No payment proofs submitted.</div>
+              <div className="bg-white dark:bg-[#111b21] p-8 rounded-2xl text-center text-gray-500 dark:text-[#8696a0]">No payment proofs submitted.</div>
             ) : (
               paymentProofs.map(proof => (
-                <div key={proof.id} className="bg-white p-4 rounded-2xl shadow-sm space-y-3">
+                <div key={proof.id} className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm space-y-3">
                   <div className="flex justify-between items-center">
                     <div>
-                      <h4 className="font-bold text-sm">{proof.userName}</h4>
-                      <p className="text-[10px] text-gray-400 uppercase font-bold">{proof.tier} - ${proof.amount}</p>
+                      <h4 className="font-bold text-sm dark:text-[#e9edef]">{proof.userName}</h4>
+                      <p className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">{proof.tier} - ${proof.amount}</p>
                     </div>
-                    <span className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase", proof.status === 'pending' ? "bg-yellow-50 text-yellow-600" : proof.status === 'approved' ? "bg-green-50 text-[#00a884]" : "bg-red-50 text-red-500")}>
+                    <span className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase", proof.status === 'pending' ? "bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400" : proof.status === 'approved' ? "bg-green-50 dark:bg-green-900/20 text-[#00a884]" : "bg-red-50 dark:bg-red-900/20 text-red-500")}>
                       {proof.status}
                     </span>
                   </div>
                   {proof.proofUrl && (
                     <a href={proof.proofUrl} target="_blank" rel="noopener noreferrer" className="block">
-                      <img src={proof.proofUrl} className="w-full h-40 object-cover rounded-xl border border-gray-100" alt="Proof" referrerPolicy="no-referrer" />
+                      <img src={proof.proofUrl} className="w-full h-40 object-cover rounded-xl border border-gray-100 dark:border-gray-800" alt="Proof" referrerPolicy="no-referrer" />
                     </a>
                   )}
                   {proof.status === 'pending' && (
                     <div className="flex gap-2">
                       <button onClick={() => approvePayment(proof)} className="flex-1 bg-[#00a884] text-white py-2 rounded-xl text-xs font-bold">Approve</button>
-                      <button onClick={() => updateDoc(doc(db, 'payment_proofs', proof.id), { status: 'rejected' })} className="flex-1 bg-red-50 text-red-500 py-2 rounded-xl text-xs font-bold">Reject</button>
+                      <button onClick={() => updateDoc(doc(db, 'payment_proofs', proof.id), { status: 'rejected' })} className="flex-1 bg-red-50 dark:bg-red-900/20 text-red-500 py-2 rounded-xl text-xs font-bold">Reject</button>
                     </div>
                   )}
                 </div>
@@ -2523,7 +2542,13 @@ const AdminDashboard = ({ user, onBack }: any) => {
     </div>
   );
 };
-const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () => void, onUpdate: (u: User) => void }) => {
+const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: { 
+  user: User, 
+  onBack: () => void, 
+  onUpdate: (u: User) => void,
+  darkMode?: boolean,
+  setDarkMode?: (v: boolean) => void
+}) => {
   const [firstName, setFirstName] = useState(user.firstName || user.displayName.split(' ')[0] || '');
   const [lastName, setLastName] = useState(user.lastName || user.displayName.split(' ')[1] || '');
   const [status, setStatus] = useState(user.status || '');
@@ -2608,14 +2633,14 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
   const selectedCountry = COUNTRIES.find(c => c.name === country);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#f0f2f5]">
+    <div className="flex-1 flex flex-col h-full bg-[#f0f2f5] dark:bg-[#0b141a]">
       <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Edit Profile</h2>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="flex flex-col items-center py-8 bg-white mb-6">
+        <div className="flex flex-col items-center py-8 bg-white dark:bg-[#111b21] mb-6">
           <div className="relative group">
             <img 
               src={photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
@@ -2638,63 +2663,63 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
                 }} 
               />
             </label>
-            {uploading && <div className="absolute inset-0 bg-white/50 rounded-full flex items-center justify-center"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>}
+            {uploading && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 rounded-full flex items-center justify-center"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>}
           </div>
-          <h3 className="mt-4 text-xl font-bold">{firstName} {lastName}</h3>
+          <h3 className="mt-4 text-xl font-bold dark:text-[#e9edef]">{firstName} {lastName}</h3>
         </div>
 
         <div className="space-y-6 px-4 pb-8">
-          <section className="bg-white rounded-xl p-4 shadow-sm space-y-4">
+          <section className="bg-white dark:bg-[#111b21] rounded-xl p-4 shadow-sm space-y-4">
             <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider block">Personal Information</label>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-[12px] text-gray-500 mb-1 block">First Name</label>
+                <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">First Name</label>
                 <input 
                   type="text" 
                   value={firstName} 
                   onChange={(e) => setFirstName(e.target.value)}
-                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
+                  className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
                 />
               </div>
               <div>
-                <label className="text-[12px] text-gray-500 mb-1 block">Surname</label>
+                <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Surname</label>
                 <input 
                   type="text" 
                   value={lastName} 
                   onChange={(e) => setLastName(e.target.value)}
-                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
+                  className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
                 />
               </div>
             </div>
             <div>
-              <label className="text-[12px] text-gray-500 mb-1 block">Status</label>
+              <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Status</label>
               <input 
                 type="text" 
                 value={status} 
                 onChange={(e) => setStatus(e.target.value)}
-                className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
+                className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
               />
             </div>
           </section>
 
-          <section className="bg-white rounded-xl p-4 shadow-sm space-y-4">
+          <section className="bg-white dark:bg-[#111b21] rounded-xl p-4 shadow-sm space-y-4">
             <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider block">Dating Details</label>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-[12px] text-gray-500 mb-1 block">Age</label>
+                <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Age</label>
                 <input 
                   type="number" 
                   value={datingAge} 
                   onChange={(e) => setDatingAge(Number(e.target.value))}
-                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px]"
+                  className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
                 />
               </div>
               <div>
-                <label className="text-[12px] text-gray-500 mb-1 block">Gender</label>
+                <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Gender</label>
                 <select 
                   value={gender} 
                   onChange={(e) => setGender(e.target.value as any)}
-                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent"
+                  className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
                 >
                   <option value="male">Male</option>
                   <option value="female">Female</option>
@@ -2704,22 +2729,22 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-[12px] text-gray-500 mb-1 block">Country</label>
+                <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Country</label>
                 <select 
                   value={country} 
                   onChange={(e) => { setCountry(e.target.value); setCity(''); }}
-                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent"
+                  className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
                 >
                   <option value="">Select Country</option>
                   {COUNTRIES.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-[12px] text-gray-500 mb-1 block">City</label>
+                <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">City</label>
                 <select 
                   value={city} 
                   onChange={(e) => setCity(e.target.value)}
-                  className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent"
+                  className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
                   disabled={!country}
                 >
                   <option value="">Select City</option>
@@ -2728,14 +2753,38 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
               </div>
             </div>
             <div>
-              <label className="text-[12px] text-gray-500 mb-1 block">Bio</label>
+              <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Bio</label>
               <textarea 
                 value={datingBio} 
                 onChange={(e) => setDatingBio(e.target.value)}
-                className="w-full border-b border-gray-200 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] resize-none h-20"
+                className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] resize-none h-20 bg-transparent dark:text-[#e9edef]"
               />
             </div>
           </section>
+
+          {setDarkMode && (
+            <section className="bg-white dark:bg-[#111b21] rounded-xl p-4 shadow-sm space-y-4">
+              <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider block">Appearance</label>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-[16px] font-medium text-[#111b21] dark:text-[#e9edef]">Dark Mode</h4>
+                  <p className="text-xs text-gray-500 dark:text-[#8696a0]">Switch between light and dark themes</p>
+                </div>
+                <button 
+                  onClick={() => setDarkMode(!darkMode)}
+                  className={cn(
+                    "w-12 h-6 rounded-full transition-colors relative",
+                    darkMode ? "bg-[#00a884]" : "bg-gray-300"
+                  )}
+                >
+                  <div className={cn(
+                    "absolute top-1 w-4 h-4 bg-white rounded-full transition-transform",
+                    darkMode ? "left-7" : "left-1"
+                  )} />
+                </button>
+              </div>
+            </section>
+          )}
 
           <button 
             onClick={handleSave}

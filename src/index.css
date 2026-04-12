@@ -4,8 +4,26 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
-body {
-  @apply bg-[#f0f2f5] text-[#111b21] antialiased;
+@layer base {
+  :root {
+    --bg-app: #f0f2f5;
+    --text-primary: #111b21;
+    --bg-card: #ffffff;
+    --border-color: #e9edef;
+  }
+
+  .dark {
+    --bg-app: #111b21;
+    --text-primary: #e9edef;
+    --bg-card: #202c33;
+    --border-color: #3b4a54;
+  }
+
+  body {
+    background-color: var(--bg-app);
+    color: var(--text-primary);
+    @apply antialiased transition-colors duration-300;
+  }
 }
 
 /* Custom scrollbar for WhatsApp look */
@@ -15,6 +33,10 @@ body {
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #374045;
 }
 
 ::-webkit-scrollbar-thumb {
