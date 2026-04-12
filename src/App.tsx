@@ -1007,18 +1007,20 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
               onTouchStart={() => startLongPress(msg.id)}
               onTouchEnd={endLongPress}
               className={cn(
-                "max-w-[85%] p-2 px-3 rounded-xl shadow-sm relative min-w-[80px] transition-all",
-                msg.senderId === user.uid ? "bg-[#dcf8c6] dark:bg-[#005c4b] rounded-tr-none" : "bg-white dark:bg-[#202c33] rounded-tl-none",
+                "max-w-[85%] p-2 px-3 rounded-2xl shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] relative min-w-[80px] transition-all",
+                msg.senderId === user.uid 
+                  ? "bg-[#d9fdd3] dark:bg-[#005c4b] rounded-tr-none" 
+                  : "bg-white dark:bg-[#202c33] rounded-tl-none",
                 reactingTo === msg.id && "scale-105 ring-2 ring-[#00a884]/30"
               )}
             >
               {/* Bubble Beak */}
               <div 
                 className={cn(
-                  "absolute top-0 w-3 h-3",
+                  "absolute top-0 w-4 h-4",
                   msg.senderId === user.uid 
-                    ? "-right-2 bg-[#dcf8c6] dark:bg-[#005c4b] [clip-path:polygon(0_0,0_100%,100%_0)]" 
-                    : "-left-2 bg-white dark:bg-[#202c33] [clip-path:polygon(100%_0,100%_100%,0_0)]"
+                    ? "-right-[7px] bg-[#d9fdd3] dark:bg-[#005c4b] [clip-path:polygon(0_0,0_100%,100%_0)]" 
+                    : "-left-[7px] bg-white dark:bg-[#202c33] [clip-path:polygon(100%_0,100%_100%,0_0)]"
                 )}
               />
               {reactingTo === msg.id && (
