@@ -300,7 +300,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'users'));
+    const q = query(collection(db, 'users'), limit(50));
     const unsubscribe = onSnapshot(q, (snap) => {
       setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
     });
@@ -365,7 +365,7 @@ export default function App() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', handleUnload);
     };
-  }, [user]);
+  }, [user?.uid]);
 
   // Seed Data for Zimbabwe Profiles
   useEffect(() => {
@@ -501,7 +501,7 @@ export default function App() {
     if (!user) return;
     const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid), orderBy('updatedAt', 'desc'));
     return onSnapshot(q, (snapshot) => setChats(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat))), (e) => handleFirestoreError(e, OperationType.LIST, 'chats'));
-  }, [user]);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!selectedChat) return;
@@ -567,7 +567,7 @@ export default function App() {
     };
 
     processDelivered();
-  }, [chats, user]);
+  }, [chats, user?.uid]);
 
   if (loading) return (
     <div className="h-screen flex flex-col items-center justify-center bg-white">
@@ -923,7 +923,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
       
       batch.commit().catch(e => console.error("Error updating seen status:", e));
     }
-  }, [messages, chat, user]);
+  }, [messages, chat?.id, user?.uid]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let file = e.target.files?.[0];

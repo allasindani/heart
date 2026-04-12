@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import net from "net";
 import multer from "multer";
 import fs from "fs";
+import compression from "compression";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +56,7 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || (process.env.NODE_ENV === 'production' ? 3005 : 3000);
 
+  app.use(compression());
   app.use(express.json());
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
@@ -78,8 +80,18 @@ async function startServer() {
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { 
+        middlewareMode: true,
+        hmr: false,
+        watch: {
+          usePolling: true,
+          interval: 1000
+        }
+      },
       appType: "spa",
+      optimizeDeps: {
+        include: ['react', 'react-dom', 'lucide-react', 'motion/react', 'firebase/app', 'firebase/auth', 'firebase/firestore']
+      }
     });
     app.use(vite.middlewares);
   } else {
