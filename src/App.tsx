@@ -825,7 +825,10 @@ export default function App() {
                         <img src={chatPhoto} className="w-14 h-14 rounded-full object-cover" alt="Chat" referrerPolicy="no-referrer" />
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-center mb-1">
-                            <h3 className="font-bold text-[#111b21] truncate">{chatName}</h3>
+                            <h3 className="font-bold text-[#111b21] truncate flex items-center gap-1">
+                              {chatName}
+                              {otherUser?.isVerified && <VerifiedBadge size={14} />}
+                            </h3>
                             <span className="text-xs text-[#667781]">{chat.updatedAt?.toDate ? formatWhatsAppTime(chat.updatedAt.toDate()) : ''}</span>
                           </div>
                           <p className="text-[14px] text-[#667781] truncate flex items-center gap-1">
@@ -1321,7 +1324,10 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
               <div className="p-0.5 rounded-full border-2 border-[#00a884]">
                 <img src={s.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} className="w-16 h-16 rounded-full border-2 border-white dark:border-[#111b21]" alt="User" referrerPolicy="no-referrer" />
               </div>
-              <span className="text-xs text-gray-600 dark:text-[#8696a0] truncate w-16 text-center">{s.user?.displayName || "User"}</span>
+              <span className="text-xs text-gray-600 dark:text-[#8696a0] truncate w-16 text-center flex items-center justify-center gap-0.5">
+                {s.user?.displayName || "User"}
+                {s.user?.isVerified && <VerifiedBadge size={10} />}
+              </span>
             </div>
           ))}
         </div>
@@ -1335,7 +1341,10 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
               <button onClick={() => setViewingStatus(null)} className="p-1"><ChevronLeft className="w-6 h-6 text-white" /></button>
               <img src={viewingStatus.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStatus.userId}`} className="w-10 h-10 rounded-full border border-white/20" alt="User" referrerPolicy="no-referrer" />
               <div className="flex-1">
-                <h4 className="text-white font-bold text-sm">{viewingStatus.user?.displayName}</h4>
+                <h4 className="text-white font-bold text-sm flex items-center gap-1">
+                  {viewingStatus.user?.displayName}
+                  {viewingStatus.user?.isVerified && <VerifiedBadge size={14} />}
+                </h4>
                 <p className="text-white/60 text-[10px]">{viewingStatus.createdAt?.toDate ? formatWhatsAppTime(viewingStatus.createdAt.toDate()) : ''}</p>
               </div>
             </div>
@@ -2367,10 +2376,19 @@ const PointsLeaderboard = ({ onBack }: any) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(collection(db, 'users'), orderBy('points', 'desc'), limit(10));
+    const q = query(collection(db, 'users'), where('isVerified', '==', true), orderBy('points', 'desc'), limit(20));
     const unsub = onSnapshot(q, (snap) => {
       setLeaders(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
       setLoading(false);
+    }, (err) => {
+      console.error("Leaderboard error:", err);
+      // Fallback if index is missing
+      const qFallback = query(collection(db, 'users'), orderBy('points', 'desc'), limit(50));
+      onSnapshot(qFallback, (s) => {
+        const filtered = s.docs.map(d => ({ uid: d.id, ...d.data() } as User)).filter(u => u.isVerified);
+        setLeaders(filtered.slice(0, 20));
+        setLoading(false);
+      });
     });
     return unsub;
   }, []);
@@ -2392,7 +2410,10 @@ const PointsLeaderboard = ({ onBack }: any) => {
               </div>
               <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-12 h-12 rounded-full" alt="User" referrerPolicy="no-referrer" />
               <div className="flex-1">
-                <h4 className="font-bold text-[#111b21]">{u.displayName}</h4>
+                <h4 className="font-bold text-[#111b21] flex items-center gap-1">
+                  {u.displayName}
+                  {u.isVerified && <VerifiedBadge size={14} />}
+                </h4>
                 <p className="text-xs text-gray-400">{u.category} Member</p>
               </div>
               <div className="text-right">
@@ -2589,7 +2610,10 @@ const AdminDashboard = ({ user, onBack }: any) => {
                     <div className="flex items-center gap-3">
                       <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-10 h-10 rounded-full" alt="User" referrerPolicy="no-referrer" />
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-bold text-sm truncate dark:text-[#e9edef]">{u.displayName}</h4>
+                        <h4 className="font-bold text-sm truncate dark:text-[#e9edef] flex items-center gap-1">
+                          {u.displayName}
+                          {u.isVerified && <VerifiedBadge size={14} />}
+                        </h4>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">{u.role}</span>
                           <span className="text-[10px] text-[#00a884] font-bold">{u.points} pts</span>
@@ -2878,7 +2902,10 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
             </label>
             {uploading && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 rounded-full flex items-center justify-center"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>}
           </div>
-          <h3 className="mt-4 text-xl font-bold dark:text-[#e9edef]">{firstName} {lastName}</h3>
+          <h3 className="mt-4 text-xl font-bold dark:text-[#e9edef] flex items-center gap-2">
+            {firstName} {lastName}
+            {user.isVerified && <VerifiedBadge size={20} />}
+          </h3>
         </div>
 
         <div className="space-y-6 px-4 pb-8">
