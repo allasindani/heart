@@ -67,13 +67,7 @@ import {
   getDocs,
   writeBatch
 } from 'firebase/firestore';
-import { 
-  ref, 
-  uploadBytes, 
-  uploadBytesResumable,
-  getDownloadURL 
-} from 'firebase/storage';
-import { auth, db, storage } from './firebase';
+import { auth, db } from './firebase';
 import { cn, formatWhatsAppTime } from './lib/utils';
 import { COUNTRIES } from './constants';
 import imageCompression from 'browser-image-compression';
@@ -100,6 +94,20 @@ const compressImage = async (file: File) => {
     }
   }
   return file;
+};
+
+const uploadFileToServer = async (file: File) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch('/api/upload', {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) {
+    throw new Error('Failed to upload file to server');
+  }
+  const data = await response.json();
+  return data.url;
 };
 
 // --- Auth Screen ---
@@ -276,7 +284,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    console.log("Firebase Storage initialized with bucket:", storage.app.options.storageBucket);
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
@@ -854,9 +861,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
     setUploading(true);
     try {
       file = await compressImage(file);
-      const storageRef = ref(storage, `chats/${chat.id}/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
+      const url = await uploadFileToServer(file);
       const type = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file';
       onSendMessage(url, type);
     } catch (error) {
@@ -1109,25 +1114,14 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
       file = await compressImage(file);
       console.log("Compressed size:", file.size);
       
-      const storageRef = ref(storage, `posts/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
-      console.log("Uploading to:", storageRef.fullPath);
-      
-      // Using uploadBytes instead of uploadBytesResumable for simpler, more robust connection
-      const snapshot = await uploadBytes(storageRef, file);
-      console.log("Upload successful, fetching URL...");
-      
-      const url = await getDownloadURL(snapshot.ref);
+      const url = await uploadFileToServer(file);
       console.log("Upload complete, URL:", url);
       
       setPostMedia(url);
       setPostMediaType(file.type.startsWith('image/') ? 'image' : 'video');
     } catch (error: any) {
       console.error("Upload error details:", error);
-      if (error.code === 'storage/retry-limit-exceeded') {
-        alert("Upload timed out. This usually means a network issue or the storage server is unreachable. Please check your internet and try again.");
-      } else {
-        alert("Upload failed: " + (error.message || "Unknown error"));
-      }
+      alert("Upload failed: " + (error.message || "Unknown error"));
     } finally {
       setUploading(false);
     }
@@ -1165,13 +1159,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
       file = await compressImage(file);
       console.log("Compressed size:", file.size);
       
-      const storageRef = ref(storage, `statuses/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
-      console.log("Uploading status to:", storageRef.fullPath);
-      
-      const snapshot = await uploadBytes(storageRef, file);
-      console.log("Status upload successful, fetching URL...");
-      
-      const url = await getDownloadURL(snapshot.ref);
+      const url = await uploadFileToServer(file);
       console.log("Status upload complete, URL:", url);
       
       const type = file.type.startsWith('image/') ? 'image' : 'video';
@@ -1179,11 +1167,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
       alert("Status uploaded successfully!");
     } catch (error: any) {
       console.error("Status upload error details:", error);
-      if (error.code === 'storage/retry-limit-exceeded') {
-        alert("Status upload timed out. Please check your connection and try again.");
-      } else {
-        alert("Status upload failed: " + (error.message || "Unknown error"));
-      }
+      alert("Status upload failed: " + (error.message || "Unknown error"));
     } finally {
       setUploading(false);
     }
@@ -1893,22 +1877,12 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
       const compressedFile = await compressImage(file);
       console.log("Compressed size:", compressedFile.size);
       
-      const storageRef = ref(storage, `ads/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
-      console.log("Uploading ad media to:", storageRef.fullPath);
-      
-      const snapshot = await uploadBytes(storageRef, compressedFile);
-      console.log("Ad media upload successful, fetching URL...");
-      
-      const url = await getDownloadURL(snapshot.ref);
+      const url = await uploadFileToServer(compressedFile);
       console.log("Ad media upload complete, URL:", url);
       setMediaUrl(url);
     } catch (error: any) {
       console.error("Ad media upload error details:", error);
-      if (error.code === 'storage/retry-limit-exceeded') {
-        alert("Ad media upload timed out. Please check your connection and try again.");
-      } else {
-        alert("Upload failed: " + (error.message || "Unknown error"));
-      }
+      alert("Upload failed: " + (error.message || "Unknown error"));
     } finally {
       setUploading(false);
     }
@@ -1932,13 +1906,7 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
         const compressedFile = await compressImage(file);
         console.log("Compressed size:", compressedFile.size);
         
-        const storageRef = ref(storage, `payment_proofs/${user.uid}/ad_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
-        console.log("Uploading ad proof to:", storageRef.fullPath);
-        
-        const snapshot = await uploadBytes(storageRef, compressedFile);
-        console.log("Ad proof upload successful, fetching URL...");
-        
-        const proofUrl = await getDownloadURL(snapshot.ref);
+        const proofUrl = await uploadFileToServer(compressedFile);
         console.log("Ad proof upload complete, URL:", proofUrl);
         
         const totalCost = duration * settings.adPricePerDay;
@@ -1965,11 +1933,7 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
         onBack();
       } catch (error: any) {
         console.error("Ad proof upload error details:", error);
-        if (error.code === 'storage/retry-limit-exceeded') {
-          alert("Ad proof upload timed out. Please check your connection and try again.");
-        } else {
-          alert("Upload failed: " + (error.message || "Unknown error"));
-        }
+        alert("Upload failed: " + (error.message || "Unknown error"));
       } finally {
         setSubmitting(false);
       }
@@ -2102,13 +2066,7 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
         const compressedFile = await compressImage(file);
         console.log("Compressed size:", compressedFile.size);
         
-        const storageRef = ref(storage, `payment_proofs/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
-        console.log("Uploading to:", storageRef.fullPath);
-        
-        const snapshot = await uploadBytes(storageRef, compressedFile);
-        console.log("Tier upload successful, fetching URL...");
-        
-        const url = await getDownloadURL(snapshot.ref);
+        const url = await uploadFileToServer(compressedFile);
         console.log("Upload complete, URL:", url);
         
         await addDoc(collection(db, 'payment_proofs'), {
@@ -2124,11 +2082,7 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
         alert("Upload Complete! Payment proof submitted. Admin will verify and update your tier soon.");
       } catch (error: any) {
         console.error("Tier upload error details:", error);
-        if (error.code === 'storage/retry-limit-exceeded') {
-          alert("Tier proof upload timed out. Please check your connection and try again.");
-        } else {
-          alert("Upload failed: " + (error.message || "Unknown error"));
-        }
+        alert("Upload failed: " + (error.message || "Unknown error"));
       } finally {
         setUploading(false);
       }
@@ -2589,24 +2543,14 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
       const compressedFile = await compressImage(file);
       console.log("Compressed size:", compressedFile.size);
       
-      const storageRef = ref(storage, `profiles/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
-      console.log("Starting upload to:", storageRef.fullPath);
-      
-      const snapshot = await uploadBytes(storageRef, compressedFile);
-      console.log("Profile upload successful, fetching URL...");
-      
-      const url = await getDownloadURL(snapshot.ref);
+      const url = await uploadFileToServer(compressedFile);
       console.log("Profile upload complete, URL:", url);
       
       setPhotoURL(url);
       alert("Photo uploaded successfully! Click Save to persist changes.");
     } catch (error: any) {
       console.error("Profile upload error details:", error);
-      if (error.code === 'storage/retry-limit-exceeded') {
-        alert("Profile photo upload timed out. Please check your connection and try again.");
-      } else {
-        alert("Upload failed: " + (error.message || "Unknown error"));
-      }
+      alert("Upload failed: " + (error.message || "Unknown error"));
     } finally {
       setUploading(false);
     }
