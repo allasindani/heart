@@ -8,7 +8,13 @@ import firebaseConfig from '../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth();
-export const storage = getStorage(app, `gs://${firebaseConfig.storageBucket}`);
+export const storage = getStorage(app);
+
+// Set shorter retry times so we get errors faster instead of "uploading forever"
+storage.maxUploadRetryTime = 30000; // 30 seconds
+storage.maxOperationRetryTime = 30000; // 30 seconds
+
+console.log("Firebase Storage initialized with bucket:", firebaseConfig.storageBucket);
 
 // Validate Connection to Firestore
 async function testConnection() {

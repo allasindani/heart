@@ -1105,33 +1105,30 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
     if (!file) return;
     setUploading(true);
     try {
-      console.log("Starting post file upload:", file.name);
+      console.log("Starting post file upload:", file.name, "Size:", file.size);
       file = await compressImage(file);
+      console.log("Compressed size:", file.size);
+      
       const storageRef = ref(storage, `posts/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
+      console.log("Uploading to:", storageRef.fullPath);
       
-      const uploadTask = uploadBytesResumable(storageRef, file);
+      // Using uploadBytes instead of uploadBytesResumable for simpler, more robust connection
+      const snapshot = await uploadBytes(storageRef, file);
+      console.log("Upload successful, fetching URL...");
       
-      uploadTask.on('state_changed', 
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          console.log('Upload is ' + progress + '% done');
-        }, 
-        (error) => {
-          console.error("Upload task error:", error);
-          alert("Upload failed: " + error.message);
-          setUploading(false);
-        }, 
-        async () => {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          console.log("Upload complete, URL:", url);
-          setPostMedia(url);
-          setPostMediaType(file.type.startsWith('image/') ? 'image' : 'video');
-          setUploading(false);
-        }
-      );
-    } catch (error) {
-      console.error("Upload error:", error);
-      alert("Upload error: " + (error instanceof Error ? error.message : String(error)));
+      const url = await getDownloadURL(snapshot.ref);
+      console.log("Upload complete, URL:", url);
+      
+      setPostMedia(url);
+      setPostMediaType(file.type.startsWith('image/') ? 'image' : 'video');
+    } catch (error: any) {
+      console.error("Upload error details:", error);
+      if (error.code === 'storage/retry-limit-exceeded') {
+        alert("Upload timed out. This usually means a network issue or the storage server is unreachable. Please check your internet and try again.");
+      } else {
+        alert("Upload failed: " + (error.message || "Unknown error"));
+      }
+    } finally {
       setUploading(false);
     }
   };
@@ -1164,34 +1161,30 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
     if (!file) return;
     setUploading(true);
     try {
-      console.log("Starting status file upload:", file.name);
+      console.log("Starting status file upload:", file.name, "Size:", file.size);
       file = await compressImage(file);
+      console.log("Compressed size:", file.size);
+      
       const storageRef = ref(storage, `statuses/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
+      console.log("Uploading status to:", storageRef.fullPath);
       
-      const uploadTask = uploadBytesResumable(storageRef, file);
+      const snapshot = await uploadBytes(storageRef, file);
+      console.log("Status upload successful, fetching URL...");
       
-      uploadTask.on('state_changed', 
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          console.log('Status upload is ' + progress + '% done');
-        }, 
-        (error) => {
-          console.error("Status upload task error:", error);
-          alert("Status upload failed: " + error.message);
-          setUploading(false);
-        }, 
-        async () => {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          console.log("Status upload complete, URL:", url);
-          const type = file.type.startsWith('image/') ? 'image' : 'video';
-          await handleCreateStatus(url, type);
-          alert("Status uploaded successfully!");
-          setUploading(false);
-        }
-      );
-    } catch (error) {
-      console.error("Status upload error:", error);
-      alert("Status upload error: " + (error instanceof Error ? error.message : String(error)));
+      const url = await getDownloadURL(snapshot.ref);
+      console.log("Status upload complete, URL:", url);
+      
+      const type = file.type.startsWith('image/') ? 'image' : 'video';
+      await handleCreateStatus(url, type);
+      alert("Status uploaded successfully!");
+    } catch (error: any) {
+      console.error("Status upload error details:", error);
+      if (error.code === 'storage/retry-limit-exceeded') {
+        alert("Status upload timed out. Please check your connection and try again.");
+      } else {
+        alert("Status upload failed: " + (error.message || "Unknown error"));
+      }
+    } finally {
       setUploading(false);
     }
   };
@@ -1896,32 +1889,27 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
     if (!file) return;
     setUploading(true);
     try {
-      console.log("Starting ad media upload:", file.name);
+      console.log("Starting ad media upload:", file.name, "Size:", file.size);
       const compressedFile = await compressImage(file);
+      console.log("Compressed size:", compressedFile.size);
+      
       const storageRef = ref(storage, `ads/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
+      console.log("Uploading ad media to:", storageRef.fullPath);
       
-      const uploadTask = uploadBytesResumable(storageRef, compressedFile);
+      const snapshot = await uploadBytes(storageRef, compressedFile);
+      console.log("Ad media upload successful, fetching URL...");
       
-      uploadTask.on('state_changed', 
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          console.log('Ad media upload is ' + progress + '% done');
-        }, 
-        (error) => {
-          console.error("Ad media upload task error:", error);
-          alert("Ad media upload failed: " + error.message);
-          setUploading(false);
-        }, 
-        async () => {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          console.log("Ad media upload complete, URL:", url);
-          setMediaUrl(url);
-          setUploading(false);
-        }
-      );
-    } catch (error) {
-      console.error("Upload error:", error);
-      alert("Upload failed: " + (error instanceof Error ? error.message : String(error)));
+      const url = await getDownloadURL(snapshot.ref);
+      console.log("Ad media upload complete, URL:", url);
+      setMediaUrl(url);
+    } catch (error: any) {
+      console.error("Ad media upload error details:", error);
+      if (error.code === 'storage/retry-limit-exceeded') {
+        alert("Ad media upload timed out. Please check your connection and try again.");
+      } else {
+        alert("Upload failed: " + (error.message || "Unknown error"));
+      }
+    } finally {
       setUploading(false);
     }
   };
@@ -1940,57 +1928,49 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
       if (!file) return;
       setSubmitting(true);
       try {
-        console.log("Starting ad proof upload:", file.name);
+        console.log("Starting ad proof upload:", file.name, "Size:", file.size);
         const compressedFile = await compressImage(file);
-        console.log("Compression complete. Original size:", file.size, "Compressed size:", compressedFile.size);
+        console.log("Compressed size:", compressedFile.size);
         
         const storageRef = ref(storage, `payment_proofs/${user.uid}/ad_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
-        console.log("Uploading to:", storageRef.fullPath);
+        console.log("Uploading ad proof to:", storageRef.fullPath);
         
-        const uploadTask = uploadBytesResumable(storageRef, compressedFile);
+        const snapshot = await uploadBytes(storageRef, compressedFile);
+        console.log("Ad proof upload successful, fetching URL...");
         
-        uploadTask.on('state_changed', 
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            console.log('Ad proof upload is ' + progress + '% done');
-          }, 
-          (error) => {
-            console.error("Ad proof upload task error:", error);
-            alert("Ad proof upload failed: " + error.message);
-            setSubmitting(false);
-          }, 
-          async () => {
-            const proofUrl = await getDownloadURL(uploadTask.snapshot.ref);
-            console.log("Ad proof upload complete, URL:", proofUrl);
-            
-            const totalCost = duration * settings.adPricePerDay;
-            
-            await addDoc(collection(db, 'payment_proofs'), {
-              userId: user.uid,
-              userName: user.displayName,
-              type: 'ad',
-              tier: 'Ad Campaign',
-              amount: totalCost,
-              proofUrl,
-              status: 'pending',
-              adData: {
-                content,
-                link,
-                duration,
-                mediaUrl,
-                cost: totalCost
-              },
-              timestamp: serverTimestamp()
-            });
-            
-            alert("Upload Complete! Ad submission and payment proof sent! Admin will review and publish your ad soon.");
-            setSubmitting(false);
-            onBack();
-          }
-        );
-      } catch (error) {
-        console.error("Error submitting ad:", error);
-        alert(`Failed to submit ad: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
+        const proofUrl = await getDownloadURL(snapshot.ref);
+        console.log("Ad proof upload complete, URL:", proofUrl);
+        
+        const totalCost = duration * settings.adPricePerDay;
+        
+        await addDoc(collection(db, 'payment_proofs'), {
+          userId: user.uid,
+          userName: user.displayName,
+          type: 'ad',
+          tier: 'Ad Campaign',
+          amount: totalCost,
+          proofUrl,
+          status: 'pending',
+          adData: {
+            content,
+            link,
+            duration,
+            mediaUrl,
+            cost: totalCost
+          },
+          timestamp: serverTimestamp()
+        });
+        
+        alert("Upload Complete! Ad submission and payment proof sent! Admin will review and publish your ad soon.");
+        onBack();
+      } catch (error: any) {
+        console.error("Ad proof upload error details:", error);
+        if (error.code === 'storage/retry-limit-exceeded') {
+          alert("Ad proof upload timed out. Please check your connection and try again.");
+        } else {
+          alert("Upload failed: " + (error.message || "Unknown error"));
+        }
+      } finally {
         setSubmitting(false);
       }
     };
@@ -2118,46 +2098,38 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
       if (!file) return;
       setUploading(true);
       try {
-        console.log("Starting upload for tier:", tier.name);
+        console.log("Starting upload for tier:", tier.name, "Size:", file.size);
         const compressedFile = await compressImage(file);
-        console.log("Compression complete. Original size:", file.size, "Compressed size:", compressedFile.size);
+        console.log("Compressed size:", compressedFile.size);
         
         const storageRef = ref(storage, `payment_proofs/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
         console.log("Uploading to:", storageRef.fullPath);
         
-        const uploadTask = uploadBytesResumable(storageRef, compressedFile);
+        const snapshot = await uploadBytes(storageRef, compressedFile);
+        console.log("Tier upload successful, fetching URL...");
         
-        uploadTask.on('state_changed', 
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            console.log('Tier upload is ' + progress + '% done');
-          }, 
-          (error) => {
-            console.error("Tier upload task error:", error);
-            alert("Upload failed: " + error.message);
-            setUploading(false);
-          }, 
-          async () => {
-            const url = await getDownloadURL(uploadTask.snapshot.ref);
-            console.log("Upload complete, URL:", url);
-            
-            await addDoc(collection(db, 'payment_proofs'), {
-              userId: user.uid,
-              userName: user.displayName,
-              tier: tier.name,
-              amount: settings.tierPrices[tier.name],
-              proofUrl: url,
-              status: 'pending',
-              timestamp: serverTimestamp()
-            });
-            
-            alert("Upload Complete! Payment proof submitted. Admin will verify and update your tier soon.");
-            setUploading(false);
-          }
-        );
-      } catch (error) {
-        console.error("Error submitting proof:", error);
-        alert(`Failed to submit proof: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
+        const url = await getDownloadURL(snapshot.ref);
+        console.log("Upload complete, URL:", url);
+        
+        await addDoc(collection(db, 'payment_proofs'), {
+          userId: user.uid,
+          userName: user.displayName,
+          tier: tier.name,
+          amount: settings.tierPrices[tier.name],
+          proofUrl: url,
+          status: 'pending',
+          timestamp: serverTimestamp()
+        });
+        
+        alert("Upload Complete! Payment proof submitted. Admin will verify and update your tier soon.");
+      } catch (error: any) {
+        console.error("Tier upload error details:", error);
+        if (error.code === 'storage/retry-limit-exceeded') {
+          alert("Tier proof upload timed out. Please check your connection and try again.");
+        } else {
+          alert("Upload failed: " + (error.message || "Unknown error"));
+        }
+      } finally {
         setUploading(false);
       }
     };
@@ -2613,34 +2585,29 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
   const compressAndUpload = async (file: File) => {
     setUploading(true);
     try {
-      console.log("Starting profile photo upload:", file.name);
+      console.log("Starting profile photo upload:", file.name, "Size:", file.size);
       const compressedFile = await compressImage(file);
+      console.log("Compressed size:", compressedFile.size);
+      
       const storageRef = ref(storage, `profiles/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
       console.log("Starting upload to:", storageRef.fullPath);
       
-      const uploadTask = uploadBytesResumable(storageRef, compressedFile);
+      const snapshot = await uploadBytes(storageRef, compressedFile);
+      console.log("Profile upload successful, fetching URL...");
       
-      uploadTask.on('state_changed', 
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          console.log('Profile upload is ' + progress + '% done');
-        }, 
-        (error) => {
-          console.error("Profile upload task error:", error);
-          alert("Profile upload failed: " + error.message);
-          setUploading(false);
-        }, 
-        async () => {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          console.log("Profile upload complete, URL:", url);
-          setPhotoURL(url);
-          alert("Photo uploaded successfully! Click Save to persist changes.");
-          setUploading(false);
-        }
-      );
-    } catch (error) {
-      console.error("Upload error:", error);
-      alert("Upload failed: " + (error instanceof Error ? error.message : String(error)));
+      const url = await getDownloadURL(snapshot.ref);
+      console.log("Profile upload complete, URL:", url);
+      
+      setPhotoURL(url);
+      alert("Photo uploaded successfully! Click Save to persist changes.");
+    } catch (error: any) {
+      console.error("Profile upload error details:", error);
+      if (error.code === 'storage/retry-limit-exceeded') {
+        alert("Profile photo upload timed out. Please check your connection and try again.");
+      } else {
+        alert("Upload failed: " + (error.message || "Unknown error"));
+      }
+    } finally {
       setUploading(false);
     }
   };
