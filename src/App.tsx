@@ -70,6 +70,7 @@ import {
 import { 
   ref, 
   uploadBytes, 
+  uploadBytesResumable,
   getDownloadURL 
 } from 'firebase/storage';
 import { auth, db, storage } from './firebase';
@@ -275,6 +276,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    console.log("Firebase Storage initialized with bucket:", storage.app.options.storageBucket);
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
@@ -1103,15 +1105,33 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
     if (!file) return;
     setUploading(true);
     try {
+      console.log("Starting post file upload:", file.name);
       file = await compressImage(file);
-      const storageRef = ref(storage, `posts/${user.uid}/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      setPostMedia(url);
-      setPostMediaType(file.type.startsWith('image/') ? 'image' : 'video');
+      const storageRef = ref(storage, `posts/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
+      
+      const uploadTask = uploadBytesResumable(storageRef, file);
+      
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          console.log('Upload is ' + progress + '% done');
+        }, 
+        (error) => {
+          console.error("Upload task error:", error);
+          alert("Upload failed: " + error.message);
+          setUploading(false);
+        }, 
+        async () => {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          console.log("Upload complete, URL:", url);
+          setPostMedia(url);
+          setPostMediaType(file.type.startsWith('image/') ? 'image' : 'video');
+          setUploading(false);
+        }
+      );
     } catch (error) {
       console.error("Upload error:", error);
-    } finally {
+      alert("Upload error: " + (error instanceof Error ? error.message : String(error)));
       setUploading(false);
     }
   };
@@ -1144,16 +1164,34 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
     if (!file) return;
     setUploading(true);
     try {
+      console.log("Starting status file upload:", file.name);
       file = await compressImage(file);
-      const storageRef = ref(storage, `statuses/${user.uid}/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      const type = file.type.startsWith('image/') ? 'image' : 'video';
-      await handleCreateStatus(url, type);
-      alert("Status uploaded successfully!");
+      const storageRef = ref(storage, `statuses/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
+      
+      const uploadTask = uploadBytesResumable(storageRef, file);
+      
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          console.log('Status upload is ' + progress + '% done');
+        }, 
+        (error) => {
+          console.error("Status upload task error:", error);
+          alert("Status upload failed: " + error.message);
+          setUploading(false);
+        }, 
+        async () => {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          console.log("Status upload complete, URL:", url);
+          const type = file.type.startsWith('image/') ? 'image' : 'video';
+          await handleCreateStatus(url, type);
+          alert("Status uploaded successfully!");
+          setUploading(false);
+        }
+      );
     } catch (error) {
-      console.error("Upload error:", error);
-    } finally {
+      console.error("Status upload error:", error);
+      alert("Status upload error: " + (error instanceof Error ? error.message : String(error)));
       setUploading(false);
     }
   };
@@ -1858,15 +1896,32 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
     if (!file) return;
     setUploading(true);
     try {
+      console.log("Starting ad media upload:", file.name);
       const compressedFile = await compressImage(file);
-      const storageRef = ref(storage, `ads/${user.uid}/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, compressedFile);
-      const url = await getDownloadURL(storageRef);
-      setMediaUrl(url);
+      const storageRef = ref(storage, `ads/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
+      
+      const uploadTask = uploadBytesResumable(storageRef, compressedFile);
+      
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          console.log('Ad media upload is ' + progress + '% done');
+        }, 
+        (error) => {
+          console.error("Ad media upload task error:", error);
+          alert("Ad media upload failed: " + error.message);
+          setUploading(false);
+        }, 
+        async () => {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          console.log("Ad media upload complete, URL:", url);
+          setMediaUrl(url);
+          setUploading(false);
+        }
+      );
     } catch (error) {
       console.error("Upload error:", error);
-      alert("Failed to upload image.");
-    } finally {
+      alert("Upload failed: " + (error instanceof Error ? error.message : String(error)));
       setUploading(false);
     }
   };
@@ -1885,43 +1940,57 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
       if (!file) return;
       setSubmitting(true);
       try {
-        console.log("Starting ad proof upload");
+        console.log("Starting ad proof upload:", file.name);
         const compressedFile = await compressImage(file);
         console.log("Compression complete. Original size:", file.size, "Compressed size:", compressedFile.size);
         
-        const storageRef = ref(storage, `payment_proofs/${user.uid}/ad_${Date.now()}_${file.name}`);
+        const storageRef = ref(storage, `payment_proofs/${user.uid}/ad_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
         console.log("Uploading to:", storageRef.fullPath);
         
-        await uploadBytes(storageRef, compressedFile);
-        console.log("Upload complete. Fetching URL...");
-        const proofUrl = await getDownloadURL(storageRef);
+        const uploadTask = uploadBytesResumable(storageRef, compressedFile);
         
-        const totalCost = duration * settings.adPricePerDay;
-        
-        await addDoc(collection(db, 'payment_proofs'), {
-          userId: user.uid,
-          userName: user.displayName,
-          type: 'ad',
-          tier: 'Ad Campaign',
-          amount: totalCost,
-          proofUrl,
-          status: 'pending',
-          adData: {
-            content,
-            link,
-            duration,
-            mediaUrl,
-            cost: totalCost
-          },
-          timestamp: serverTimestamp()
-        });
-        
-        alert("Upload Complete! Ad submission and payment proof sent! Admin will review and publish your ad soon.");
-        onBack();
+        uploadTask.on('state_changed', 
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            console.log('Ad proof upload is ' + progress + '% done');
+          }, 
+          (error) => {
+            console.error("Ad proof upload task error:", error);
+            alert("Ad proof upload failed: " + error.message);
+            setSubmitting(false);
+          }, 
+          async () => {
+            const proofUrl = await getDownloadURL(uploadTask.snapshot.ref);
+            console.log("Ad proof upload complete, URL:", proofUrl);
+            
+            const totalCost = duration * settings.adPricePerDay;
+            
+            await addDoc(collection(db, 'payment_proofs'), {
+              userId: user.uid,
+              userName: user.displayName,
+              type: 'ad',
+              tier: 'Ad Campaign',
+              amount: totalCost,
+              proofUrl,
+              status: 'pending',
+              adData: {
+                content,
+                link,
+                duration,
+                mediaUrl,
+                cost: totalCost
+              },
+              timestamp: serverTimestamp()
+            });
+            
+            alert("Upload Complete! Ad submission and payment proof sent! Admin will review and publish your ad soon.");
+            setSubmitting(false);
+            onBack();
+          }
+        );
       } catch (error) {
         console.error("Error submitting ad:", error);
         alert(`Failed to submit ad: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
-      } finally {
         setSubmitting(false);
       }
     };
@@ -2053,28 +2122,42 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
         const compressedFile = await compressImage(file);
         console.log("Compression complete. Original size:", file.size, "Compressed size:", compressedFile.size);
         
-        const storageRef = ref(storage, `payment_proofs/${user.uid}/${Date.now()}_${file.name}`);
+        const storageRef = ref(storage, `payment_proofs/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
         console.log("Uploading to:", storageRef.fullPath);
         
-        await uploadBytes(storageRef, compressedFile);
-        console.log("Upload complete. Fetching URL...");
-        const url = await getDownloadURL(storageRef);
+        const uploadTask = uploadBytesResumable(storageRef, compressedFile);
         
-        await addDoc(collection(db, 'payment_proofs'), {
-          userId: user.uid,
-          userName: user.displayName,
-          tier: tier.name,
-          amount: settings.tierPrices[tier.name],
-          proofUrl: url,
-          status: 'pending',
-          timestamp: serverTimestamp()
-        });
-        
-        alert("Upload Complete! Payment proof submitted. Admin will verify and update your tier soon.");
+        uploadTask.on('state_changed', 
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            console.log('Tier upload is ' + progress + '% done');
+          }, 
+          (error) => {
+            console.error("Tier upload task error:", error);
+            alert("Upload failed: " + error.message);
+            setUploading(false);
+          }, 
+          async () => {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            console.log("Upload complete, URL:", url);
+            
+            await addDoc(collection(db, 'payment_proofs'), {
+              userId: user.uid,
+              userName: user.displayName,
+              tier: tier.name,
+              amount: settings.tierPrices[tier.name],
+              proofUrl: url,
+              status: 'pending',
+              timestamp: serverTimestamp()
+            });
+            
+            alert("Upload Complete! Payment proof submitted. Admin will verify and update your tier soon.");
+            setUploading(false);
+          }
+        );
       } catch (error) {
         console.error("Error submitting proof:", error);
         alert(`Failed to submit proof: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
-      } finally {
         setUploading(false);
       }
     };
@@ -2530,18 +2613,34 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
   const compressAndUpload = async (file: File) => {
     setUploading(true);
     try {
+      console.log("Starting profile photo upload:", file.name);
       const compressedFile = await compressImage(file);
-      const storageRef = ref(storage, `profiles/${user.uid}/${Date.now()}_${file.name}`);
+      const storageRef = ref(storage, `profiles/${user.uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
       console.log("Starting upload to:", storageRef.fullPath);
-      await uploadBytes(storageRef, compressedFile);
-      const url = await getDownloadURL(storageRef);
-      console.log("Upload complete, URL:", url);
-      setPhotoURL(url);
-      alert("Photo uploaded successfully! Click Save to persist changes.");
+      
+      const uploadTask = uploadBytesResumable(storageRef, compressedFile);
+      
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          console.log('Profile upload is ' + progress + '% done');
+        }, 
+        (error) => {
+          console.error("Profile upload task error:", error);
+          alert("Profile upload failed: " + error.message);
+          setUploading(false);
+        }, 
+        async () => {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          console.log("Profile upload complete, URL:", url);
+          setPhotoURL(url);
+          alert("Photo uploaded successfully! Click Save to persist changes.");
+          setUploading(false);
+        }
+      );
     } catch (error) {
       console.error("Upload error:", error);
-      alert("Upload failed. Please try again.");
-    } finally {
+      alert("Upload failed: " + (error instanceof Error ? error.message : String(error)));
       setUploading(false);
     }
   };
