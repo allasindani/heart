@@ -53,7 +53,7 @@ async function getAvailablePort(startPort: number): Promise<number> {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3005;
+  const PORT = 3000;
 
   app.use(express.json());
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));

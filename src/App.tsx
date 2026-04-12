@@ -307,14 +307,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, 'users'));
-    const unsubscribe = onSnapshot(q, (snap) => {
-      setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
-    });
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
