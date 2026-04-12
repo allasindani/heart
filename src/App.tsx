@@ -224,6 +224,7 @@ const AuthScreen = () => {
 };
 
 export default function App() {
+  console.log("App component rendering...");
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);

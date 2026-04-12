@@ -53,7 +53,7 @@ async function getAvailablePort(startPort: number): Promise<number> {
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = Number(process.env.PORT) || (process.env.NODE_ENV === 'production' ? 3005 : 3000);
 
   app.use(express.json());
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
@@ -94,6 +94,7 @@ async function startServer() {
     console.log(`Server started successfully`);
     console.log(`Listening on port: ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Vite Dev Mode: ${process.env.NODE_ENV !== "production"}`);
   });
 }
 
