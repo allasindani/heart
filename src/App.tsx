@@ -79,6 +79,10 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   console.error('Firestore Error: ', JSON.stringify({ error: error instanceof Error ? error.message : String(error), operationType, path }));
 }
 
+const VerifiedBadge = ({ size = 14 }: { size?: number }) => (
+  <ShieldCheck className="text-blue-500 fill-blue-500/10" style={{ width: size, height: size }} />
+);
+
 const compressImage = async (file: File) => {
   if (file.size > 0.5 * 1024 * 1024 && file.type.startsWith('image/')) {
     const options = {
@@ -96,18 +100,28 @@ const compressImage = async (file: File) => {
   return file;
 };
 
-const uploadFileToServer = async (file: File) => {
-  const formData = new FormData();
-  formData.append('file', file);
-  const response = await fetch('/api/upload', {
-    method: 'POST',
-    body: formData,
+const uploadFileToServer = (file: File, onProgress?: (progress: number) => void) => {
+  return new Promise<string>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        onProgress?.(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        const data = JSON.parse(xhr.responseText);
+        resolve(data.url);
+      } else {
+        reject(new Error('Failed to upload file to server'));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Network error during upload'));
+    const formData = new FormData();
+    formData.append('file', file);
+    xhr.send(formData);
   });
-  if (!response.ok) {
-    throw new Error('Failed to upload file to server');
-  }
-  const data = await response.json();
-  return data.url;
 };
 
 // --- Auth Screen ---
@@ -226,6 +240,10 @@ export default function App() {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showCreateAd, setShowCreateAd] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [adContent, setAdContent] = useState('');
+  const [adMediaUrl, setAdMediaUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [backPressCount, setBackPressCount] = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
@@ -262,7 +280,7 @@ export default function App() {
   }, [darkMode]);
 
   const awardPoints = async (amount: number) => {
-    if (!user) return;
+    if (!user || !user.isVerified) return;
     try {
       const userRef = doc(db, 'users', user.uid);
       const { increment } = await import('firebase/firestore');
@@ -306,6 +324,10 @@ export default function App() {
         let userData: User;
         if (userSnap.exists()) {
           userData = { uid: firebaseUser.uid, ...userSnap.data() } as User;
+          // Update online status
+          await updateDoc(userDocRef, { isOnline: true, lastSeen: serverTimestamp() });
+          userData.isOnline = true;
+          
           // Set default dating filters based on gender
           if (userData.datingProfile?.gender) {
             setDatingFilters(prev => ({
@@ -333,6 +355,24 @@ export default function App() {
     });
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const userDocRef = doc(db, 'users', user.uid);
+    const handleVisibilityChange = () => {
+      const isOnline = document.visibilityState === 'visible';
+      updateDoc(userDocRef, { isOnline, lastSeen: serverTimestamp() });
+    };
+    const handleUnload = () => {
+      updateDoc(userDocRef, { isOnline: false, lastSeen: serverTimestamp() });
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleUnload);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleUnload);
+    };
+  }, [user]);
 
   // Seed Data for Zimbabwe Profiles
   useEffect(() => {
@@ -624,6 +664,15 @@ export default function App() {
 
   return (
     <div className="h-screen bg-white flex flex-col overflow-hidden max-w-md mx-auto shadow-2xl border-x border-gray-200 relative">
+      {uploading && (
+        <div className="fixed top-0 left-0 right-0 z-[1000] h-1 bg-gray-100 dark:bg-gray-800">
+          <motion.div 
+            initial={{ width: 0 }}
+            animate={{ width: `${uploadProgress}%` }}
+            className="h-full bg-[#00a884] shadow-[0_0_10px_#00a884]"
+          />
+        </div>
+      )}
       {selectedChat ? (
         <div className="absolute inset-0 z-50 bg-[#efeae2] flex flex-col">
           <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} />
@@ -671,7 +720,13 @@ export default function App() {
         </div>
       ) : showCreateAd ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
-          <CreateAd user={user} onBack={() => setShowCreateAd(false)} settings={appSettings} />
+          <CreateAd 
+            user={user} 
+            onBack={() => { setShowCreateAd(false); setAdContent(''); setAdMediaUrl(''); }} 
+            settings={appSettings} 
+            initialContent={adContent}
+            initialMediaUrl={adMediaUrl}
+          />
         </div>
       ) : showLeaderboard ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
@@ -790,8 +845,8 @@ export default function App() {
                 )}
               </div>
             )}
-            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} appSettings={appSettings} showStatusModal={showStatusModal} setShowStatusModal={setShowStatusModal} setShowCreateAd={setShowCreateAd} />}
-            {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} />}
+            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} appSettings={appSettings} showStatusModal={showStatusModal} setShowStatusModal={setShowStatusModal} setShowCreateAd={setShowCreateAd} setAdContent={setAdContent} setAdMediaUrl={setAdMediaUrl} setUploading={setUploading} setUploadProgress={setUploadProgress} setUser={setUser} uploading={uploading} />}
+            {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} setUser={setUser} />}
           </div>
 
           {/* Floating Action Button */}
@@ -917,8 +972,20 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <img src={otherUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`} className="w-10 h-10 rounded-full" alt="Chat" referrerPolicy="no-referrer" />
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold truncate">{otherUser?.displayName || chat.groupName || "Chat"}</h3>
-          <p className="text-xs opacity-80">{otherUser?.isOnline ? 'online' : 'offline'}</p>
+          <h3 className="font-bold truncate flex items-center gap-1">
+            {otherUser?.displayName || chat.groupName || "Chat"}
+            {otherUser?.isVerified && <VerifiedBadge size={14} />}
+          </h3>
+          <p className="text-[10px] opacity-80 flex items-center gap-1">
+            {otherUser?.isOnline ? (
+              <>
+                <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                online
+              </>
+            ) : (
+              otherUser?.lastSeen?.toDate ? `last seen ${formatWhatsAppTime(otherUser.lastSeen.toDate())}` : 'offline'
+            )}
+          </p>
         </div>
         <div className="flex gap-5 mr-2">
           <Video className="w-6 h-6" />
@@ -940,11 +1007,20 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
               onTouchStart={() => startLongPress(msg.id)}
               onTouchEnd={endLongPress}
               className={cn(
-                "max-w-[85%] p-2 px-3 rounded-lg shadow-sm relative min-w-[80px] transition-all",
+                "max-w-[85%] p-2 px-3 rounded-xl shadow-sm relative min-w-[80px] transition-all",
                 msg.senderId === user.uid ? "bg-[#dcf8c6] dark:bg-[#005c4b] rounded-tr-none" : "bg-white dark:bg-[#202c33] rounded-tl-none",
                 reactingTo === msg.id && "scale-105 ring-2 ring-[#00a884]/30"
               )}
             >
+              {/* Bubble Beak */}
+              <div 
+                className={cn(
+                  "absolute top-0 w-3 h-3",
+                  msg.senderId === user.uid 
+                    ? "-right-2 bg-[#dcf8c6] dark:bg-[#005c4b] [clip-path:polygon(0_0,0_100%,100%_0)]" 
+                    : "-left-2 bg-white dark:bg-[#202c33] [clip-path:polygon(100%_0,100%_100%,0_0)]"
+                )}
+              />
               {reactingTo === msg.id && (
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }}
@@ -1012,14 +1088,13 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
   );
 };
 
-const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, setShowCreateAd }: any) => {
+const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, setUser, uploading }: any) => {
   const [newPost, setNewPost] = useState('');
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
   const [viewingStatus, setViewingStatus] = useState<any>(null);
   const [statusText, setStatusText] = useState('');
   const [statusDuration, setStatusDuration] = useState('24h');
-  const [uploading, setUploading] = useState(false);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [editContent, setEditContent] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1107,16 +1182,26 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
 
   const handlePost = async () => {
     if (!newPost.trim() && !postMedia) return;
+    
+    const hashtags = newPost.match(/#\w+/g) || [];
+    const isReel = postMediaType === 'video';
+
     await addDoc(collection(db, 'posts'), { 
       userId: user.uid, 
       content: newPost, 
       media: postMedia ? [postMedia] : [],
       mediaType: postMediaType,
       likes: [], 
+      hashtags,
+      isReel,
       commentCount: 0,
       createdAt: serverTimestamp(), 
       isAd: false, 
-      user: { displayName: user.displayName, photoURL: user.photoURL } 
+      user: { 
+        displayName: user.displayName, 
+        photoURL: user.photoURL,
+        isVerified: user.isVerified || false
+      } 
     });
     setNewPost('');
     setPostMedia(null);
@@ -1127,22 +1212,37 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
   const handlePostFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let file = e.target.files?.[0];
     if (!file) return;
+
+    const limits = {
+      General: 3,
+      Bronze: 5,
+      Silver: 10,
+      Gold: Infinity,
+      Platinum: Infinity
+    };
+    const currentLimit = limits[user.category as keyof typeof limits] || limits.General;
+    if ((user.uploadCount || 0) >= currentLimit) {
+      alert(`You have reached your upload limit for ${user.category} tier. Please upgrade to upload more media!`);
+      return;
+    }
+
     setUploading(true);
+    setUploadProgress(0);
     try {
-      console.log("Starting post file upload:", file.name, "Size:", file.size);
       file = await compressImage(file);
-      console.log("Compressed size:", file.size);
-      
-      const url = await uploadFileToServer(file);
-      console.log("Upload complete, URL:", url);
-      
+      const url = await uploadFileToServer(file, (p) => setUploadProgress(p));
       setPostMedia(url);
       setPostMediaType(file.type.startsWith('image/') ? 'image' : 'video');
+      
+      const userDocRef = doc(db, 'users', user.uid);
+      const { increment } = await import('firebase/firestore');
+      await updateDoc(userDocRef, { uploadCount: increment(1) });
+      setUser(prev => prev ? { ...prev, uploadCount: (prev.uploadCount || 0) + 1 } : null);
     } catch (error: any) {
-      console.error("Upload error details:", error);
       alert("Upload failed: " + (error.message || "Unknown error"));
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -1173,22 +1273,18 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
     let file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setUploadProgress(0);
     try {
-      console.log("Starting status file upload:", file.name, "Size:", file.size);
       file = await compressImage(file);
-      console.log("Compressed size:", file.size);
-      
-      const url = await uploadFileToServer(file);
-      console.log("Status upload complete, URL:", url);
-      
+      const url = await uploadFileToServer(file, (p) => setUploadProgress(p));
       const type = file.type.startsWith('image/') ? 'image' : 'video';
       await handleCreateStatus(url, type);
       alert("Status uploaded successfully!");
     } catch (error: any) {
-      console.error("Status upload error details:", error);
       alert("Status upload failed: " + (error.message || "Unknown error"));
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -1356,7 +1452,10 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
             <div className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => onUserClick({ uid: post.userId, displayName: post.user?.displayName, photoURL: post.user?.photoURL })}>
               <img src={post.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-10 h-10 rounded-full" alt="User" referrerPolicy="no-referrer" />
               <div>
-                <h4 className="font-bold text-[#111b21] dark:text-[#e9edef] text-[15px]">{post.user?.displayName}</h4>
+                <h4 className="font-bold text-[#111b21] dark:text-[#e9edef] text-[15px] flex items-center gap-1">
+                  {post.user?.displayName}
+                  {post.user?.isVerified && <VerifiedBadge />}
+                </h4>
                 <p className="text-[11px] text-[#667781] dark:text-[#8696a0]">{post.createdAt?.toDate ? formatWhatsAppTime(post.createdAt.toDate()) : ''}</p>
               </div>
               {post.isAd && <span className="ml-auto bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Sponsored</span>}
@@ -1372,13 +1471,20 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
               )}
             </div>
             <div className="px-4 pb-4 text-[15px] text-[#111b21] dark:text-[#e9edef] leading-relaxed">
-              {post.content}
+              <div className="whitespace-pre-wrap">
+                {post.content.split(/(\s+)/).map((word: string, i: number) => {
+                  if (word.startsWith('#')) {
+                    return <span key={i} className="text-[#00a884] font-bold cursor-pointer hover:underline">{word}</span>;
+                  }
+                  return word;
+                })}
+              </div>
               {post.media?.[0] && (
-                <div className="mt-3">
+                <div className={cn("mt-3 overflow-hidden rounded-xl bg-black", post.isReel && "aspect-[9/16] max-h-[500px] flex items-center justify-center")}>
                   {post.mediaType === 'video' ? (
-                    <video src={post.media[0]} controls className="w-full rounded-xl" />
+                    <video src={post.media[0]} controls className={cn("w-full h-full", post.isReel ? "object-contain" : "object-cover")} autoPlay={post.isReel} muted={post.isReel} loop={post.isReel} />
                   ) : (
-                    <img src={post.media[0]} className="w-full rounded-xl" alt="Post media" referrerPolicy="no-referrer" />
+                    <img src={post.media[0]} className="w-full h-full object-cover" alt="Post media" referrerPolicy="no-referrer" />
                   )}
                 </div>
               )}
@@ -1420,6 +1526,19 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
                 <Share2 className="w-5 h-5" />
                 <span>Share</span>
               </button>
+              {post.userId === user.uid && !post.isAd && (
+                <button 
+                  onClick={() => {
+                    setAdContent(post.content);
+                    setAdMediaUrl(post.media?.[0] || '');
+                    setShowCreateAd(true);
+                  }}
+                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-blue-500"
+                >
+                  <Megaphone className="w-5 h-5" />
+                  <span>Boost</span>
+                </button>
+              )}
               {post.userId === user.uid && !post.isAd && (
                 <button 
                   onClick={() => setShowCreateAd(true)}
@@ -1495,7 +1614,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
   );
 };
 
-const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, onOpenProfile }: any) => {
+const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, onOpenProfile, setUser }: any) => {
   const [discoverUsers, setDiscoverUsers] = useState<User[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -1566,8 +1685,31 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
     if (currentIndex < discoverUsers.length - 1) {
       setCurrentIndex(prev => prev + 1);
     } else {
-      setCurrentIndex(0); // Loop back for demo
+      setCurrentIndex(0);
     }
+  };
+
+  const handleLike = async () => {
+    if (!user) return;
+    
+    const limits = {
+      General: 1,
+      Bronze: 3,
+      Silver: 10,
+      Gold: Infinity,
+      Platinum: Infinity
+    };
+    const currentLimit = limits[user.category as keyof typeof limits] || limits.General;
+    if ((user.matchCount || 0) >= currentLimit) {
+      alert(`You have reached your match limit for ${user.category} tier. Please upgrade to match with more people!`);
+      return;
+    }
+
+    const userDocRef = doc(db, 'users', user.uid);
+    const { increment } = await import('firebase/firestore');
+    await updateDoc(userDocRef, { matchCount: increment(1) });
+    setUser(prev => prev ? { ...prev, matchCount: (prev.matchCount || 0) + 1 } : null);
+    handleNext();
   };
 
   if (loading) return <div className="flex-1 flex items-center justify-center"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>;
@@ -1675,7 +1817,10 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
               <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-2xl font-bold">{currentUser.displayName}, {currentUser.datingProfile?.age}</h3>
+                <h3 className="text-2xl font-bold flex items-center gap-1">
+                  {currentUser.displayName}, {currentUser.datingProfile?.age}
+                  {currentUser.isVerified && <VerifiedBadge size={20} />}
+                </h3>
                 {currentUser.isOnline && (
                   <div className="w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white shadow-sm animate-pulse"></div>
                 )}
@@ -1698,7 +1843,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
           <div className="p-6 flex justify-center gap-10 bg-white dark:bg-[#202c33] border-t border-gray-50 dark:border-gray-800">
             <button onClick={handleNext} className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center text-red-500 hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white dark:border-[#202c33]"><X className="w-8 h-8" /></button>
             <button onClick={() => onUserClick(currentUser)} className="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-500 hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white dark:border-[#202c33]"><UserIcon className="w-8 h-8" /></button>
-            <button onClick={handleNext} className="w-16 h-16 rounded-full bg-green-50 dark:bg-green-900/20 flex items-center justify-center text-[#00a884] hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white dark:border-[#202c33]"><Heart className="w-8 h-8 fill-current" /></button>
+            <button onClick={handleLike} className="w-16 h-16 rounded-full bg-green-50 dark:bg-green-900/20 flex items-center justify-center text-[#00a884] hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white dark:border-[#202c33]"><Heart className="w-8 h-8 fill-current" /></button>
           </div>
         </div>
       )}
@@ -1781,7 +1926,10 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat }: any) => {
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
         <button onClick={onBack} className="absolute top-4 left-4 p-2 bg-black/20 backdrop-blur-md rounded-full text-white"><ChevronLeft className="w-6 h-6" /></button>
         <div className="absolute bottom-6 left-6 text-white">
-          <h2 className="text-3xl font-bold">{fullUser.displayName}</h2>
+          <h2 className="text-3xl font-bold flex items-center gap-2">
+            {fullUser.displayName}
+            {fullUser.isVerified && <VerifiedBadge size={24} />}
+          </h2>
           <p className="opacity-80 flex items-center gap-2">
             {fullUser.isOnline ? <span className="w-2 h-2 bg-green-500 rounded-full"></span> : null}
             {fullUser.isOnline ? 'Online' : 'Offline'}
@@ -1879,11 +2027,11 @@ const NotificationCenter = ({ user, notifications, onBack, onNavigate }: any) =>
   );
 };
 
-const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, settings: AppSettings }) => {
-  const [content, setContent] = useState('');
+const CreateAd = ({ user, onBack, settings, initialContent = '', initialMediaUrl = '' }: { user: User, onBack: () => void, settings: AppSettings, initialContent?: string, initialMediaUrl?: string }) => {
+  const [content, setContent] = useState(initialContent);
   const [link, setLink] = useState('');
   const [duration, setDuration] = useState(settings.minAdDuration);
-  const [mediaUrl, setMediaUrl] = useState('');
+  const [mediaUrl, setMediaUrl] = useState(initialMediaUrl);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -2065,11 +2213,37 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
 const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => void, settings: AppSettings }) => {
   const [uploading, setUploading] = useState(false);
   const tiers = [
-    { name: 'General', price: 'Free', color: 'bg-gray-100 text-gray-600', benefits: ['Standard Chat', 'Basic Profile', 'Wall Access'] },
-    { name: 'Bronze', price: `$${settings.tierPrices.Bronze}/${settings.tierDurations.Bronze}`, color: 'bg-orange-100 text-orange-600', benefits: ['Priority Support', 'Bronze Badge', 'Ad-Free Feed'] },
-    { name: 'Silver', price: `$${settings.tierPrices.Silver}/${settings.tierDurations.Silver}`, color: 'bg-blue-100 text-blue-600', benefits: ['Silver Badge', 'Profile Boost', 'Unlimited Likes'] },
-    { name: 'Gold', price: `$${settings.tierPrices.Gold}/${settings.tierDurations.Gold}`, color: 'bg-yellow-100 text-yellow-600', benefits: ['Gold Badge', 'Exclusive Events', 'See Who Liked You'] },
-    { name: 'Platinum', price: `$${settings.tierPrices.Platinum}/${settings.tierDurations.Platinum}`, color: 'bg-purple-100 text-purple-600', benefits: ['Platinum Badge', 'VIP Concierge', 'Incognito Mode'] },
+    { 
+      name: 'General', 
+      price: 'Free', 
+      color: 'bg-gray-100 text-gray-600', 
+      icon: <UserIcon className="w-8 h-8" />,
+      benefits: ['Post, Comment & Like', '3 Uploads', '1 Match on Dating'] 
+    },
+    { 
+      name: 'Bronze', 
+      price: `$4`, 
+      duration: '1 Week',
+      color: 'bg-orange-100 text-orange-600', 
+      icon: <Trophy className="w-8 h-8" />,
+      benefits: ['General Features', '5 Uploads', '3 Matches on Dating', '1 Week Free Boost'] 
+    },
+    { 
+      name: 'Silver', 
+      price: `$10`, 
+      duration: '1 Month',
+      color: 'bg-blue-100 text-blue-600', 
+      icon: <Crown className="w-8 h-8" />,
+      benefits: ['Bronze Features', '10 Uploads', '10 Matches on Dating', '1 Week Free Boost'] 
+    },
+    { 
+      name: 'Gold', 
+      price: `$25`, 
+      duration: '1 Year',
+      color: 'bg-yellow-100 text-yellow-600', 
+      icon: <ShieldCheck className="w-8 h-8" />,
+      benefits: ['Unlimited Everything', '1 Year Free Boost', 'VIP Support', 'Verified Badge'] 
+    },
   ];
 
   const handleNotifyPayment = async (tier: any) => {
@@ -2081,18 +2255,14 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
       if (!file) return;
       setUploading(true);
       try {
-        console.log("Starting upload for tier:", tier.name, "Size:", file.size);
         const compressedFile = await compressImage(file);
-        console.log("Compressed size:", compressedFile.size);
-        
         const url = await uploadFileToServer(compressedFile);
-        console.log("Upload complete, URL:", url);
         
         await addDoc(collection(db, 'payment_proofs'), {
           userId: user.uid,
           userName: user.displayName,
           tier: tier.name,
-          amount: settings.tierPrices[tier.name],
+          amount: tier.price === 'Free' ? 0 : parseInt(tier.price.replace('$', '')),
           proofUrl: url,
           status: 'pending',
           timestamp: serverTimestamp()
@@ -2100,7 +2270,6 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
         
         alert("Upload Complete! Payment proof submitted. Admin will verify and update your tier soon.");
       } catch (error: any) {
-        console.error("Tier upload error details:", error);
         alert("Upload failed: " + (error.message || "Unknown error"));
       } finally {
         setUploading(false);
@@ -2110,52 +2279,82 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#f0f2f5]">
+    <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a]">
       <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Upgrade Membership</h2>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
-        <div className="bg-white p-6 rounded-3xl shadow-sm text-center">
-          <h3 className="text-lg font-bold text-gray-700 mb-2">Current Tier: <span className="text-[#00a884]">{user.category}</span></h3>
-          <p className="text-sm text-gray-500">Upgrade to unlock premium features and support the community.</p>
+      
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-20">
+        <div className="bg-white dark:bg-[#111b21] p-6 rounded-3xl shadow-sm text-center">
+          <h3 className="text-lg font-bold text-gray-700 dark:text-[#e9edef] mb-2">Current Tier: <span className="text-[#00a884]">{user.category}</span></h3>
+          <p className="text-sm text-gray-500 dark:text-[#8696a0]">Upgrade to unlock premium features and support the community.</p>
         </div>
-        {tiers.map(tier => (
-          <div key={tier.name} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-            <div className="flex justify-between items-center mb-4">
-              <span className={cn("px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest", tier.color)}>{tier.name}</span>
-              <span className="text-xl font-bold text-[#111b21]">{tier.price}</span>
-            </div>
-            <ul className="space-y-2 mb-6">
-              {tier.benefits.map(b => (
-                <li key={b} className="flex items-center gap-2 text-sm text-gray-600">
-                  <Check className="w-4 h-4 text-[#00a884]" /> {b}
-                </li>
-              ))}
-            </ul>
-            {user.category !== tier.name && tier.name !== 'General' && (
-              <div className="space-y-3">
-                <p className="text-[10px] text-gray-400 text-center uppercase font-bold">Manual Payment Method</p>
-                <div className="space-y-2">
-                  {settings.paymentMethods.map((m, i) => (
-                    <p key={i} className="text-xs text-center text-gray-500 bg-gray-50 p-3 rounded-xl">
-                      {m.type}: <span className="font-bold">{m.details}</span>
-                    </p>
-                  ))}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {tiers.map(tier => (
+            <div key={tier.name} className="bg-white dark:bg-[#111b21] p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col">
+              <div className="flex justify-between items-start mb-4">
+                <div className={cn("p-3 rounded-2xl", tier.color)}>
+                  {tier.icon}
                 </div>
-                <p className="text-[10px] text-center text-gray-400">Include your UID: <span className="font-mono bg-white px-1 rounded">{user.uid}</span></p>
+                <div className="text-right">
+                  <div className="text-2xl font-black text-[#111b21] dark:text-[#e9edef]">{tier.price}</div>
+                  {tier.duration && <div className="text-[10px] text-gray-400 uppercase font-bold">{tier.duration}</div>}
+                </div>
+              </div>
+              
+              <h4 className="text-lg font-bold text-[#111b21] dark:text-[#e9edef] mb-4">{tier.name}</h4>
+              
+              <ul className="space-y-3 mb-8 flex-1">
+                {tier.benefits.map(b => (
+                  <li key={b} className="flex items-start gap-2 text-sm text-gray-600 dark:text-[#8696a0]">
+                    <Check className="w-4 h-4 text-[#00a884] shrink-0 mt-0.5" /> {b}
+                  </li>
+                ))}
+              </ul>
+
+              {user.category !== tier.name && tier.name !== 'General' && (
                 <button 
                   onClick={() => handleNotifyPayment(tier)}
                   disabled={uploading}
-                  className="w-full bg-[#00a884] text-white py-3 rounded-xl font-bold shadow-md hover:bg-[#008f6f] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full bg-[#00a884] text-white py-4 rounded-2xl font-bold shadow-lg shadow-[#00a884]/20 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {uploading ? <CircleDashed className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
-                  Upload Payment Proof
+                  Upgrade Now
                 </button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-white dark:bg-[#111b21] p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800">
+          <h3 className="text-sm font-bold text-gray-700 dark:text-[#e9edef] mb-4 flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-[#00a884]" /> Payment Methods
+          </h3>
+          <div className="grid grid-cols-1 gap-3">
+            {settings.paymentMethods.map((m, i) => (
+              <div key={i} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#2a3942] rounded-2xl border border-gray-100 dark:border-gray-700">
+                <div>
+                  <div className="text-xs font-bold text-gray-400 uppercase">{m.type}</div>
+                  <div className="text-sm font-bold text-[#111b21] dark:text-[#e9edef]">{m.details}</div>
+                </div>
+                <div className="text-[10px] text-gray-400 font-mono">UID: {user.uid.slice(0, 8)}...</div>
               </div>
-            )}
+            ))}
+            {/* EcoCash and Innbucks specifically requested */}
+            <div className="flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-900/30">
+              <div>
+                <div className="text-xs font-bold text-blue-400 uppercase">EcoCash / Innbucks</div>
+                <div className="text-sm font-bold text-blue-800 dark:text-blue-200">Pay via Merchant/Phone</div>
+              </div>
+              <Shield className="w-5 h-5 text-blue-400" />
+            </div>
           </div>
-        ))}
+          <p className="text-[10px] text-center text-gray-400 mt-4">
+            After payment, upload the screenshot using the "Upgrade Now" button above.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -2303,6 +2502,12 @@ const AdminDashboard = ({ user, onBack }: any) => {
     setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, suspended: newSuspended } : u));
   };
 
+  const toggleUserVerification = async (targetUser: User) => {
+    const newVerified = !targetUser.isVerified;
+    await updateDoc(doc(db, 'users', targetUser.uid), { isVerified: newVerified });
+    setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, isVerified: newVerified } : u));
+  };
+
   const deleteUser = async (targetUser: User) => {
     await deleteDoc(doc(db, 'users', targetUser.uid));
     setUsers(users.filter(u => u.uid !== targetUser.uid));
@@ -2409,6 +2614,12 @@ const AdminDashboard = ({ user, onBack }: any) => {
                         className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.suspended ? "bg-green-50 dark:bg-green-900/20 text-[#00a884]" : "bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600")}
                       >
                         {u.suspended ? "Unsuspend" : "Suspend"}
+                      </button>
+                      <button 
+                        onClick={() => toggleUserVerification(u)}
+                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.isVerified ? "bg-blue-50 dark:bg-blue-900/20 text-blue-500" : "bg-gray-50 dark:bg-gray-800 text-gray-400")}
+                      >
+                        {u.isVerified ? "Verified" : "Verify"}
                       </button>
                       <button 
                         onClick={() => deleteUser(u)}

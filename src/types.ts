@@ -11,6 +11,9 @@ export interface User {
   role: 'user' | 'admin';
   category: 'General' | 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
   points: number;
+  isVerified?: boolean;
+  uploadCount?: number;
+  matchCount?: number;
   datingProfile?: {
     age: number;
     gender: 'male' | 'female' | 'other';
@@ -85,6 +88,8 @@ export interface Post {
   isAd: boolean;
   adLink?: string;
   adCost?: number;
+  hashtags?: string[];
+  isReel?: boolean;
   commentCount: number;
   user?: {
     displayName: string;
