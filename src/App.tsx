@@ -163,7 +163,7 @@ const AuthScreen = () => {
         </div>
 
         <button onClick={handleGoogleLogin} className="w-full bg-white border border-gray-200 text-gray-700 font-bold py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-3 mb-4 hover:bg-gray-50">
-          <img src="https://www.google.com/favicon.ico" className="w-5 h-5 bg-white rounded-full p-0.5" alt="Google" />
+          <img src="https://www.google.com/favicon.ico" className="w-5 h-5 bg-white rounded-full p-0.5" alt="Google" referrerPolicy="no-referrer" />
           Continue with Google
         </button>
 
@@ -187,6 +187,7 @@ const AuthScreen = () => {
                   src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${s.seed}&gender=female&top=longHair,bob,curly`} 
                   className="w-12 h-12 rounded-full border-2 border-white shadow-sm" 
                   alt={s.city} 
+                  referrerPolicy="no-referrer"
                 />
                 <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
                 <div className="text-[8px] font-bold text-gray-500 mt-1">{s.city}</div>
@@ -228,10 +229,14 @@ export default function App() {
     tierDurations: { Bronze: '1 month', Silver: '1 month', Gold: '1 month', Platinum: '1 month' },
     adPricePerDay: 2,
     minAdDuration: 3,
-    paymentMethods: [{ type: 'PayPal', details: 'alasindani2020@gmail.com' }]
+    paymentMethods: [
+      { type: 'Eco Cash', details: '0771234567' },
+      { type: 'Inbucks', details: '0771234567' }
+    ]
   });
   const [showMenu, setShowMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const awardPoints = async (amount: number) => {
@@ -734,7 +739,7 @@ export default function App() {
                     
                     return (
                       <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 active:bg-gray-100 transition-colors cursor-pointer">
-                        <img src={chatPhoto} className="w-14 h-14 rounded-full object-cover" alt="Chat" />
+                        <img src={chatPhoto} className="w-14 h-14 rounded-full object-cover" alt="Chat" referrerPolicy="no-referrer" />
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-center mb-1">
                             <h3 className="font-bold text-[#111b21] truncate">{chatName}</h3>
@@ -757,12 +762,24 @@ export default function App() {
                 )}
               </div>
             )}
-            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} appSettings={appSettings} />}
+            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} appSettings={appSettings} showStatusModal={showStatusModal} setShowStatusModal={setShowStatusModal} setShowCreateAd={setShowCreateAd} />}
             {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} />}
           </div>
 
           {/* Floating Action Button */}
-          <button className="absolute bottom-6 right-6 w-14 h-14 bg-[#00a884] rounded-full shadow-lg flex items-center justify-center text-white active:scale-95 transition-transform">
+          <button 
+            onClick={() => {
+              if (activeTab === 'chats') {
+                setShowSearch(true);
+              } else if (activeTab === 'status') {
+                setShowStatusModal(true);
+              } else if (activeTab === 'dating') {
+                // Refresh dating or something
+                window.location.reload();
+              }
+            }}
+            className="absolute bottom-6 right-6 w-14 h-14 bg-[#00a884] rounded-full shadow-lg flex items-center justify-center text-white active:scale-95 transition-transform z-40"
+          >
             <Plus className="w-6 h-6" />
           </button>
         </div>
@@ -872,7 +889,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
     <div className="flex-1 flex flex-col h-full relative">
       <div className="bg-[#008069] text-white p-3 flex items-center gap-2 shadow-md">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
-        <img src={otherUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`} className="w-10 h-10 rounded-full" alt="Chat" />
+        <img src={otherUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`} className="w-10 h-10 rounded-full" alt="Chat" referrerPolicy="no-referrer" />
         <div className="flex-1 min-w-0">
           <h3 className="font-bold truncate">{otherUser?.displayName || chat.groupName || "Chat"}</h3>
           <p className="text-xs opacity-80">{otherUser?.isOnline ? 'online' : 'offline'}</p>
@@ -921,7 +938,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
               )}
 
               {msg.type === 'image' ? (
-                <img src={msg.text} className="rounded-lg max-w-full h-auto mb-1" alt="Sent" />
+                <img src={msg.text} className="rounded-lg max-w-full h-auto mb-1" alt="Sent" referrerPolicy="no-referrer" />
               ) : msg.type === 'video' ? (
                 <video src={msg.text} controls className="rounded-lg max-w-full h-auto mb-1" />
               ) : (
@@ -969,11 +986,10 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
   );
 };
 
-const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, appSettings }: any) => {
+const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, setShowCreateAd }: any) => {
   const [newPost, setNewPost] = useState('');
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
-  const [showStatusModal, setShowStatusModal] = useState(false);
   const [viewingStatus, setViewingStatus] = useState<any>(null);
   const [statusText, setStatusText] = useState('');
   const [statusDuration, setStatusDuration] = useState('24h');
@@ -1163,7 +1179,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
         <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
           <div className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => setShowStatusModal(true)}>
             <div className="relative">
-              <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} className="w-16 h-16 rounded-full border-2 border-gray-200" alt="Me" />
+              <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} className="w-16 h-16 rounded-full border-2 border-gray-200" alt="Me" referrerPolicy="no-referrer" />
               <div className="absolute bottom-0 right-0 bg-[#00a884] rounded-full p-1 border-2 border-white"><Plus className="w-3 h-3 text-white" /></div>
             </div>
             <span className="text-xs text-gray-600">My Status</span>
@@ -1171,7 +1187,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
           {statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true).map((s: any) => (
             <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => handleViewStatus(s)}>
               <div className="p-0.5 rounded-full border-2 border-[#00a884]">
-                <img src={s.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} className="w-16 h-16 rounded-full border-2 border-white" alt="User" />
+                <img src={s.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} className="w-16 h-16 rounded-full border-2 border-white" alt="User" referrerPolicy="no-referrer" />
               </div>
               <span className="text-xs text-gray-600 truncate w-16 text-center">{s.user?.displayName || "User"}</span>
             </div>
@@ -1185,7 +1201,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
           <div className="fixed inset-0 z-[200] bg-black flex flex-col">
             <div className="absolute top-0 left-0 right-0 p-4 flex items-center gap-3 z-10 bg-gradient-to-b from-black/60 to-transparent">
               <button onClick={() => setViewingStatus(null)} className="p-1"><ChevronLeft className="w-6 h-6 text-white" /></button>
-              <img src={viewingStatus.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStatus.userId}`} className="w-10 h-10 rounded-full border border-white/20" alt="User" />
+              <img src={viewingStatus.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStatus.userId}`} className="w-10 h-10 rounded-full border border-white/20" alt="User" referrerPolicy="no-referrer" />
               <div className="flex-1">
                 <h4 className="text-white font-bold text-sm">{viewingStatus.user?.displayName}</h4>
                 <p className="text-white/60 text-[10px]">{viewingStatus.createdAt?.toDate ? formatWhatsAppTime(viewingStatus.createdAt.toDate()) : ''}</p>
@@ -1195,7 +1211,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
               {viewingStatus.type === 'text' ? (
                 <div className="text-white text-2xl font-bold text-center px-6">{viewingStatus.content}</div>
               ) : viewingStatus.type === 'image' ? (
-                <img src={viewingStatus.content} className="max-w-full max-h-full object-contain rounded-xl" alt="Status" />
+                <img src={viewingStatus.content} className="max-w-full max-h-full object-contain rounded-xl" alt="Status" referrerPolicy="no-referrer" />
               ) : (
                 <video src={viewingStatus.content} className="max-w-full max-h-full object-contain rounded-xl" autoPlay controls />
               )}
@@ -1283,7 +1299,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
           {postMedia && (
             <div className="relative mb-3">
               {postMediaType === 'image' ? (
-                <img src={postMedia} className="w-full h-48 object-cover rounded-xl" alt="Preview" />
+                <img src={postMedia} className="w-full h-48 object-cover rounded-xl" alt="Preview" referrerPolicy="no-referrer" />
               ) : (
                 <video src={postMedia} className="w-full h-48 object-cover rounded-xl" controls />
               )}
@@ -1304,7 +1320,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
         {posts.map((post: any) => (
           <div key={post.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => onUserClick({ uid: post.userId, displayName: post.user?.displayName, photoURL: post.user?.photoURL })}>
-              <img src={post.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-10 h-10 rounded-full" alt="User" />
+              <img src={post.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-10 h-10 rounded-full" alt="User" referrerPolicy="no-referrer" />
               <div>
                 <h4 className="font-bold text-[#111b21] text-[15px]">{post.user?.displayName}</h4>
                 <p className="text-[11px] text-[#667781]">{post.createdAt?.toDate ? formatWhatsAppTime(post.createdAt.toDate()) : ''}</p>
@@ -1328,7 +1344,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
                   {post.mediaType === 'video' ? (
                     <video src={post.media[0]} controls className="w-full rounded-xl" />
                   ) : (
-                    <img src={post.media[0]} className="w-full rounded-xl" alt="Post media" />
+                    <img src={post.media[0]} className="w-full rounded-xl" alt="Post media" referrerPolicy="no-referrer" />
                   )}
                 </div>
               )}
@@ -1338,19 +1354,47 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
                 </a>
               )}
             </div>
-            <div className="p-2 border-t border-gray-50 flex justify-around text-[#667781] text-sm font-semibold">
+            <div className="p-2 border-t border-gray-50 flex justify-around text-[#667781] text-xs font-bold uppercase tracking-wider">
               <button 
                 onClick={() => handleLike(post)}
-                className={cn("flex items-center gap-2 py-2 px-6 rounded-xl hover:bg-gray-50 transition-colors", post.likes.includes(user.uid) && "text-[#00a884]")}
+                className={cn("flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 transition-colors", post.likes.includes(user.uid) && "text-[#00a884]")}
               >
-                <ThumbsUp className={cn("w-5 h-5", post.likes.includes(user.uid) && "fill-current")} /> {post.likes.length || ''} Like
+                <ThumbsUp className={cn("w-5 h-5", post.likes.includes(user.uid) && "fill-current")} />
+                <span>{post.likes.length || ''} Like</span>
               </button>
               <button 
                 onClick={() => setShowComments(post.id)}
-                className="flex items-center gap-2 py-2 px-6 rounded-xl hover:bg-gray-50 transition-colors"
+                className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 transition-colors"
               >
-                <MessageSquare className="w-5 h-5" /> {post.commentCount || ''} Comment
+                <MessageSquare className="w-5 h-5" />
+                <span>{post.commentCount || ''} Comment</span>
               </button>
+              <button 
+                onClick={() => {
+                  if (navigator.share) {
+                    navigator.share({
+                      title: 'Heart Connect Post',
+                      text: post.content,
+                      url: window.location.href
+                    });
+                  } else {
+                    alert("Sharing not supported on this browser.");
+                  }
+                }}
+                className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 transition-colors"
+              >
+                <Share2 className="w-5 h-5" />
+                <span>Share</span>
+              </button>
+              {post.userId === user.uid && !post.isAd && (
+                <button 
+                  onClick={() => setShowCreateAd(true)}
+                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 transition-colors text-purple-600"
+                >
+                  <Megaphone className="w-5 h-5" />
+                  <span>Boost</span>
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -1366,7 +1410,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {comments.map(c => (
                 <div key={c.id} className="flex gap-3">
-                  <img src={c.userPhoto || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.userId}`} className="w-8 h-8 rounded-full" alt="User" />
+                  <img src={c.userPhoto || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.userId}`} className="w-8 h-8 rounded-full" alt="User" referrerPolicy="no-referrer" />
                   <div className="flex-1 bg-gray-50 p-3 rounded-2xl">
                     <h4 className="font-bold text-xs mb-1">{c.userName}</h4>
                     <p className="text-sm text-gray-700">{c.text}</p>
@@ -1437,7 +1481,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
         const snapshot = await getDocs(q);
         const users = snapshot.docs
           .map(doc => ({ uid: doc.id, ...doc.data() } as User))
-          .filter(u => u.uid !== user.uid && u.datingProfile);
+          .filter(u => u.uid !== user.uid && u.datingProfile && u.photoURL);
         
         // Apply filters locally for better flexibility
         const filtered = users.filter(u => {
@@ -1592,6 +1636,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
               src={currentUser.photoURL || `https://picsum.photos/seed/${currentUser.uid}/400/600`} 
               className="w-full h-full object-cover" 
               alt={currentUser.displayName} 
+              referrerPolicy="no-referrer"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
@@ -1616,10 +1661,10 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
               </div>
             </div>
           </div>
-          <div className="p-4 flex justify-center gap-8 bg-white">
-            <button onClick={handleNext} className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:scale-110 transition-transform shadow-lg"><X className="w-7 h-7" /></button>
-            <button onClick={() => onUserClick(currentUser)} className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 hover:scale-110 transition-transform shadow-lg"><UserIcon className="w-7 h-7" /></button>
-            <button onClick={handleNext} className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center text-[#00a884] hover:scale-110 transition-transform shadow-lg"><Heart className="w-7 h-7 fill-current" /></button>
+          <div className="p-6 flex justify-center gap-10 bg-white border-t border-gray-50">
+            <button onClick={handleNext} className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white"><X className="w-8 h-8" /></button>
+            <button onClick={() => onUserClick(currentUser)} className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white"><UserIcon className="w-8 h-8" /></button>
+            <button onClick={handleNext} className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center text-[#00a884] hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white"><Heart className="w-8 h-8 fill-current" /></button>
           </div>
         </div>
       )}
@@ -1698,7 +1743,7 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat }: any) => {
   return (
     <div className="flex-1 flex flex-col bg-white">
       <div className="relative h-72">
-        <img src={fullUser.photoURL || `https://picsum.photos/seed/${fullUser.uid}/600/800`} className="w-full h-full object-cover" alt={fullUser.displayName} />
+        <img src={fullUser.photoURL || `https://picsum.photos/seed/${fullUser.uid}/600/800`} className="w-full h-full object-cover" alt={fullUser.displayName} referrerPolicy="no-referrer" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
         <button onClick={onBack} className="absolute top-4 left-4 p-2 bg-black/20 backdrop-blur-md rounded-full text-white"><ChevronLeft className="w-6 h-6" /></button>
         <div className="absolute bottom-6 left-6 text-white">
@@ -1840,9 +1885,15 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
       if (!file) return;
       setSubmitting(true);
       try {
+        console.log("Starting ad proof upload");
         const compressedFile = await compressImage(file);
+        console.log("Compression complete. Original size:", file.size, "Compressed size:", compressedFile.size);
+        
         const storageRef = ref(storage, `payment_proofs/${user.uid}/ad_${Date.now()}_${file.name}`);
+        console.log("Uploading to:", storageRef.fullPath);
+        
         await uploadBytes(storageRef, compressedFile);
+        console.log("Upload complete. Fetching URL...");
         const proofUrl = await getDownloadURL(storageRef);
         
         const totalCost = duration * settings.adPricePerDay;
@@ -1865,11 +1916,11 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
           timestamp: serverTimestamp()
         });
         
-        alert("Ad submission and payment proof sent! Admin will review and publish your ad soon.");
+        alert("Upload Complete! Ad submission and payment proof sent! Admin will review and publish your ad soon.");
         onBack();
       } catch (error) {
         console.error("Error submitting ad:", error);
-        alert("Failed to submit ad. Please try again.");
+        alert(`Failed to submit ad: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
       } finally {
         setSubmitting(false);
       }
@@ -1904,7 +1955,7 @@ const CreateAd = ({ user, onBack, settings }: { user: User, onBack: () => void, 
             <div className="flex items-center gap-4">
               <label className="w-24 h-24 bg-gray-100 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors border-2 border-dashed border-gray-300">
                 {mediaUrl ? (
-                  <img src={mediaUrl} className="w-full h-full object-cover rounded-xl" alt="Preview" />
+                  <img src={mediaUrl} className="w-full h-full object-cover rounded-xl" alt="Preview" referrerPolicy="no-referrer" />
                 ) : (
                   <>
                     <Camera className="w-6 h-6 text-gray-400" />
@@ -1998,9 +2049,15 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
       if (!file) return;
       setUploading(true);
       try {
+        console.log("Starting upload for tier:", tier.name);
         const compressedFile = await compressImage(file);
+        console.log("Compression complete. Original size:", file.size, "Compressed size:", compressedFile.size);
+        
         const storageRef = ref(storage, `payment_proofs/${user.uid}/${Date.now()}_${file.name}`);
+        console.log("Uploading to:", storageRef.fullPath);
+        
         await uploadBytes(storageRef, compressedFile);
+        console.log("Upload complete. Fetching URL...");
         const url = await getDownloadURL(storageRef);
         
         await addDoc(collection(db, 'payment_proofs'), {
@@ -2013,10 +2070,10 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
           timestamp: serverTimestamp()
         });
         
-        alert("Payment proof submitted! Admin will verify and update your tier soon.");
+        alert("Upload Complete! Payment proof submitted. Admin will verify and update your tier soon.");
       } catch (error) {
         console.error("Error submitting proof:", error);
-        alert("Failed to submit proof. Please try again.");
+        alert(`Failed to submit proof: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
       } finally {
         setUploading(false);
       }
@@ -2030,7 +2087,7 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Upgrade Membership</h2>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
         <div className="bg-white p-6 rounded-3xl shadow-sm text-center">
           <h3 className="text-lg font-bold text-gray-700 mb-2">Current Tier: <span className="text-[#00a884]">{user.category}</span></h3>
           <p className="text-sm text-gray-500">Upgrade to unlock premium features and support the community.</p>
@@ -2104,7 +2161,7 @@ const PointsLeaderboard = ({ onBack }: any) => {
               <div className={cn("w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm", i === 0 ? "bg-yellow-100 text-yellow-700" : i === 1 ? "bg-gray-100 text-gray-700" : i === 2 ? "bg-orange-100 text-orange-700" : "text-gray-400")}>
                 {i + 1}
               </div>
-              <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-12 h-12 rounded-full" alt="User" />
+              <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-12 h-12 rounded-full" alt="User" referrerPolicy="no-referrer" />
               <div className="flex-1">
                 <h4 className="font-bold text-[#111b21]">{u.displayName}</h4>
                 <p className="text-xs text-gray-400">{u.category} Member</p>
@@ -2225,9 +2282,25 @@ const AdminDashboard = ({ user, onBack }: any) => {
   };
 
   const handleUpdateUser = async (updatedUser: User) => {
-    await updateDoc(doc(db, 'users', updatedUser.uid), updatedUser as any);
-    setUsers(users.map(u => u.uid === updatedUser.uid ? updatedUser : u));
-    setEditingUser(null);
+    try {
+      await updateDoc(doc(db, 'users', updatedUser.uid), updatedUser as any);
+      
+      // Update existing posts and statuses for consistency
+      const postsQuery = query(collection(db, 'posts'), where('userId', '==', updatedUser.uid));
+      const statusesQuery = query(collection(db, 'statuses'), where('userId', '==', updatedUser.uid));
+      const [postsSnap, statusesSnap] = await Promise.all([getDocs(postsQuery), getDocs(statusesQuery)]);
+      const batch = writeBatch(db);
+      postsSnap.docs.forEach(d => batch.update(d.ref, { 'user.displayName': updatedUser.displayName, 'user.photoURL': updatedUser.photoURL }));
+      statusesSnap.docs.forEach(d => batch.update(d.ref, { 'user.displayName': updatedUser.displayName, 'user.photoURL': updatedUser.photoURL }));
+      await batch.commit();
+
+      setUsers(users.map(u => u.uid === updatedUser.uid ? updatedUser : u));
+      setEditingUser(null);
+      alert("User updated successfully across all records!");
+    } catch (e) {
+      console.error("Error updating user:", e);
+      alert("Failed to update user.");
+    }
   };
 
   if (loading) return <div className="flex-1 flex items-center justify-center bg-white"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>;
@@ -2279,7 +2352,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
                 {users.map(u => (
                   <div key={u.uid} className="p-4 space-y-3">
                     <div className="flex items-center gap-3">
-                      <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-10 h-10 rounded-full" alt="User" />
+                      <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-10 h-10 rounded-full" alt="User" referrerPolicy="no-referrer" />
                       <div className="flex-1 min-w-0">
                         <h4 className="font-bold text-sm truncate">{u.displayName}</h4>
                         <div className="flex items-center gap-2">
@@ -2333,7 +2406,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
                 <div key={ad.id} className="bg-white p-4 rounded-2xl shadow-sm space-y-3">
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-3">
-                      <img src={ad.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${ad.userId}`} className="w-8 h-8 rounded-full" alt="Ad" />
+                      <img src={ad.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${ad.userId}`} className="w-8 h-8 rounded-full" alt="Ad" referrerPolicy="no-referrer" />
                       <div>
                         <h4 className="font-bold text-sm">{ad.user?.displayName}</h4>
                         <p className="text-[10px] text-gray-400">Sponsored</p>
@@ -2342,7 +2415,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
                     <button onClick={() => deleteAd(ad.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-full"><Trash2 className="w-4 h-4" /></button>
                   </div>
                   <p className="text-sm text-gray-700">{ad.content}</p>
-                  {ad.media?.[0] && <img src={ad.media[0]} className="w-full h-32 object-cover rounded-xl" alt="Ad Media" />}
+                  {ad.media?.[0] && <img src={ad.media[0]} className="w-full h-32 object-cover rounded-xl" alt="Ad Media" referrerPolicy="no-referrer" />}
                   {ad.adLink && <div className="text-xs text-[#00a884] font-bold truncate">{ad.adLink}</div>}
                 </div>
               ))
@@ -2423,7 +2496,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
                   </div>
                   {proof.proofUrl && (
                     <a href={proof.proofUrl} target="_blank" rel="noopener noreferrer" className="block">
-                      <img src={proof.proofUrl} className="w-full h-40 object-cover rounded-xl border border-gray-100" alt="Proof" />
+                      <img src={proof.proofUrl} className="w-full h-40 object-cover rounded-xl border border-gray-100" alt="Proof" referrerPolicy="no-referrer" />
                     </a>
                   )}
                   {proof.status === 'pending' && (
@@ -2538,6 +2611,7 @@ const ProfileSettings = ({ user, onBack, onUpdate }: { user: User, onBack: () =>
               src={photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
               className="w-40 h-40 rounded-full shadow-lg object-cover" 
               alt="Profile" 
+              referrerPolicy="no-referrer"
             />
             <label className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
               <Camera className="text-white w-8 h-8" />
