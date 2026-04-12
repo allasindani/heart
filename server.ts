@@ -53,7 +53,7 @@ async function getAvailablePort(startPort: number): Promise<number> {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
@@ -91,8 +91,9 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`If you are using Nginx, ensure proxy_pass points to http://127.0.0.1:${PORT}`);
+    console.log(`Server started successfully`);
+    console.log(`Listening on port: ${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   });
 }
 
