@@ -772,7 +772,7 @@ export default function App() {
           />
         </div>
       ) : showUpgrade ? (
-        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col h-screen overflow-hidden">
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col overflow-hidden">
           <UpgradeTiers user={user} onBack={() => setShowUpgrade(false)} settings={appSettings} />
         </div>
       ) : showCreateAd ? (
@@ -2546,13 +2546,13 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#f0f2f5] dark:bg-[#0b141a] overflow-hidden">
+    <div className="flex-1 flex flex-col min-h-0 bg-[#f0f2f5] dark:bg-[#0b141a]">
       <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md shrink-0">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Upgrade Membership</h2>
       </div>
       
-      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-6 pb-32 scroll-smooth custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-40 scroll-smooth custom-scrollbar touch-pan-y" style={{ overscrollBehavior: 'contain' }}>
         <div className="bg-white dark:bg-[#111b21] p-6 rounded-3xl shadow-sm text-center">
           <h3 className="text-lg font-bold text-gray-700 dark:text-[#e9edef] mb-2">Current Tier: <span className="text-[#00a884]">{user.category}</span></h3>
           <p className="text-sm text-gray-500 dark:text-[#8696a0]">Upgrade to unlock premium features and support the community.</p>
