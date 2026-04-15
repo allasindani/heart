@@ -65,7 +65,8 @@ import {
   arrayRemove,
   limit,
   getDocs,
-  writeBatch
+  writeBatch,
+  deleteField
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { cn, formatWhatsAppTime } from './lib/utils';
@@ -949,8 +950,11 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
 
   const handleReaction = async (messageId: string, emoji: string) => {
     try {
+      const msg = messages.find((m: any) => m.id === messageId);
+      const currentReaction = msg?.reactions?.[user.uid];
+      
       await updateDoc(doc(db, `chats/${chat.id}/messages`, messageId), {
-        [`reactions.${user.uid}`]: emoji
+        [`reactions.${user.uid}`]: currentReaction === emoji ? deleteField() : emoji
       });
       setReactingTo(null);
     } catch (e) {
@@ -960,6 +964,9 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
 
   const startLongPress = (id: string) => {
     longPressTimer.current = setTimeout(() => {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(50);
+      }
       setReactingTo(id);
     }, 500);
   };
@@ -1008,12 +1015,13 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
               onMouseLeave={endLongPress}
               onTouchStart={() => startLongPress(msg.id)}
               onTouchEnd={endLongPress}
+              onContextMenu={(e) => e.preventDefault()}
               className={cn(
                 "max-w-[85%] p-2 px-3 rounded-2xl shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] relative min-w-[80px] transition-all",
                 msg.senderId === user.uid 
                   ? "bg-[#d9fdd3] dark:bg-[#005c4b] rounded-tr-none" 
                   : "bg-white dark:bg-[#202c33] rounded-tl-none",
-                reactingTo === msg.id && "scale-105 ring-2 ring-[#00a884]/30"
+                reactingTo === msg.id && "scale-[1.02] ring-2 ring-[#00a884]/30"
               )}
             >
               {/* Bubble Beak */}
@@ -1052,11 +1060,9 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
               )}
               
               {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                <div className="flex -space-x-1 mt-1">
+                <div className="absolute -bottom-2 right-2 flex -space-x-1 bg-white dark:bg-[#202c33] rounded-full shadow-sm border border-gray-100 dark:border-gray-800 px-1.5 py-0.5 z-10 animate-in zoom-in-50">
                   {Object.entries(msg.reactions).map(([uid, emoji]: any) => (
-                    <div key={uid} className="bg-white dark:bg-[#202c33] rounded-full shadow-sm border border-gray-100 dark:border-gray-800 px-1 text-xs">
-                      {emoji}
-                    </div>
+                    <span key={uid} className="text-[11px] drop-shadow-sm">{emoji}</span>
                   ))}
                 </div>
               )}
@@ -2618,6 +2624,38 @@ const AdminDashboard = ({ user, onBack }: any) => {
                 <BarChart3 className="w-5 h-5 text-green-500 mx-auto mb-1" />
                 <div className="text-xl font-bold dark:text-[#e9edef]">{stats.totalPoints}</div>
                 <div className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">Total Points</div>
+              </div>
+            </div>
+
+            {/* System Status */}
+            <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-gray-700 dark:text-[#e9edef] flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-[#00a884]" />
+                  System Status
+                </h3>
+                <span className="flex items-center gap-1 text-[10px] font-bold text-[#00a884] uppercase">
+                  <div className="w-2 h-2 bg-[#00a884] rounded-full animate-pulse" />
+                  Online
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-[11px]">
+                <div className="space-y-1">
+                  <p className="text-gray-400 dark:text-[#8696a0] uppercase font-bold">Server</p>
+                  <p className="font-bold dark:text-[#e9edef]">STYN VPS</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-gray-400 dark:text-[#8696a0] uppercase font-bold">Storage</p>
+                  <p className="font-bold dark:text-[#e9edef]">NVMe</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-gray-400 dark:text-[#8696a0] uppercase font-bold">Node Version</p>
+                  <p className="font-bold dark:text-[#e9edef]">v24.14.1</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-gray-400 dark:text-[#8696a0] uppercase font-bold">Features</p>
+                  <p className="font-bold dark:text-[#e9edef]">Reels, Chat, Dating</p>
+                </div>
               </div>
             </div>
 

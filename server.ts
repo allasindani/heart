@@ -63,9 +63,13 @@ async function startServer() {
   // API routes
   app.get("/api/health", (req, res) => {
     res.json({ 
-      status: "ok", 
-      message: "WhatsApp Hybrid API is running",
-      port: PORT 
+      status: "online",
+      server: "STYN VPS",
+      storage: "NVMe",
+      features: ["Reels", "Chat", "Dating", "Blockbuster"],
+      nodeVersion: "v24.14.1",
+      port: PORT,
+      timestamp: new Date().toISOString()
     });
   });
 
