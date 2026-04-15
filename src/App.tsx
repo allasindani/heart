@@ -797,6 +797,7 @@ export default function App() {
               <div className="flex items-center gap-3">
                 <Logo size={32} className="shadow-none" />
                 <h1 className="text-xl font-black tracking-tighter">Heart Connect</h1>
+                <span className="bg-white/20 text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-widest">v1.2.0</span>
               </div>
               <div className="flex gap-5 items-center">
                 <Camera className="w-6 h-6 cursor-pointer" onClick={() => setActiveTab('status')} />
