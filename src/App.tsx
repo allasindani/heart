@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   MessageCircle, 
   CircleDashed, 
@@ -248,6 +248,12 @@ export default function App() {
   const [backPressCount, setBackPressCount] = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
+  const usersMap = useMemo(() => {
+    const map: Record<string, User> = {};
+    users.forEach(u => { map[u.uid] = u; });
+    return map;
+  }, [users]);
+
   const [appSettings, setAppSettings] = useState<AppSettings>({
     pointsPerPost: 10,
     pointsPerComment: 5,
@@ -300,7 +306,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'users'), limit(50));
+    const q = query(collection(db, 'users'), limit(200));
     const unsubscribe = onSnapshot(q, (snap) => {
       setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
     });
@@ -841,7 +847,7 @@ export default function App() {
                 )}
               </div>
             )}
-            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} appSettings={appSettings} showStatusModal={showStatusModal} setShowStatusModal={setShowStatusModal} setShowCreateAd={setShowCreateAd} setAdContent={setAdContent} setAdMediaUrl={setAdMediaUrl} setUploading={setUploading} setUploadProgress={setUploadProgress} setUser={setUser} uploading={uploading} />}
+            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} appSettings={appSettings} showStatusModal={showStatusModal} setShowStatusModal={setShowStatusModal} setShowCreateAd={setShowCreateAd} setAdContent={setAdContent} setAdMediaUrl={setAdMediaUrl} setUploading={setUploading} setUploadProgress={setUploadProgress} setUser={setUser} uploading={uploading} usersMap={usersMap} />}
             {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} setUser={setUser} />}
           </div>
 
@@ -1075,6 +1081,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
         <div className="bg-white dark:bg-[#2a3942] flex-1 flex items-center px-3 py-2 rounded-full shadow-sm">
           <Smile className="w-6 h-6 text-gray-500 dark:text-[#8696a0] mr-2" />
           <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Message" className="flex-1 bg-transparent border-none outline-none text-[16px] dark:text-[#e9edef]" onKeyDown={(e) => { if (e.key === 'Enter' && input.trim()) { onSendMessage(input); setInput(''); } }} />
+          <button onClick={() => onSendMessage("This is a test message! 🚀")} className="text-[10px] font-bold text-[#00a884] uppercase px-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors">Test</button>
           <Paperclip className="w-6 h-6 text-gray-500 dark:text-[#8696a0] ml-2 cursor-pointer" onClick={() => fileInputRef.current?.click()} />
           <Camera className="w-6 h-6 text-gray-500 dark:text-[#8696a0] ml-3 cursor-pointer" onClick={() => fileInputRef.current?.click()} />
         </div>
@@ -1086,7 +1093,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
   );
 };
 
-const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, setUser, uploading }: any) => {
+const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, setUser, uploading, usersMap }: any) => {
   const [newPost, setNewPost] = useState('');
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
@@ -1312,49 +1319,55 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
             </div>
             <span className="text-xs text-gray-600 dark:text-[#8696a0]">My Status</span>
           </div>
-          {statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true).map((s: any) => (
-            <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => handleViewStatus(s)}>
-              <div className="p-0.5 rounded-full border-2 border-[#00a884]">
-                <img src={s.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} className="w-16 h-16 rounded-full border-2 border-white dark:border-[#111b21]" alt="User" referrerPolicy="no-referrer" />
+          {statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true).map((s: any) => {
+            const statusUser = usersMap[s.userId];
+            return (
+              <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => handleViewStatus(s)}>
+                <div className="p-0.5 rounded-full border-2 border-[#00a884]">
+                  <img src={statusUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} className="w-16 h-16 rounded-full border-2 border-white dark:border-[#111b21]" alt="User" referrerPolicy="no-referrer" />
+                </div>
+                <span className="text-xs text-gray-600 dark:text-[#8696a0] truncate w-16 text-center flex items-center justify-center gap-0.5">
+                  {statusUser?.displayName || "User"}
+                  {statusUser?.isVerified && <VerifiedBadge size={10} />}
+                </span>
               </div>
-              <span className="text-xs text-gray-600 dark:text-[#8696a0] truncate w-16 text-center flex items-center justify-center gap-0.5">
-                {s.user?.displayName || "User"}
-                {s.user?.isVerified && <VerifiedBadge size={10} />}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
       {/* Status Viewer Modal */}
       <AnimatePresence>
-        {viewingStatus && (
-          <div className="fixed inset-0 z-[200] bg-black flex flex-col">
-            <div className="absolute top-0 left-0 right-0 p-4 flex items-center gap-3 z-10 bg-gradient-to-b from-black/60 to-transparent">
-              <button onClick={() => setViewingStatus(null)} className="p-1"><ChevronLeft className="w-6 h-6 text-white" /></button>
-              <img src={viewingStatus.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStatus.userId}`} className="w-10 h-10 rounded-full border border-white/20" alt="User" referrerPolicy="no-referrer" />
-              <div className="flex-1">
-                <h4 className="text-white font-bold text-sm flex items-center gap-1">
-                  {viewingStatus.user?.displayName}
-                  {viewingStatus.user?.isVerified && <VerifiedBadge size={14} />}
-                </h4>
-                <p className="text-white/60 text-[10px]">{viewingStatus.createdAt?.toDate ? formatWhatsAppTime(viewingStatus.createdAt.toDate()) : ''}</p>
+        {viewingStatus && (() => {
+          const statusUser = usersMap[viewingStatus.userId];
+          return (
+            <div className="fixed inset-0 z-[200] bg-black flex flex-col">
+              <div className="absolute top-0 left-0 right-0 p-4 flex items-center gap-3 z-10 bg-gradient-to-b from-black/60 to-transparent">
+                <button onClick={() => setViewingStatus(null)} className="p-1"><ChevronLeft className="w-6 h-6 text-white" /></button>
+                <img src={statusUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStatus.userId}`} className="w-10 h-10 rounded-full border border-white/20" alt="User" referrerPolicy="no-referrer" />
+                <div className="flex-1">
+                  <h4 className="text-white font-bold text-sm flex items-center gap-1">
+                    {statusUser?.displayName || "User"}
+                    {statusUser?.isVerified && <VerifiedBadge size={14} />}
+                  </h4>
+                  <p className="text-white/60 text-[10px]">{viewingStatus.createdAt?.toDate ? formatWhatsAppTime(viewingStatus.createdAt.toDate()) : ''}</p>
+                </div>
+              </div>
+              <div className="flex-1 flex items-center justify-center p-4">
+                {viewingStatus.type === 'text' ? (
+                  <div className="text-white text-2xl font-bold text-center px-6">{viewingStatus.content}</div>
+                ) : viewingStatus.type === 'image' ? (
+                  <img src={viewingStatus.content} className="max-w-full max-h-full object-contain rounded-xl" alt="Status" referrerPolicy="no-referrer" />
+                ) : (
+                  <video src={viewingStatus.content} className="max-w-full max-h-full object-contain rounded-xl" autoPlay controls />
+                )}
+              </div>
+              <div className="p-6 bg-gradient-to-t from-black/60 to-transparent flex justify-center items-center gap-2 text-white/80 text-xs">
+                <Search className="w-4 h-4" /> {viewingStatus.views || 0} views
               </div>
             </div>
-            <div className="flex-1 flex items-center justify-center p-4">
-              {viewingStatus.type === 'text' ? (
-                <div className="text-white text-2xl font-bold text-center px-6">{viewingStatus.content}</div>
-              ) : viewingStatus.type === 'image' ? (
-                <img src={viewingStatus.content} className="max-w-full max-h-full object-contain rounded-xl" alt="Status" referrerPolicy="no-referrer" />
-              ) : (
-                <video src={viewingStatus.content} className="max-w-full max-h-full object-contain rounded-xl" autoPlay controls />
-              )}
-            </div>
-            <div className="p-6 bg-gradient-to-t from-black/60 to-transparent flex justify-center items-center gap-2 text-white/80 text-xs">
-              <Search className="w-4 h-4" /> {viewingStatus.views || 0} views
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </AnimatePresence>
 
       {/* Status Creation Modal */}
@@ -1451,110 +1464,122 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
             </button>
           </div>
         </div>
-        {posts.map((post: any) => (
-          <div key={post.id} className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
-            <div className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => onUserClick({ uid: post.userId, displayName: post.user?.displayName, photoURL: post.user?.photoURL })}>
-              <img src={post.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-10 h-10 rounded-full" alt="User" referrerPolicy="no-referrer" />
-              <div>
-                <h4 className="font-bold text-[#111b21] dark:text-[#e9edef] text-[15px] flex items-center gap-1">
-                  {post.user?.displayName}
-                  {post.user?.isVerified && <VerifiedBadge />}
-                </h4>
-                <p className="text-[11px] text-[#667781] dark:text-[#8696a0]">{post.createdAt?.toDate ? formatWhatsAppTime(post.createdAt.toDate()) : ''}</p>
-              </div>
-              {post.isAd && <span className="ml-auto bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Sponsored</span>}
-              {!post.isAd && post.userId === user.uid && (
-                <div className="ml-auto flex gap-2">
-                  <button onClick={() => { setEditingPost(post); setEditContent(post.content); }} className="p-1.5 text-gray-400 hover:text-[#00a884] transition-colors">
-                    <SettingsIcon className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => handleDeletePost(post.id)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+        {posts.map((post: any) => {
+          const postAuthor = usersMap[post.userId];
+          return (
+            <div key={post.id} className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+              <div className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => onUserClick({ uid: post.userId, displayName: postAuthor?.displayName, photoURL: postAuthor?.photoURL })}>
+                <img src={postAuthor?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-10 h-10 rounded-full" alt="User" referrerPolicy="no-referrer" />
+                <div>
+                  <h4 className="font-bold text-[#111b21] dark:text-[#e9edef] text-[15px] flex items-center gap-1">
+                    {postAuthor?.displayName || "User"}
+                    {postAuthor?.isVerified && <VerifiedBadge />}
+                  </h4>
+                  <p className="text-[11px] text-[#667781] dark:text-[#8696a0]">{post.createdAt?.toDate ? formatWhatsAppTime(post.createdAt.toDate()) : ''}</p>
                 </div>
-              )}
-            </div>
-            <div className="px-4 pb-4 text-[15px] text-[#111b21] dark:text-[#e9edef] leading-relaxed">
-              <div className="whitespace-pre-wrap">
-                {post.content.split(/(\s+)/).map((word: string, i: number) => {
-                  if (word.startsWith('#')) {
-                    return <span key={i} className="text-[#00a884] font-bold cursor-pointer hover:underline">{word}</span>;
-                  }
-                  return word;
-                })}
+                {post.isAd && <span className="ml-auto bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Sponsored</span>}
+                {!post.isAd && post.userId === user.uid && (
+                  <div className="ml-auto flex gap-2">
+                    <button onClick={() => { setEditingPost(post); setEditContent(post.content); }} className="p-1.5 text-gray-400 hover:text-[#00a884] transition-colors">
+                      <SettingsIcon className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDeletePost(post.id)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
-              {post.media?.[0] && (
-                <div className={cn("mt-3 overflow-hidden rounded-xl bg-black", post.isReel && "aspect-[9/16] max-h-[500px] flex items-center justify-center")}>
-                  {post.mediaType === 'video' ? (
-                    <video src={post.media[0]} controls className={cn("w-full h-full", post.isReel ? "object-contain" : "object-cover")} autoPlay={post.isReel} muted={post.isReel} loop={post.isReel} />
-                  ) : (
-                    <img src={post.media[0]} className="w-full h-full object-cover" alt="Post media" referrerPolicy="no-referrer" />
-                  )}
+              <div className="px-4 pb-4 text-[15px] text-[#111b21] dark:text-[#e9edef] leading-relaxed">
+                <div className="whitespace-pre-wrap">
+                  {post.content.split(/(\s+)/).map((word: string, i: number) => {
+                    if (word.startsWith('#')) {
+                      return <span key={i} className="text-[#00a884] font-bold cursor-pointer hover:underline">{word}</span>;
+                    }
+                    return word;
+                  })}
                 </div>
-              )}
-              {post.adLink && (
-                <a href={post.adLink} target="_blank" rel="noopener noreferrer" className="block mt-3 text-[#00a884] font-bold flex items-center gap-1">
-                  Learn More <ArrowRight className="w-4 h-4" />
-                </a>
-              )}
-            </div>
-            <div className="p-2 border-t border-gray-50 dark:border-gray-800 flex justify-around text-[#667781] dark:text-[#8696a0] text-xs font-bold uppercase tracking-wider">
-              <button 
-                onClick={() => handleLike(post)}
-                className={cn("flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors", post.likes.includes(user.uid) && "text-[#00a884]")}
-              >
-                <ThumbsUp className={cn("w-5 h-5", post.likes.includes(user.uid) && "fill-current")} />
-                <span>{post.likes.length || ''} Like</span>
-              </button>
-              <button 
-                onClick={() => setShowComments(post.id)}
-                className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                <MessageSquare className="w-5 h-5" />
-                <span>{post.commentCount || ''} Comment</span>
-              </button>
-              <button 
-                onClick={() => {
-                  if (navigator.share) {
-                    navigator.share({
-                      title: 'Heart Connect Post',
-                      text: post.content,
-                      url: window.location.href
-                    });
-                  } else {
-                    alert("Sharing not supported on this browser.");
-                  }
-                }}
-                className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                <Share2 className="w-5 h-5" />
-                <span>Share</span>
-              </button>
-              {post.userId === user.uid && !post.isAd && (
+                {post.media?.[0] && (
+                  <div className={cn("mt-3 overflow-hidden rounded-xl bg-black", post.isReel && "aspect-[9/16] max-h-[500px] flex items-center justify-center")}>
+                    {post.mediaType === 'video' ? (
+                      <video src={post.media[0]} controls className={cn("w-full h-full", post.isReel ? "object-contain" : "object-cover")} autoPlay={post.isReel} muted={post.isReel} loop={post.isReel} />
+                    ) : (
+                      <img src={post.media[0]} className="w-full h-full object-cover" alt="Post media" referrerPolicy="no-referrer" />
+                    )}
+                  </div>
+                )}
+                {post.adLink && (
+                  <a href={post.adLink} target="_blank" rel="noopener noreferrer" className="block mt-3 text-[#00a884] font-bold flex items-center gap-1">
+                    Learn More <ArrowRight className="w-4 h-4" />
+                  </a>
+                )}
+              </div>
+              <div className="p-2 border-t border-gray-50 dark:border-gray-800 flex justify-around text-[#667781] dark:text-[#8696a0] text-xs font-bold uppercase tracking-wider">
+                <button 
+                  onClick={() => handleLike(post)}
+                  className={cn("flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors", post.likes.includes(user.uid) && "text-[#00a884]")}
+                >
+                  <ThumbsUp className={cn("w-5 h-5", post.likes.includes(user.uid) && "fill-current")} />
+                  <span>{post.likes.length || ''} Like</span>
+                </button>
+                <button 
+                  onClick={() => setShowComments(post.id)}
+                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <MessageSquare className="w-5 h-5" />
+                  <span>{post.commentCount || ''} Comment</span>
+                </button>
                 <button 
                   onClick={() => {
-                    setAdContent(post.content);
-                    setAdMediaUrl(post.media?.[0] || '');
-                    setShowCreateAd(true);
+                    if (navigator.share) {
+                      navigator.share({
+                        title: 'Heart Connect Post',
+                        text: post.content,
+                        url: window.location.href
+                      });
+                    } else {
+                      alert("Sharing not supported on this browser.");
+                    }
                   }}
-                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-blue-500"
+                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 >
-                  <Megaphone className="w-5 h-5" />
-                  <span>Boost</span>
+                  <Share2 className="w-5 h-5" />
+                  <span>Share</span>
                 </button>
-              )}
-              {post.userId === user.uid && !post.isAd && (
-                <button 
-                  onClick={() => setShowCreateAd(true)}
-                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-purple-600"
-                >
-                  <Megaphone className="w-5 h-5" />
-                  <span>Boost</span>
-                </button>
-              )}
+                {post.userId === user.uid && !post.isAd && (
+                  <button 
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = 'image/*';
+                      input.onchange = async (e: any) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploading(true);
+                        try {
+                          const compressedFile = await compressImage(file);
+                          const url = await uploadFileToServer(compressedFile);
+                          setAdContent(post.content);
+                          setAdMediaUrl(url);
+                          setShowCreateAd(true);
+                        } catch (err) {
+                          console.error(err);
+                          alert("Failed to pick photo for boost");
+                        } finally {
+                          setUploading(false);
+                        }
+                      };
+                      input.click();
+                    }}
+                    className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-blue-500"
+                  >
+                    <Megaphone className="w-5 h-5" />
+                    <span>Boost</span>
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {showComments && (
@@ -2423,6 +2448,11 @@ const PointsLeaderboard = ({ onBack }: any) => {
 
 const AdminDashboard = ({ user, onBack }: any) => {
   const [users, setUsers] = useState<User[]>([]);
+  const usersMap = useMemo(() => {
+    const map: Record<string, User> = {};
+    users.forEach(u => { map[u.uid] = u; });
+    return map;
+  }, [users]);
   const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, activeAds: 0, totalPoints: 0 });
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -2662,16 +2692,16 @@ const AdminDashboard = ({ user, onBack }: any) => {
             ) : (
               ads.map(ad => (
                 <div key={ad.id} className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm space-y-3">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-3">
-                      <img src={ad.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${ad.userId}`} className="w-8 h-8 rounded-full" alt="Ad" referrerPolicy="no-referrer" />
-                      <div>
-                        <h4 className="font-bold text-sm dark:text-[#e9edef]">{ad.user?.displayName}</h4>
-                        <p className="text-[10px] text-gray-400 dark:text-[#8696a0]">Sponsored</p>
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-3">
+                        <img src={usersMap[ad.userId]?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${ad.userId}`} className="w-8 h-8 rounded-full" alt="Ad" referrerPolicy="no-referrer" />
+                        <div>
+                          <h4 className="font-bold text-sm dark:text-[#e9edef]">{usersMap[ad.userId]?.displayName || "Advertiser"}</h4>
+                          <p className="text-[10px] text-gray-400 dark:text-[#8696a0]">Sponsored</p>
+                        </div>
                       </div>
+                      <button onClick={() => deleteAd(ad.id)} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full"><Trash2 className="w-4 h-4" /></button>
                     </div>
-                    <button onClick={() => deleteAd(ad.id)} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full"><Trash2 className="w-4 h-4" /></button>
-                  </div>
                   <p className="text-sm text-gray-700 dark:text-[#e9edef]">{ad.content}</p>
                   {ad.media?.[0] && <img src={ad.media[0]} className="w-full h-32 object-cover rounded-xl" alt="Ad Media" referrerPolicy="no-referrer" />}
                   {ad.adLink && <div className="text-xs text-[#00a884] font-bold truncate">{ad.adLink}</div>}
