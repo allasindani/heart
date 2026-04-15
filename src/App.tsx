@@ -84,6 +84,51 @@ const VerifiedBadge = ({ size = 14 }: { size?: number }) => (
   <ShieldCheck className="text-blue-500 fill-blue-500/10" style={{ width: size, height: size }} />
 );
 
+const Logo = ({ size = 40, className = "" }: { size?: number, className?: string }) => (
+  <div className={cn("relative flex items-center justify-center", className)} style={{ width: size, height: size }}>
+    <div className="absolute inset-0 bg-[#00a884] rounded-2xl rotate-12 opacity-20 animate-pulse" />
+    <div className="absolute inset-0 bg-[#00a884] rounded-2xl -rotate-6 opacity-10" />
+    <div className="relative bg-gradient-to-br from-[#00a884] to-[#008069] rounded-2xl flex items-center justify-center shadow-lg" style={{ width: size, height: size }}>
+      <Heart className="text-white fill-white" style={{ width: size * 0.5, height: size * 0.5 }} />
+    </div>
+  </div>
+);
+
+const SplashScreen = () => (
+  <div className="fixed inset-0 z-[1000] bg-white dark:bg-[#111b21] flex flex-col items-center justify-center">
+    <motion.div
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="flex flex-col items-center gap-6"
+    >
+      <Logo size={80} />
+      <div className="flex flex-col items-center">
+        <h1 className="text-2xl font-black text-[#111b21] dark:text-[#e9edef] tracking-tighter">Heart Connect</h1>
+        <p className="text-sm text-[#667781] dark:text-[#8696a0] font-medium">Connecting Hearts, One Chat at a Time</p>
+      </div>
+      <div className="mt-12 flex flex-col items-center gap-4">
+        <div className="w-48 h-1 bg-gray-100 dark:bg-[#2a3942] rounded-full overflow-hidden">
+          <motion.div
+            initial={{ width: "0%" }}
+            animate={{ width: "100%" }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            className="h-full bg-[#00a884]"
+          />
+        </div>
+        <div className="flex items-center gap-2 text-[10px] text-gray-400 uppercase font-bold tracking-widest">
+          <ShieldCheck className="w-3 h-3 text-[#00a884]" />
+          End-to-End Encrypted
+        </div>
+      </div>
+    </motion.div>
+    <div className="absolute bottom-12 flex flex-col items-center gap-1">
+      <p className="text-[10px] text-gray-400 uppercase font-black tracking-[0.2em]">From</p>
+      <p className="text-sm font-bold text-[#00a884]">STYN TECHNOLOGIES</p>
+    </div>
+  </div>
+);
+
 const compressImage = async (file: File) => {
   if (file.size > 0.5 * 1024 * 1024 && file.type.startsWith('image/')) {
     const options = {
@@ -149,13 +194,11 @@ const AuthScreen = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#00a884] flex items-center justify-center p-4">
-      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full text-center">
-        <div className="w-20 h-20 bg-[#25d366] rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl">
-          <Heart className="text-white w-12 h-12 fill-current" />
-        </div>
-        <h1 className="text-3xl font-bold text-[#111b21] mb-2">Heart Connect</h1>
-        <p className="text-[#667781] mb-8 font-medium">Simple. Secure. Reliable Dating.</p>
+    <div className="min-h-screen bg-[#f0f2f5] flex items-center justify-center p-4">
+      <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full text-center">
+        <Logo size={60} className="mx-auto mb-6" />
+        <h2 className="text-3xl font-black mb-2 text-[#111b21] tracking-tighter">Heart Connect</h2>
+        <p className="text-gray-500 mb-8 font-medium">Connecting Hearts, One Chat at a Time</p>
         
         <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
           <input 
@@ -163,7 +206,7 @@ const AuthScreen = () => {
             placeholder="Email" 
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:border-[#00a884]"
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-[#00a884]/20"
             required
           />
           <input 
@@ -171,12 +214,12 @@ const AuthScreen = () => {
             placeholder="Password" 
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:border-[#00a884]"
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-[#00a884]/20"
             required
           />
-          {error && <p className="text-red-500 text-xs">{error}</p>}
-          <button type="submit" className="w-full bg-[#00a884] text-white font-bold py-3 rounded-xl shadow-md hover:bg-[#008f6f] transition-all">
-            {isLogin ? 'Login' : 'Sign Up'}
+          {error && <p className="text-red-500 text-xs font-bold">{error}</p>}
+          <button type="submit" className="w-full bg-[#00a884] text-white font-bold py-4 rounded-xl shadow-lg shadow-[#00a884]/20 active:scale-95 transition-all">
+            {isLogin ? 'Log In' : 'Sign Up'}
           </button>
         </form>
 
@@ -186,7 +229,7 @@ const AuthScreen = () => {
           <div className="flex-1 h-[1px] bg-gray-200"></div>
         </div>
 
-        <button onClick={handleGoogleLogin} className="w-full bg-white border border-gray-200 text-gray-700 font-bold py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-3 mb-4 hover:bg-gray-50">
+        <button onClick={handleGoogleLogin} className="w-full bg-white border border-gray-300 text-gray-700 font-bold py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-3 mb-4 hover:bg-gray-50">
           <img src="https://www.google.com/favicon.ico" className="w-5 h-5 bg-white rounded-full p-0.5" alt="Google" referrerPolicy="no-referrer" />
           Continue with Google
         </button>
@@ -195,7 +238,7 @@ const AuthScreen = () => {
           onClick={() => setIsLogin(!isLogin)} 
           className="text-[#00a884] text-sm font-bold hover:underline"
         >
-          {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Login"}
+          {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Log In"}
         </button>
 
         <div className="mt-8 pt-6 border-t border-gray-100">
@@ -599,6 +642,7 @@ export default function App() {
     </div>
   );
 
+  if (loading) return <SplashScreen />;
   if (!user) return <AuthScreen />;
 
   if (user.suspended) return (
@@ -750,7 +794,10 @@ export default function App() {
           {/* App Header */}
           <div className="bg-[#008069] text-white p-4 pb-2 shadow-md relative z-30">
             <div className="flex justify-between items-center mb-4">
-              <h1 className="text-xl font-medium">Heart Connect</h1>
+              <div className="flex items-center gap-3">
+                <Logo size={32} className="shadow-none" />
+                <h1 className="text-xl font-black tracking-tighter">Heart Connect</h1>
+              </div>
               <div className="flex gap-5 items-center">
                 <Camera className="w-6 h-6 cursor-pointer" onClick={() => setActiveTab('status')} />
                 <Search className="w-6 h-6 cursor-pointer" onClick={() => setShowSearch(!showSearch)} />
