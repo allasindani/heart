@@ -2558,9 +2558,9 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
           <p className="text-sm text-gray-500 dark:text-[#8696a0]">Upgrade to unlock premium features and support the community.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex overflow-x-auto pb-4 gap-4 snap-x snap-mandatory custom-scrollbar -mx-4 px-4 md:grid md:grid-cols-2 md:overflow-x-visible md:pb-0 md:mx-0 md:px-0">
           {tiers.map(tier => (
-            <div key={tier.name} className="bg-white dark:bg-[#111b21] p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col">
+            <div key={tier.name} className="min-w-[280px] snap-start bg-white dark:bg-[#111b21] p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:min-w-0">
               <div className="flex justify-between items-start mb-4">
                 <div className={cn("p-3 rounded-2xl", tier.color)}>
                   {tier.icon}
