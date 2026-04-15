@@ -376,6 +376,19 @@ export default function App() {
 
   // Seed Data for Zimbabwe Profiles
   useEffect(() => {
+    if (appSettings?.googleAnalyticsCode) {
+      const script = document.createElement('script');
+      script.innerHTML = appSettings.googleAnalyticsCode;
+      document.head.appendChild(script);
+    }
+    if (appSettings?.adSenseCode) {
+      const script = document.createElement('script');
+      script.innerHTML = appSettings.adSenseCode;
+      document.head.appendChild(script);
+    }
+  }, [appSettings]);
+
+  useEffect(() => {
     const seedZimProfiles = async () => {
       if (!user || user.role !== 'admin') return;
       
@@ -794,7 +807,7 @@ export default function App() {
             {/* Tabs */}
             <div className="flex text-center font-medium text-sm uppercase tracking-wider">
               <button onClick={() => setActiveTab('chats')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'chats' ? "border-white" : "border-transparent opacity-70")}>Chats</button>
-              <button onClick={() => setActiveTab('status')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'status' ? "border-white" : "border-transparent opacity-70")}>Status</button>
+              <button onClick={() => setActiveTab('status')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'status' ? "border-white" : "border-transparent opacity-70")}>Status & Updates</button>
               <button onClick={() => setActiveTab('dating')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'dating' ? "border-white" : "border-transparent opacity-70")}>Dating</button>
             </div>
           </div>
@@ -803,12 +816,25 @@ export default function App() {
           <div className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21]">
             {activeTab === 'chats' && (
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                {chats.filter(c => {
+                {chats.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-4">
+                    <div className="w-20 h-20 bg-gray-50 dark:bg-[#111b21] rounded-full flex items-center justify-center">
+                      <MessageCircle className="w-10 h-10 text-gray-200 dark:text-gray-800" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900 dark:text-[#e9edef]">No chats yet</h3>
+                      <p className="text-sm text-gray-500 dark:text-[#8696a0] max-w-[200px] mx-auto">Start a conversation with someone from the dating or status tab!</p>
+                    </div>
+                  </div>
+                ) : chats.filter(c => {
                   if (!searchQuery) return true;
                   const name = c.groupName || '';
                   return name.toLowerCase().includes(searchQuery.toLowerCase());
                 }).length === 0 ? (
-                  <div className="p-8 text-center text-gray-500">No chats found.</div>
+                  <div className="p-12 text-center">
+                    <Search className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                    <p className="text-gray-500">No results for "{searchQuery}"</p>
+                  </div>
                 ) : (
                   chats.filter(c => {
                     if (!searchQuery) return true;
@@ -1470,122 +1496,158 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
             </button>
           </div>
         </div>
-        {posts.map((post: any) => {
-          const postAuthor = usersMap[post.userId];
-          return (
-            <div key={post.id} className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
-              <div className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => onUserClick({ uid: post.userId, displayName: postAuthor?.displayName, photoURL: postAuthor?.photoURL })}>
-                <img src={postAuthor?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-10 h-10 rounded-full" alt="User" referrerPolicy="no-referrer" />
-                <div>
-                  <h4 className="font-bold text-[#111b21] dark:text-[#e9edef] text-[15px] flex items-center gap-1">
-                    {postAuthor?.displayName || "User"}
-                    {postAuthor?.isVerified && <VerifiedBadge />}
-                  </h4>
-                  <p className="text-[11px] text-[#667781] dark:text-[#8696a0]">{post.createdAt?.toDate ? formatWhatsAppTime(post.createdAt.toDate()) : ''}</p>
-                </div>
-                {post.isAd && <span className="ml-auto bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Sponsored</span>}
-                {!post.isAd && post.userId === user.uid && (
-                  <div className="ml-auto flex gap-2">
-                    <button onClick={() => { setEditingPost(post); setEditContent(post.content); }} className="p-1.5 text-gray-400 hover:text-[#00a884] transition-colors">
-                      <SettingsIcon className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => handleDeletePost(post.id)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+
+        {(() => {
+          const elements: React.ReactNode[] = [];
+          const userAds = posts.filter(p => p.isAd);
+          let adIndex = 0;
+
+          posts.filter(p => !p.isAd).forEach((post, index) => {
+            const postAuthor = usersMap[post.userId];
+            elements.push(
+              <div key={post.id} className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+                <div className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => onUserClick({ uid: post.userId, displayName: postAuthor?.displayName, photoURL: postAuthor?.photoURL })}>
+                  <img src={postAuthor?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-10 h-10 rounded-full" alt="User" referrerPolicy="no-referrer" />
+                  <div>
+                    <h4 className="font-bold text-[#111b21] dark:text-[#e9edef] text-[15px] flex items-center gap-1">
+                      {postAuthor?.displayName || "User"}
+                      {postAuthor?.isVerified && <VerifiedBadge />}
+                    </h4>
+                    <p className="text-[11px] text-[#667781] dark:text-[#8696a0]">{post.createdAt?.toDate ? formatWhatsAppTime(post.createdAt.toDate()) : ''}</p>
                   </div>
-                )}
-              </div>
-              <div className="px-4 pb-4 text-[15px] text-[#111b21] dark:text-[#e9edef] leading-relaxed">
-                <div className="whitespace-pre-wrap">
-                  {post.content.split(/(\s+)/).map((word: string, i: number) => {
-                    if (word.startsWith('#')) {
-                      return <span key={i} className="text-[#00a884] font-bold cursor-pointer hover:underline">{word}</span>;
-                    }
-                    return word;
-                  })}
+                  {post.userId === user.uid && (
+                    <div className="ml-auto flex gap-2">
+                      <button onClick={() => { setEditingPost(post); setEditContent(post.content); }} className="p-1.5 text-gray-400 hover:text-[#00a884] transition-colors">
+                        <SettingsIcon className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleDeletePost(post.id)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
-                {post.media?.[0] && (
-                  <div className={cn("mt-3 overflow-hidden rounded-xl bg-black", post.isReel && "aspect-[9/16] max-h-[500px] flex items-center justify-center")}>
-                    {post.mediaType === 'video' ? (
-                      <video src={post.media[0]} controls className={cn("w-full h-full", post.isReel ? "object-contain" : "object-cover")} autoPlay={post.isReel} muted={post.isReel} loop={post.isReel} />
-                    ) : (
-                      <img src={post.media[0]} className="w-full h-full object-cover" alt="Post media" referrerPolicy="no-referrer" />
-                    )}
+                <div className="px-4 pb-4 text-[15px] text-[#111b21] dark:text-[#e9edef] leading-relaxed">
+                  <div className="whitespace-pre-wrap">
+                    {post.content.split(/(\s+)/).map((word: string, i: number) => {
+                      if (word.startsWith('#')) {
+                        return <span key={i} className="text-[#00a884] font-bold cursor-pointer hover:underline">{word}</span>;
+                      }
+                      return word;
+                    })}
                   </div>
-                )}
-                {post.adLink && (
-                  <a href={post.adLink} target="_blank" rel="noopener noreferrer" className="block mt-3 text-[#00a884] font-bold flex items-center gap-1">
-                    Learn More <ArrowRight className="w-4 h-4" />
-                  </a>
-                )}
-              </div>
-              <div className="p-2 border-t border-gray-50 dark:border-gray-800 flex justify-around text-[#667781] dark:text-[#8696a0] text-xs font-bold uppercase tracking-wider">
-                <button 
-                  onClick={() => handleLike(post)}
-                  className={cn("flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors", post.likes.includes(user.uid) && "text-[#00a884]")}
-                >
-                  <ThumbsUp className={cn("w-5 h-5", post.likes.includes(user.uid) && "fill-current")} />
-                  <span>{post.likes.length || ''} Like</span>
-                </button>
-                <button 
-                  onClick={() => setShowComments(post.id)}
-                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                >
-                  <MessageSquare className="w-5 h-5" />
-                  <span>{post.commentCount || ''} Comment</span>
-                </button>
-                <button 
-                  onClick={() => {
-                    if (navigator.share) {
-                      navigator.share({
-                        title: 'Heart Connect Post',
-                        text: post.content,
-                        url: window.location.href
-                      });
-                    } else {
-                      alert("Sharing not supported on this browser.");
-                    }
-                  }}
-                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                >
-                  <Share2 className="w-5 h-5" />
-                  <span>Share</span>
-                </button>
-                {post.userId === user.uid && !post.isAd && (
+                  {post.media?.[0] && (
+                    <div className={cn("mt-3 overflow-hidden rounded-xl bg-black", post.isReel && "aspect-[9/16] max-h-[500px] flex items-center justify-center")}>
+                      {post.mediaType === 'video' ? (
+                        <video src={post.media[0]} controls className={cn("w-full h-full", post.isReel ? "object-contain" : "object-cover")} autoPlay={post.isReel} muted={post.isReel} loop={post.isReel} />
+                      ) : (
+                        <img src={post.media[0]} className="w-full h-full object-cover" alt="Post media" referrerPolicy="no-referrer" />
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="p-2 border-t border-gray-50 dark:border-gray-800 flex justify-around text-[#667781] dark:text-[#8696a0] text-xs font-bold uppercase tracking-wider">
+                  <button 
+                    onClick={() => handleLike(post)}
+                    className={cn("flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors", post.likes.includes(user.uid) && "text-[#00a884]")}
+                  >
+                    <ThumbsUp className={cn("w-5 h-5", post.likes.includes(user.uid) && "fill-current")} />
+                    <span>{post.likes.length || ''} Like</span>
+                  </button>
+                  <button 
+                    onClick={() => setShowComments(post.id)}
+                    className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    <MessageSquare className="w-5 h-5" />
+                    <span>{post.commentCount || ''} Comment</span>
+                  </button>
                   <button 
                     onClick={() => {
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.accept = 'image/*';
-                      input.onchange = async (e: any) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        setUploading(true);
-                        try {
-                          const compressedFile = await compressImage(file);
-                          const url = await uploadFileToServer(compressedFile);
-                          setAdContent(post.content);
-                          setAdMediaUrl(url);
-                          setShowCreateAd(true);
-                        } catch (err) {
-                          console.error(err);
-                          alert("Failed to pick photo for boost");
-                        } finally {
-                          setUploading(false);
-                        }
-                      };
-                      input.click();
+                      if (navigator.share) {
+                        navigator.share({ title: 'Heart Connect Post', text: post.content, url: window.location.href });
+                      } else {
+                        alert("Sharing not supported on this browser.");
+                      }
                     }}
-                    className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-blue-500"
+                    className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                   >
-                    <Megaphone className="w-5 h-5" />
-                    <span>Boost</span>
+                    <Share2 className="w-5 h-5" />
+                    <span>Share</span>
                   </button>
-                )}
+                  {post.userId === user.uid && (
+                    <button 
+                      onClick={() => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = 'image/*';
+                        input.onchange = async (e: any) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setUploading(true);
+                          try {
+                            const compressedFile = await compressImage(file);
+                            const url = await uploadFileToServer(compressedFile);
+                            setAdContent(post.content);
+                            setAdMediaUrl(url);
+                            setShowCreateAd(true);
+                          } catch (err) {
+                            console.error(err);
+                            alert("Failed to pick photo for boost");
+                          } finally {
+                            setUploading(false);
+                          }
+                        };
+                        input.click();
+                      }}
+                      className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-blue-500"
+                    >
+                      <Megaphone className="w-5 h-5" />
+                      <span>Boost</span>
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+
+            // Ad Logic: after 3, 10, then multiples of 2 and 3 after 10
+            const pos = index + 1;
+            let shouldShowAd = false;
+            if (pos === 3 || pos === 10) shouldShowAd = true;
+            if (pos > 10 && ((pos - 10) % 2 === 0 || (pos - 10) % 3 === 0)) shouldShowAd = true;
+
+            if (shouldShowAd) {
+              const currentAd = userAds[adIndex % userAds.length];
+              if (currentAd) {
+                const adAuthor = usersMap[currentAd.userId];
+                elements.push(
+                  <div key={`ad-${pos}`} className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden border-l-4 border-l-yellow-400">
+                    <div className="p-3 flex items-center gap-3">
+                      <img src={adAuthor?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentAd.userId}`} className="w-8 h-8 rounded-full" alt="Ad" referrerPolicy="no-referrer" />
+                      <div className="flex-1">
+                        <h4 className="font-bold text-xs dark:text-[#e9edef]">{adAuthor?.displayName || "Sponsored"}</h4>
+                        <p className="text-[9px] text-yellow-600 font-bold uppercase tracking-tighter">Sponsored Ad</p>
+                      </div>
+                      {currentAd.adLink && (
+                        <a href={currentAd.adLink} target="_blank" rel="noopener noreferrer" className="bg-[#00a884] text-white px-3 py-1 rounded-full text-[10px] font-bold">Visit</a>
+                      )}
+                    </div>
+                    <div className="px-3 pb-3">
+                      <p className="text-xs text-gray-600 dark:text-[#8696a0] line-clamp-2 mb-2">{currentAd.content}</p>
+                      {currentAd.media?.[0] && <img src={currentAd.media[0]} className="w-full h-24 object-cover rounded-lg" alt="Ad" referrerPolicy="no-referrer" />}
+                    </div>
+                  </div>
+                );
+                adIndex++;
+              } else if (appSettings?.adSenseCode) {
+                elements.push(
+                  <div key={`adsense-${pos}`} className="bg-gray-50 dark:bg-[#111b21] rounded-xl p-2 flex items-center justify-center min-h-[100px] border border-dashed border-gray-200 dark:border-gray-800">
+                    <div dangerouslySetInnerHTML={{ __html: appSettings.adSenseCode }} />
+                  </div>
+                );
+              }
+            }
+          });
+          return elements;
+        })()}
       </div>
 
       {showComments && (
@@ -2796,6 +2858,28 @@ const AdminDashboard = ({ user, onBack }: any) => {
               <div>
                 <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Min Ad Duration (Days)</label>
                 <input type="number" value={settings.minAdDuration} onChange={(e) => setSettings({...settings, minAdDuration: Number(e.target.value)})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
+              </div>
+            </div>
+
+            <h3 className="font-bold text-gray-700 dark:text-[#e9edef] border-b dark:border-gray-800 pb-2 pt-4">Analytics & AdSense</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Google Analytics Code (HTML)</label>
+                <textarea 
+                  value={settings.googleAnalyticsCode || ''} 
+                  onChange={(e) => setSettings({...settings, googleAnalyticsCode: e.target.value})} 
+                  placeholder="Paste <script> here..."
+                  className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef] h-24 font-mono text-xs" 
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Google AdSense Code (HTML)</label>
+                <textarea 
+                  value={settings.adSenseCode || ''} 
+                  onChange={(e) => setSettings({...settings, adSenseCode: e.target.value})} 
+                  placeholder="Paste <ins> or <script> here..."
+                  className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef] h-24 font-mono text-xs" 
+                />
               </div>
             </div>
 

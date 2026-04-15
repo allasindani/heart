@@ -117,6 +117,8 @@ export interface AppSettings {
   adPricePerDay: number;
   minAdDuration: number;
   paymentMethods: { type: string, details: string }[];
+  googleAnalyticsCode?: string;
+  adSenseCode?: string;
 }
 
 export interface PaymentProof {
