@@ -36,6 +36,7 @@
         "participants": { "type": "array", "items": { "type": "string" }, "description": "Array of user UIDs" },
         "lastMessage": { "type": "object" },
         "updatedAt": { "type": "string", "format": "date-time" },
+        "typing": { "type": "object", "description": "Map of userId to boolean for typing status" },
         "groupName": { "type": "string" },
         "groupPhoto": { "type": "string" }
       }

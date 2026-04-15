@@ -968,9 +968,12 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
   const [otherUser, setOtherUser] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
   const [reactingTo, setReactingTo] = useState<string | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
+  const [otherUserTyping, setOtherUserTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const longPressTimer = useRef<any>(null);
+  const typingTimeoutRef = useRef<any>(null);
 
   const emojis = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
 
@@ -978,11 +981,40 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
     const otherId = chat.participants.find((p: string) => p !== user.uid);
     if (!otherId) return;
     
-    const unsub = onSnapshot(doc(db, 'users', otherId), (snap) => {
+    const unsubUser = onSnapshot(doc(db, 'users', otherId), (snap) => {
       if (snap.exists()) setOtherUser({ uid: snap.id, ...snap.data() });
     });
-    return unsub;
+
+    const unsubChat = onSnapshot(doc(db, 'chats', chat.id), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setOtherUserTyping(!!data.typing?.[otherId]);
+      }
+    });
+
+    return () => {
+      unsubUser();
+      unsubChat();
+      // Clear typing status on unmount
+      updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false }).catch(() => {});
+    };
   }, [chat, user.uid]);
+
+  const handleTyping = (val: string) => {
+    setInput(val);
+    
+    if (!isTyping) {
+      setIsTyping(true);
+      updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: true });
+    }
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+      updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false });
+    }, 3000);
+  };
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
 
@@ -1060,7 +1092,9 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
             {otherUser?.isVerified && <VerifiedBadge size={14} />}
           </h3>
           <p className="text-[10px] opacity-80 flex items-center gap-1">
-            {otherUser?.isOnline ? (
+            {otherUserTyping ? (
+              <span className="text-white font-bold animate-pulse">typing...</span>
+            ) : otherUser?.isOnline ? (
               <>
                 <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
                 online
@@ -1160,12 +1194,36 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*,video/*" />
         <div className="bg-white dark:bg-[#2a3942] flex-1 flex items-center px-3 py-2 rounded-full shadow-sm">
           <Smile className="w-6 h-6 text-gray-500 dark:text-[#8696a0] mr-2" />
-          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Message" className="flex-1 bg-transparent border-none outline-none text-[16px] dark:text-[#e9edef]" onKeyDown={(e) => { if (e.key === 'Enter' && input.trim()) { onSendMessage(input); setInput(''); } }} />
+          <input 
+            type="text" 
+            value={input} 
+            onChange={(e) => handleTyping(e.target.value)} 
+            placeholder="Message" 
+            className="flex-1 bg-transparent border-none outline-none text-[16px] dark:text-[#e9edef]" 
+            onKeyDown={(e) => { 
+              if (e.key === 'Enter' && input.trim()) { 
+                onSendMessage(input); 
+                setInput(''); 
+                setIsTyping(false);
+                updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false });
+              } 
+            }} 
+          />
           <button onClick={() => onSendMessage("This is a test message! 🚀")} className="text-[10px] font-bold text-[#00a884] uppercase px-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors">Test</button>
           <Paperclip className="w-6 h-6 text-gray-500 dark:text-[#8696a0] ml-2 cursor-pointer" onClick={() => fileInputRef.current?.click()} />
           <Camera className="w-6 h-6 text-gray-500 dark:text-[#8696a0] ml-3 cursor-pointer" onClick={() => fileInputRef.current?.click()} />
         </div>
-        <button onClick={() => { if (input.trim()) { onSendMessage(input); setInput(''); } }} className="w-12 h-12 bg-[#00a884] rounded-full flex items-center justify-center text-white shadow-md">
+        <button 
+          onClick={() => { 
+            if (input.trim()) { 
+              onSendMessage(input); 
+              setInput(''); 
+              setIsTyping(false);
+              updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false });
+            } 
+          }} 
+          className="w-12 h-12 bg-[#00a884] rounded-full flex items-center justify-center text-white shadow-md"
+        >
           {input.trim() ? <Send className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
         </button>
       </div>
