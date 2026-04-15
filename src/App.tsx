@@ -84,6 +84,23 @@ const VerifiedBadge = ({ size = 14 }: { size?: number }) => (
   <ShieldCheck className="text-blue-500 fill-blue-500/10" style={{ width: size, height: size }} />
 );
 
+const TierBadge = ({ tier, size = 14 }: { tier?: string, size?: number }) => {
+  if (!tier || tier === 'General') return null;
+  
+  const config: Record<string, { icon: any, color: string }> = {
+    'Bronze': { icon: Trophy, color: 'text-orange-500 fill-orange-500/10' },
+    'Silver': { icon: Crown, color: 'text-blue-500 fill-blue-500/10' },
+    'Gold': { icon: ShieldCheck, color: 'text-yellow-500 fill-yellow-500/10' },
+    'Platinum': { icon: Crown, color: 'text-purple-500 fill-purple-500/10' }
+  };
+
+  const badge = config[tier];
+  if (!badge) return null;
+
+  const Icon = badge.icon;
+  return <Icon className={badge.color} style={{ width: size, height: size }} />;
+};
+
 const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
   const target = e.currentTarget;
   const fallback = `https://api.dicebear.com/7.x/avataaars/svg?seed=${Math.random()}`;
@@ -915,6 +932,7 @@ export default function App() {
                           <div className="flex justify-between items-center mb-1">
                             <h3 className="font-bold text-[#111b21] truncate flex items-center gap-1">
                               {chatName}
+                              <TierBadge tier={otherUser?.category} size={14} />
                               {otherUser?.isVerified && <VerifiedBadge size={14} />}
                             </h3>
                             <span className="text-xs text-[#667781]">{chat.updatedAt?.toDate ? formatWhatsAppTime(chat.updatedAt.toDate()) : ''}</span>
@@ -1109,6 +1127,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
         <div className="flex-1 min-w-0">
           <h3 className="font-bold truncate flex items-center gap-1">
             {otherUser?.displayName || chat.groupName || "Chat"}
+            <TierBadge tier={otherUser?.category} size={14} />
             {otherUser?.isVerified && <VerifiedBadge size={14} />}
           </h3>
           <p className="text-[10px] opacity-80 flex items-center gap-1">
@@ -1515,6 +1534,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
                   </div>
                   <span className="text-xs text-gray-600 dark:text-[#8696a0] truncate w-16 text-center flex items-center justify-center gap-0.5">
                     {statusUser?.displayName || "User"}
+                    <TierBadge tier={statusUser?.category} size={10} />
                     {statusUser?.isVerified && <VerifiedBadge size={10} />}
                   </span>
                 </div>
@@ -1737,6 +1757,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
                   <div>
                     <h4 className="font-bold text-[#111b21] dark:text-[#e9edef] text-[15px] flex items-center gap-1">
                       {postAuthor?.displayName || "User"}
+                      <TierBadge tier={postAuthor?.category} size={14} />
                       {postAuthor?.isVerified && <VerifiedBadge />}
                     </h4>
                     <p className="text-[11px] text-[#667781] dark:text-[#8696a0]">{post.createdAt?.toDate ? formatWhatsAppTime(post.createdAt.toDate()) : ''}</p>
@@ -2142,6 +2163,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
               <div className="flex items-center gap-2 mb-1">
                 <h3 className="text-2xl font-bold flex items-center gap-1">
                   {currentUser.displayName}, {currentUser.datingProfile?.age}
+                  <TierBadge tier={currentUser.category} size={20} />
                   {currentUser.isVerified && <VerifiedBadge size={20} />}
                 </h3>
                 {currentUser.isOnline && (
@@ -2257,6 +2279,7 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat }: any) => {
         <div className="absolute bottom-6 left-6 text-white">
           <h2 className="text-3xl font-bold flex items-center gap-2">
             {fullUser.displayName}
+            <TierBadge tier={fullUser.category} size={24} />
             {fullUser.isVerified && <VerifiedBadge size={24} />}
           </h2>
           <p className="opacity-80 flex items-center gap-2">
@@ -2344,7 +2367,10 @@ const NotificationCenter = ({ user, notifications, onBack, onNavigate }: any) =>
               </div>
               <div className="flex-1">
                 <p className="text-sm text-[#111b21] dark:text-[#e9edef]">
-                  <span className="font-bold">{n.fromName}</span> {n.text}
+                  <span className="font-bold flex items-center gap-1">
+                    {n.fromName}
+                    <TierBadge tier={usersMap[n.fromId]?.category} size={12} />
+                  </span> {n.text}
                 </p>
                 <p className="text-[10px] text-gray-400 mt-1">{n.timestamp?.toDate ? formatWhatsAppTime(n.timestamp.toDate()) : 'Just now'}</p>
               </div>
@@ -2730,6 +2756,7 @@ const PointsLeaderboard = ({ onBack }: any) => {
               <div className="flex-1">
                 <h4 className="font-bold text-[#111b21] flex items-center gap-1">
                   {u.displayName}
+                  <TierBadge tier={u.category} size={14} />
                   {u.isVerified && <VerifiedBadge size={14} />}
                 </h4>
                 <p className="text-xs text-gray-400">{u.category} Member</p>
