@@ -701,7 +701,7 @@ export default function App() {
           />
         </div>
       ) : showAdmin ? (
-        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col h-screen overflow-hidden">
           <AdminDashboard user={user} onBack={() => setShowAdmin(false)} />
         </div>
       ) : viewingUser ? (
@@ -728,7 +728,7 @@ export default function App() {
           />
         </div>
       ) : showUpgrade ? (
-        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col h-screen overflow-hidden">
           <UpgradeTiers user={user} onBack={() => setShowUpgrade(false)} settings={appSettings} />
         </div>
       ) : showCreateAd ? (
@@ -1131,6 +1131,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
   const [viewingStatus, setViewingStatus] = useState<any>(null);
   const [statusText, setStatusText] = useState('');
+  const [statusCaption, setStatusCaption] = useState('');
   const [statusDuration, setStatusDuration] = useState('24h');
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [editContent, setEditContent] = useState('');
@@ -1293,12 +1294,14 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
         userId: user.uid,
         type,
         content: mediaUrl || statusText,
+        caption: type !== 'text' ? statusCaption : '',
         createdAt: serverTimestamp(),
         expiresAt,
         user: { displayName: user.displayName, photoURL: user.photoURL }
       });
       setShowStatusModal(false);
       setStatusText('');
+      setStatusCaption('');
     } catch (error) {
       console.error("Status error:", error);
     } finally {
@@ -1351,41 +1354,94 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
             </div>
             <span className="text-xs text-gray-600 dark:text-[#8696a0]">My Status</span>
           </div>
-          {statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true).map((s: any) => {
-            const statusUser = usersMap[s.userId];
-            return (
-              <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => handleViewStatus(s)}>
-                <div className="p-0.5 rounded-full border-2 border-[#00a884]">
-                  <img src={statusUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} className="w-16 h-16 rounded-full border-2 border-white dark:border-[#111b21]" alt="User" referrerPolicy="no-referrer" />
-                </div>
-                <span className="text-xs text-gray-600 dark:text-[#8696a0] truncate w-16 text-center flex items-center justify-center gap-0.5">
-                  {statusUser?.displayName || "User"}
-                  {statusUser?.isVerified && <VerifiedBadge size={10} />}
-                </span>
+          {statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true).length === 0 ? (
+            <div className="flex flex-col items-center justify-center min-w-[100px] opacity-40">
+              <div className="w-16 h-16 rounded-full border-2 border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center">
+                <CircleDashed className="w-6 h-6" />
               </div>
-            );
-          })}
+              <span className="text-[10px] mt-1">No Updates</span>
+            </div>
+          ) : (
+            statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true).map((s: any) => {
+              const statusUser = usersMap[s.userId];
+              return (
+                <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => handleViewStatus(s)}>
+                  <div className="p-0.5 rounded-full border-2 border-[#00a884]">
+                    <img src={statusUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} className="w-16 h-16 rounded-full border-2 border-white dark:border-[#111b21]" alt="User" referrerPolicy="no-referrer" />
+                  </div>
+                  <span className="text-xs text-gray-600 dark:text-[#8696a0] truncate w-16 text-center flex items-center justify-center gap-0.5">
+                    {statusUser?.displayName || "User"}
+                    {statusUser?.isVerified && <VerifiedBadge size={10} />}
+                  </span>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
       {/* Status Viewer Modal */}
       <AnimatePresence>
         {viewingStatus && (() => {
+          const activeStatuses = statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true);
+          const currentIndex = activeStatuses.findIndex((s: any) => s.id === viewingStatus.id);
           const statusUser = usersMap[viewingStatus.userId];
+
+          const navigateStatus = (dir: 'next' | 'prev') => {
+            let nextIndex = dir === 'next' ? currentIndex + 1 : currentIndex - 1;
+            if (nextIndex >= 0 && nextIndex < activeStatuses.length) {
+              handleViewStatus(activeStatuses[nextIndex]);
+            } else {
+              setViewingStatus(null);
+            }
+          };
+
           return (
-            <div className="fixed inset-0 z-[200] bg-black flex flex-col">
-              <div className="absolute top-0 left-0 right-0 p-4 flex items-center gap-3 z-10 bg-gradient-to-b from-black/60 to-transparent">
-                <button onClick={() => setViewingStatus(null)} className="p-1"><ChevronLeft className="w-6 h-6 text-white" /></button>
-                <img src={statusUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStatus.userId}`} className="w-10 h-10 rounded-full border border-white/20" alt="User" referrerPolicy="no-referrer" />
-                <div className="flex-1">
-                  <h4 className="text-white font-bold text-sm flex items-center gap-1">
-                    {statusUser?.displayName || "User"}
-                    {statusUser?.isVerified && <VerifiedBadge size={14} />}
-                  </h4>
-                  <p className="text-white/60 text-[10px]">{viewingStatus.createdAt?.toDate ? formatWhatsAppTime(viewingStatus.createdAt.toDate()) : ''}</p>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[200] bg-black flex flex-col"
+            >
+              <div className="absolute top-0 left-0 right-0 p-4 z-10 bg-gradient-to-b from-black/80 to-transparent">
+                <div className="flex gap-1 mb-4">
+                  {activeStatuses.map((_: any, i: number) => (
+                    <div key={i} className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: i === currentIndex ? "100%" : i < currentIndex ? "100%" : "0%" }}
+                        transition={{ duration: i === currentIndex ? 5 : 0, ease: "linear" }}
+                        onAnimationComplete={() => {
+                          if (i === currentIndex) navigateStatus('next');
+                        }}
+                        className="h-full bg-white"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setViewingStatus(null)} className="p-1"><ChevronLeft className="w-6 h-6 text-white" /></button>
+                  <img src={statusUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStatus.userId}`} className="w-10 h-10 rounded-full border border-white/20" alt="User" referrerPolicy="no-referrer" />
+                  <div className="flex-1">
+                    <h4 className="text-white font-bold text-sm flex items-center gap-1">
+                      {statusUser?.displayName || "User"}
+                      {statusUser?.isVerified && <VerifiedBadge size={14} />}
+                    </h4>
+                    <p className="text-white/60 text-[10px]">{viewingStatus.createdAt?.toDate ? formatWhatsAppTime(viewingStatus.createdAt.toDate()) : ''}</p>
+                  </div>
                 </div>
               </div>
-              <div className="flex-1 flex items-center justify-center p-4">
+
+              <motion.div 
+                key={viewingStatus.id}
+                drag="x"
+                dragConstraints={{ left: 0, right: 0 }}
+                onDragEnd={(_, info) => {
+                  if (info.offset.x < -50) navigateStatus('next');
+                  if (info.offset.x > 50) navigateStatus('prev');
+                }}
+                className="flex-1 flex flex-col items-center justify-center p-4 relative"
+              >
                 {viewingStatus.type === 'text' ? (
                   <div className="text-white text-2xl font-bold text-center px-6">{viewingStatus.content}</div>
                 ) : viewingStatus.type === 'image' ? (
@@ -1393,11 +1449,20 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
                 ) : (
                   <video src={viewingStatus.content} className="max-w-full max-h-full object-contain rounded-xl" autoPlay controls />
                 )}
+
+                {viewingStatus.caption && (
+                  <div className="absolute bottom-20 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent text-white text-center text-sm font-medium">
+                    {viewingStatus.caption}
+                  </div>
+                )}
+              </motion.div>
+
+              <div className="p-6 bg-black flex justify-center items-center text-white/80 text-xs">
+                <div className="flex items-center gap-1">
+                  <Search className="w-4 h-4" /> {viewingStatus.views || 0} views
+                </div>
               </div>
-              <div className="p-6 bg-gradient-to-t from-black/60 to-transparent flex justify-center items-center gap-2 text-white/80 text-xs">
-                <Search className="w-4 h-4" /> {viewingStatus.views || 0} views
-              </div>
-            </div>
+            </motion.div>
           );
         })()}
       </AnimatePresence>
@@ -1420,10 +1485,13 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
 
                 <div className="space-y-6">
                   <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Status Text</label>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Status Text / Caption</label>
                     <textarea 
-                      value={statusText}
-                      onChange={(e) => setStatusText(e.target.value)}
+                      value={statusText || statusCaption}
+                      onChange={(e) => {
+                        setStatusText(e.target.value);
+                        setStatusCaption(e.target.value);
+                      }}
                       placeholder="What's on your mind?"
                       className="w-full bg-gray-50 dark:bg-[#2a3942] border-none outline-none p-4 rounded-2xl text-[16px] dark:text-[#e9edef] resize-none h-32 focus:ring-2 focus:ring-[#00a884]/20 transition-all"
                     />
@@ -2668,7 +2736,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-32 overscroll-contain scroll-smooth">
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-40 scroll-smooth">
         {activeTab === 'users' && (
           <>
             {/* Stats Grid */}
