@@ -2546,21 +2546,21 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a]">
-      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+    <div className="flex-1 flex flex-col h-full bg-[#f0f2f5] dark:bg-[#0b141a] overflow-hidden">
+      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md shrink-0">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Upgrade Membership</h2>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-32 overscroll-contain scroll-smooth custom-scrollbar">
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-6 pb-32 scroll-smooth custom-scrollbar">
         <div className="bg-white dark:bg-[#111b21] p-6 rounded-3xl shadow-sm text-center">
           <h3 className="text-lg font-bold text-gray-700 dark:text-[#e9edef] mb-2">Current Tier: <span className="text-[#00a884]">{user.category}</span></h3>
           <p className="text-sm text-gray-500 dark:text-[#8696a0]">Upgrade to unlock premium features and support the community.</p>
         </div>
 
-        <div className="flex overflow-x-auto pb-4 gap-4 snap-x snap-mandatory custom-scrollbar -mx-4 px-4 md:grid md:grid-cols-2 md:overflow-x-visible md:pb-0 md:mx-0 md:px-0">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {tiers.map(tier => (
-            <div key={tier.name} className="min-w-[280px] snap-start bg-white dark:bg-[#111b21] p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:min-w-0">
+            <div key={tier.name} className="bg-white dark:bg-[#111b21] p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col">
               <div className="flex justify-between items-start mb-4">
                 <div className={cn("p-3 rounded-2xl", tier.color)}>
                   {tier.icon}
