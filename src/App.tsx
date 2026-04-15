@@ -813,7 +813,7 @@ export default function App() {
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21]">
+          <div className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21] overscroll-contain scroll-smooth">
             {activeTab === 'chats' && (
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
                 {chats.length === 0 ? (
@@ -1472,27 +1472,23 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
       </AnimatePresence>
 
       {/* Wall Section */}
-      <div className="p-4 space-y-4">
-        <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
-          <textarea placeholder="Share an update..." value={newPost} onChange={(e) => setNewPost(e.target.value)} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none outline-none p-3 rounded-xl text-[15px] dark:text-[#e9edef] resize-none h-20 mb-3" />
-          {postMedia && (
-            <div className="relative mb-3">
-              {postMediaType === 'image' ? (
-                <img src={postMedia} className="w-full h-48 object-cover rounded-xl" alt="Preview" referrerPolicy="no-referrer" />
-              ) : (
-                <video src={postMedia} className="w-full h-48 object-cover rounded-xl" controls />
-              )}
-              <button onClick={() => setPostMedia(null)} className="absolute top-2 right-2 bg-black/50 text-white p-1 rounded-full"><X className="w-4 h-4" /></button>
+      <div className="p-4 space-y-6 pb-24">
+        <div className="bg-white dark:bg-[#111b21] p-5 rounded-3xl shadow-md border border-gray-100 dark:border-gray-800 transition-all hover:shadow-lg">
+          <div className="flex items-center gap-3 mb-4">
+            <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} className="w-10 h-10 rounded-full" alt="Me" referrerPolicy="no-referrer" />
+            <div className="flex-1 bg-gray-50 dark:bg-[#2a3942] rounded-full px-4 py-2 text-gray-400 text-sm cursor-pointer" onClick={() => setShowStatusModal(true)}>
+              What's on your mind?
             </div>
-          )}
-          <div className="flex justify-between items-center border-t border-gray-50 dark:border-gray-800 pt-3">
-            <div className="flex gap-5 text-gray-500 dark:text-[#8696a0]">
-              <input type="file" id="post-media" className="hidden" accept="image/*,video/*" onChange={handlePostFileUpload} />
-              <label htmlFor="post-media" className="cursor-pointer hover:text-[#00a884]"><ImageIcon className="w-5 h-5" /></label>
-              <label htmlFor="post-media" className="cursor-pointer hover:text-[#00a884]"><VideoIcon className="w-5 h-5" /></label>
-            </div>
-            <button onClick={handlePost} disabled={uploading} className="bg-[#00a884] text-white px-6 py-1.5 rounded-full font-bold text-sm shadow-sm disabled:opacity-50">
-              {uploading ? 'Uploading...' : 'Post'}
+          </div>
+          <div className="flex justify-around border-t border-gray-50 dark:border-gray-800 pt-3">
+            <button onClick={() => setShowStatusModal(true)} className="flex items-center gap-2 text-gray-500 dark:text-[#8696a0] text-xs font-bold hover:text-[#00a884] transition-colors">
+              <ImageIcon className="w-4 h-4 text-green-500" /> Photo
+            </button>
+            <button onClick={() => setShowStatusModal(true)} className="flex items-center gap-2 text-gray-500 dark:text-[#8696a0] text-xs font-bold hover:text-[#00a884] transition-colors">
+              <VideoIcon className="w-4 h-4 text-red-500" /> Video
+            </button>
+            <button onClick={() => setShowStatusModal(true)} className="flex items-center gap-2 text-gray-500 dark:text-[#8696a0] text-xs font-bold hover:text-[#00a884] transition-colors">
+              <Megaphone className="w-4 h-4 text-blue-500" /> Boost
             </button>
           </div>
         </div>
@@ -2382,7 +2378,7 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
         <h2 className="text-xl font-medium">Upgrade Membership</h2>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-20">
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-32 overscroll-contain scroll-smooth">
         <div className="bg-white dark:bg-[#111b21] p-6 rounded-3xl shadow-sm text-center">
           <h3 className="text-lg font-bold text-gray-700 dark:text-[#e9edef] mb-2">Current Tier: <span className="text-[#00a884]">{user.category}</span></h3>
           <p className="text-sm text-gray-500 dark:text-[#8696a0]">Upgrade to unlock premium features and support the community.</p>
@@ -2672,7 +2668,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-32 overscroll-contain scroll-smooth">
         {activeTab === 'users' && (
           <>
             {/* Stats Grid */}
