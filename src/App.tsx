@@ -860,7 +860,7 @@ export default function App() {
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21] overscroll-contain scroll-smooth">
+          <div className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21] overscroll-contain scroll-smooth custom-scrollbar">
             {activeTab === 'chats' && (
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
                 {chats.length === 0 ? (
@@ -1077,7 +1077,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
       </div>
       <div 
         ref={scrollRef} 
-        className="flex-1 overflow-y-auto p-4 space-y-2 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] dark:bg-none dark:bg-[#0b141a] bg-repeat"
+        className="flex-1 overflow-y-auto p-4 space-y-2 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] dark:bg-none dark:bg-[#0b141a] bg-repeat custom-scrollbar"
         onClick={() => setReactingTo(null)}
       >
         {messages.map((msg: any) => (
@@ -1768,7 +1768,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
               <h3 className="font-bold text-lg">Comments</h3>
               <button onClick={() => setShowComments(null)} className="p-2 bg-gray-100 rounded-full"><X className="w-5 h-5" /></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
               {comments.map(c => (
                 <div key={c.id} className="flex gap-3">
                   <img src={c.userPhoto || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.userId}`} className="w-8 h-8 rounded-full" alt="User" referrerPolicy="no-referrer" />
@@ -2206,7 +2206,7 @@ const NotificationCenter = ({ user, notifications, onBack, onNavigate }: any) =>
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Notifications</h2>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
         {notifications.length === 0 ? (
           <div className="text-center py-20 text-gray-500 dark:text-[#8696a0]">No notifications yet.</div>
         ) : (
@@ -2326,7 +2326,7 @@ const CreateAd = ({ user, onBack, settings, initialContent = '', initialMediaUrl
         <h2 className="text-xl font-medium">Create Advertisement</h2>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
         <div className="bg-white dark:bg-[#111b21] rounded-2xl p-6 shadow-sm space-y-4">
           <div>
             <label className="text-xs font-bold text-[#00a884] uppercase block mb-2">Ad Content</label>
@@ -2493,7 +2493,7 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
         <h2 className="text-xl font-medium">Upgrade Membership</h2>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-32 overscroll-contain scroll-smooth">
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-32 overscroll-contain scroll-smooth custom-scrollbar">
         <div className="bg-white dark:bg-[#111b21] p-6 rounded-3xl shadow-sm text-center">
           <h3 className="text-lg font-bold text-gray-700 dark:text-[#e9edef] mb-2">Current Tier: <span className="text-[#00a884]">{user.category}</span></h3>
           <p className="text-sm text-gray-500 dark:text-[#8696a0]">Upgrade to unlock premium features and support the community.</p>
@@ -2596,7 +2596,7 @@ const PointsLeaderboard = ({ onBack }: any) => {
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Points Leaderboard</h2>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
         {loading ? (
           <div className="flex justify-center py-20"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>
         ) : (
@@ -2783,7 +2783,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-40 scroll-smooth">
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-40 scroll-smooth custom-scrollbar">
         {activeTab === 'users' && (
           <>
             {/* Stats Grid */}
@@ -2838,7 +2838,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
                 <h3 className="font-bold text-gray-700 dark:text-[#e9edef]">User Management</h3>
                 <SettingsIcon className="w-4 h-4 text-gray-400" />
               </div>
-              <div className="divide-y divide-gray-50 dark:divide-gray-800 max-h-[500px] overflow-y-auto">
+              <div className="divide-y divide-gray-50 dark:divide-gray-800 max-h-[500px] overflow-y-auto custom-scrollbar">
                 {users.map(u => (
                   <div key={u.uid} className="p-4 space-y-3">
                     <div className="flex items-center gap-3">
@@ -2923,9 +2923,14 @@ const AdminDashboard = ({ user, onBack }: any) => {
         )}
 
         {activeTab === 'config' && settings && (
-          <div className="bg-white dark:bg-[#111b21] p-6 rounded-2xl shadow-sm space-y-6">
-            <h3 className="font-bold text-gray-700 dark:text-[#e9edef] border-b dark:border-gray-800 pb-2">Point System Configuration</h3>
-            <div className="grid grid-cols-2 gap-4">
+          <div className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+              <h3 className="font-bold text-gray-700 dark:text-[#e9edef]">System Configuration</h3>
+              <SettingsIcon className="w-4 h-4 text-gray-400" />
+            </div>
+            <div className="p-6 space-y-6 max-h-[600px] overflow-y-auto custom-scrollbar">
+              <h3 className="font-bold text-gray-700 dark:text-[#e9edef] border-b dark:border-gray-800 pb-2">Point System Configuration</h3>
+              <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Points per Post</label>
                 <input type="number" value={settings.pointsPerPost} onChange={(e) => setSettings({...settings, pointsPerPost: Number(e.target.value)})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
@@ -2995,6 +3000,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
             </div>
 
             <button onClick={() => saveSettings(settings)} className="w-full bg-[#00a884] text-white py-4 rounded-2xl font-bold shadow-lg mt-4">Save Configuration</button>
+            </div>
           </div>
         )}
 
@@ -3132,7 +3138,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
         <h2 className="text-xl font-medium">Edit Profile</h2>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
         <div className="flex flex-col items-center py-8 bg-white dark:bg-[#111b21] mb-6">
           <div className="relative group">
             <img 
