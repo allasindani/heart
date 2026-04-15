@@ -84,6 +84,14 @@ const VerifiedBadge = ({ size = 14 }: { size?: number }) => (
   <ShieldCheck className="text-blue-500 fill-blue-500/10" style={{ width: size, height: size }} />
 );
 
+const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+  const target = e.currentTarget;
+  const fallback = `https://api.dicebear.com/7.x/avataaars/svg?seed=${Math.random()}`;
+  if (target.src !== fallback) {
+    target.src = fallback;
+  }
+};
+
 const Logo = ({ size = 40, className = "" }: { size?: number, className?: string }) => (
   <div className={cn("relative flex items-center justify-center", className)} style={{ width: size, height: size }}>
     <div className="absolute inset-0 bg-[#00a884] rounded-2xl rotate-12 opacity-20 animate-pulse" />
@@ -896,7 +904,13 @@ export default function App() {
                     
                     return (
                       <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 active:bg-gray-100 transition-colors cursor-pointer">
-                        <img src={chatPhoto} className="w-14 h-14 rounded-full object-cover" alt="Chat" referrerPolicy="no-referrer" />
+                        <img 
+                          src={chatPhoto} 
+                          className="w-14 h-14 rounded-full object-cover" 
+                          alt="Chat" 
+                          referrerPolicy="no-referrer" 
+                          onError={handleImageError}
+                        />
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-center mb-1">
                             <h3 className="font-bold text-[#111b21] truncate flex items-center gap-1">
@@ -1085,7 +1099,13 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
     <div className="flex-1 flex flex-col h-full relative">
       <div className="bg-[#008069] text-white p-3 flex items-center gap-2 shadow-md">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
-        <img src={otherUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`} className="w-10 h-10 rounded-full" alt="Chat" referrerPolicy="no-referrer" />
+        <img 
+          src={otherUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`} 
+          className="w-10 h-10 rounded-full" 
+          alt="Chat" 
+          referrerPolicy="no-referrer" 
+          onError={handleImageError}
+        />
         <div className="flex-1 min-w-0">
           <h3 className="font-bold truncate flex items-center gap-1">
             {otherUser?.displayName || chat.groupName || "Chat"}
@@ -1160,7 +1180,13 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
               )}
 
               {msg.type === 'image' ? (
-                <img src={msg.text} className="rounded-lg max-w-full h-auto mb-1" alt="Sent" referrerPolicy="no-referrer" />
+                <img 
+                  src={msg.text} 
+                  className="rounded-lg max-w-full h-auto mb-1" 
+                  alt="Sent" 
+                  referrerPolicy="no-referrer" 
+                  onError={handleImageError}
+                />
               ) : msg.type === 'video' ? (
                 <video src={msg.text} controls className="rounded-lg max-w-full h-auto mb-1" />
               ) : (
@@ -1455,7 +1481,13 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
         <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
           <div className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => setShowStatusModal(true)}>
             <div className="relative">
-              <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} className="w-16 h-16 rounded-full border-2 border-gray-200 dark:border-gray-800" alt="Me" referrerPolicy="no-referrer" />
+              <img 
+                src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
+                className="w-16 h-16 rounded-full border-2 border-gray-200 dark:border-gray-800" 
+                alt="Me" 
+                referrerPolicy="no-referrer" 
+                onError={handleImageError}
+              />
               <div className="absolute bottom-0 right-0 bg-[#00a884] rounded-full p-1 border-2 border-white dark:border-[#111b21]"><Plus className="w-3 h-3 text-white" /></div>
             </div>
             <span className="text-xs text-gray-600 dark:text-[#8696a0]">My Status</span>
@@ -1473,7 +1505,13 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
               return (
                 <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => handleViewStatus(s)}>
                   <div className="p-0.5 rounded-full border-2 border-[#00a884]">
-                    <img src={statusUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} className="w-16 h-16 rounded-full border-2 border-white dark:border-[#111b21]" alt="User" referrerPolicy="no-referrer" />
+                    <img 
+                      src={statusUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} 
+                      className="w-16 h-16 rounded-full border-2 border-white dark:border-[#111b21]" 
+                      alt="User" 
+                      referrerPolicy="no-referrer" 
+                      onError={handleImageError}
+                    />
                   </div>
                   <span className="text-xs text-gray-600 dark:text-[#8696a0] truncate w-16 text-center flex items-center justify-center gap-0.5">
                     {statusUser?.displayName || "User"}
@@ -1527,7 +1565,13 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
                 </div>
                 <div className="flex items-center gap-3">
                   <button onClick={() => setViewingStatus(null)} className="p-1"><ChevronLeft className="w-6 h-6 text-white" /></button>
-                  <img src={statusUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStatus.userId}`} className="w-10 h-10 rounded-full border border-white/20" alt="User" referrerPolicy="no-referrer" />
+                  <img 
+                    src={statusUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStatus.userId}`} 
+                    className="w-10 h-10 rounded-full border border-white/20" 
+                    alt="User" 
+                    referrerPolicy="no-referrer" 
+                    onError={handleImageError}
+                  />
                   <div className="flex-1">
                     <h4 className="text-white font-bold text-sm flex items-center gap-1">
                       {statusUser?.displayName || "User"}
@@ -1649,7 +1693,13 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
       <div className="p-4 space-y-6 pb-24">
         <div className="bg-white dark:bg-[#111b21] p-5 rounded-3xl shadow-md border border-gray-100 dark:border-gray-800 transition-all hover:shadow-lg">
           <div className="flex items-center gap-3 mb-4">
-            <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} className="w-10 h-10 rounded-full" alt="Me" referrerPolicy="no-referrer" />
+            <img 
+              src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
+              className="w-10 h-10 rounded-full" 
+              alt="Me" 
+              referrerPolicy="no-referrer" 
+              onError={handleImageError}
+            />
             <div className="flex-1 bg-gray-50 dark:bg-[#2a3942] rounded-full px-4 py-2 text-gray-400 text-sm cursor-pointer" onClick={() => setShowStatusModal(true)}>
               What's on your mind?
             </div>
@@ -1677,7 +1727,13 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
             elements.push(
               <div key={post.id} className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
                 <div className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => onUserClick({ uid: post.userId, displayName: postAuthor?.displayName, photoURL: postAuthor?.photoURL })}>
-                  <img src={postAuthor?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-10 h-10 rounded-full" alt="User" referrerPolicy="no-referrer" />
+                  <img 
+                    src={postAuthor?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} 
+                    className="w-10 h-10 rounded-full" 
+                    alt="User" 
+                    referrerPolicy="no-referrer" 
+                    onError={handleImageError}
+                  />
                   <div>
                     <h4 className="font-bold text-[#111b21] dark:text-[#e9edef] text-[15px] flex items-center gap-1">
                       {postAuthor?.displayName || "User"}
@@ -2189,7 +2245,13 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat }: any) => {
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-[#0b141a]">
       <div className="relative h-72">
-        <img src={fullUser.photoURL || `https://picsum.photos/seed/${fullUser.uid}/600/800`} className="w-full h-full object-cover" alt={fullUser.displayName} referrerPolicy="no-referrer" />
+        <img 
+          src={fullUser.photoURL || `https://picsum.photos/seed/${fullUser.uid}/600/800`} 
+          className="w-full h-full object-cover" 
+          alt={fullUser.displayName} 
+          referrerPolicy="no-referrer" 
+          onError={handleImageError}
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
         <button onClick={onBack} className="absolute top-4 left-4 p-2 bg-black/20 backdrop-blur-md rounded-full text-white"><ChevronLeft className="w-6 h-6" /></button>
         <div className="absolute bottom-6 left-6 text-white">
