@@ -29,6 +29,7 @@ export interface User {
   };
   friends?: string[];
   jobRole?: 'employer' | 'seeker';
+  followingEmployers?: string[];
 }
 
 export interface Job {
@@ -148,6 +149,9 @@ export interface AppSettings {
   paymentMethods: { type: string, details: string }[];
   googleAnalyticsCode?: string;
   adSenseCode?: string;
+  siteName?: string;
+  logoUrl?: string;
+  faviconUrl?: string;
 }
 
 export interface PaymentProof {

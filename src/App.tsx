@@ -117,17 +117,21 @@ const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
   }
 };
 
-const Logo = ({ size = 40, className = "" }: { size?: number, className?: string }) => (
+const Logo = ({ size = 40, className = "", url }: { size?: number, className?: string, url?: string }) => (
   <div className={cn("relative flex items-center justify-center", className)} style={{ width: size, height: size }}>
     <div className="absolute inset-0 bg-[#00a884] rounded-2xl rotate-12 opacity-20 animate-pulse" />
     <div className="absolute inset-0 bg-[#00a884] rounded-2xl -rotate-6 opacity-10" />
-    <div className="relative bg-gradient-to-br from-[#00a884] to-[#008069] rounded-2xl flex items-center justify-center shadow-lg" style={{ width: size, height: size }}>
-      <Heart className="text-white fill-white" style={{ width: size * 0.5, height: size * 0.5 }} />
+    <div className="relative bg-gradient-to-br from-[#00a884] to-[#008069] rounded-2xl flex items-center justify-center shadow-lg overflow-hidden" style={{ width: size, height: size }}>
+      {url ? (
+        <img src={url} className="w-full h-full object-cover" alt="Logo" referrerPolicy="no-referrer" onError={handleImageError} />
+      ) : (
+        <Heart className="text-white fill-white" style={{ width: size * 0.5, height: size * 0.5 }} />
+      )}
     </div>
   </div>
 );
 
-const SplashScreen = () => (
+const SplashScreen = ({ siteName, logoUrl }: { siteName?: string, logoUrl?: string }) => (
   <div className="fixed inset-0 z-[1000] bg-white dark:bg-[#111b21] flex flex-col items-center justify-center">
     <motion.div
       initial={{ scale: 0.8, opacity: 0 }}
@@ -135,9 +139,9 @@ const SplashScreen = () => (
       transition={{ duration: 0.5, ease: "easeOut" }}
       className="flex flex-col items-center gap-6"
     >
-      <Logo size={80} />
+      <Logo size={80} url={logoUrl} />
       <div className="flex flex-col items-center">
-        <h1 className="text-2xl font-black text-[#111b21] dark:text-[#e9edef] tracking-tighter">Heart Connect</h1>
+        <h1 className="text-2xl font-black text-[#111b21] dark:text-[#e9edef] tracking-tighter">{siteName || "Heart Connect"}</h1>
         <p className="text-sm text-[#667781] dark:text-[#8696a0] font-medium">Connecting Hearts, One Chat at a Time</p>
       </div>
       <div className="mt-12 flex flex-col items-center gap-4">
@@ -204,7 +208,7 @@ const uploadFileToServer = (file: File, onProgress?: (progress: number) => void)
 };
 
 // --- Auth Screen ---
-const AuthScreen = () => {
+const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
@@ -229,8 +233,8 @@ const AuthScreen = () => {
   return (
     <div className="min-h-screen bg-[#f0f2f5] flex items-center justify-center p-4">
       <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full text-center">
-        <Logo size={60} className="mx-auto mb-6" />
-        <h2 className="text-3xl font-black mb-2 text-[#111b21] tracking-tighter">Heart Connect</h2>
+        <Logo size={60} className="mx-auto mb-6" url={settings?.logoUrl} />
+        <h2 className="text-3xl font-black mb-2 text-[#111b21] tracking-tighter">{settings?.siteName || "Heart Connect"}</h2>
         <p className="text-gray-500 mb-8 font-medium">Connecting Hearts, One Chat at a Time</p>
         
         <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
@@ -582,6 +586,27 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleBack);
   }, [selectedChat, showProfile, showAdmin, viewingUser, showNotifications, showUpgrade, showLeaderboard, showCreateAd, showCreateJob, selectedJob]);
 
+  const handleFollowEmployer = async (employerId: string) => {
+    if (!user) return;
+    const isFollowing = user.followingEmployers?.includes(employerId);
+    const userRef = doc(db, 'users', user.uid);
+    try {
+      if (isFollowing) {
+        await updateDoc(userRef, { followingEmployers: arrayRemove(employerId) });
+      } else {
+        await updateDoc(userRef, { followingEmployers: arrayUnion(employerId) });
+      }
+      setUser((prev: any) => ({
+        ...prev,
+        followingEmployers: isFollowing 
+          ? prev.followingEmployers?.filter((id: string) => id !== employerId)
+          : [...(prev.followingEmployers || []), employerId]
+      }));
+    } catch (e) {
+      console.error("Follow error:", e);
+    }
+  };
+
   const handleApplyJob = async (job: Job) => {
     if (!user) return;
     try {
@@ -680,6 +705,21 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (appSettings.siteName) {
+      document.title = appSettings.siteName;
+    }
+    if (appSettings.faviconUrl) {
+      let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = appSettings.faviconUrl;
+    }
+  }, [appSettings]);
+
+  useEffect(() => {
     if (!user) return;
     const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid), orderBy('updatedAt', 'desc'));
     return onSnapshot(q, (snapshot) => setChats(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat))), (e) => handleFirestoreError(e, OperationType.LIST, 'chats'));
@@ -774,18 +814,8 @@ export default function App() {
     processDelivered();
   }, [chats, user?.uid]);
 
-  if (loading) return (
-    <div className="h-screen flex flex-col items-center justify-center bg-white">
-      <MessageCircle className="w-16 h-16 text-[#25d366] fill-current animate-pulse mb-8" />
-      <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden">
-        <motion.div animate={{ x: [-192, 192] }} transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }} className="w-full h-full bg-[#00a884]" />
-      </div>
-      <p className="mt-4 text-[#667781] text-sm font-medium">Heart Connect</p>
-    </div>
-  );
-
-  if (loading) return <SplashScreen />;
-  if (!user) return <AuthScreen />;
+  if (loading) return <SplashScreen siteName={appSettings?.siteName} logoUrl={appSettings?.logoUrl} />;
+  if (!user) return <AuthScreen settings={appSettings} />;
 
   if (user.suspended) return (
     <div className="h-screen flex flex-col items-center justify-center bg-white p-8 text-center">
@@ -934,7 +964,7 @@ export default function App() {
         </div>
       ) : selectedJob ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
-          <JobDetails job={selectedJob} user={user} applications={applications} onBack={() => setSelectedJob(null)} onApply={handleApplyJob} />
+          <JobDetails job={selectedJob} user={user} applications={applications} onBack={() => setSelectedJob(null)} onApply={handleApplyJob} onFollow={handleFollowEmployer} />
         </div>
       ) : showLeaderboard ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
@@ -946,8 +976,8 @@ export default function App() {
           <div className="bg-[#008069] text-white p-4 pb-2 shadow-md relative z-30">
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-3">
-                <Logo size={32} className="shadow-none" />
-                <h1 className="text-xl font-black tracking-tighter">Heart Connect</h1>
+                <Logo size={32} className="shadow-none" url={appSettings?.logoUrl} />
+                <h1 className="text-xl font-black tracking-tighter">{appSettings?.siteName || "Heart Connect"}</h1>
                 <span className="bg-white/20 text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-widest">v1.2.0</span>
               </div>
               <div className="flex gap-5 items-center">
@@ -1006,7 +1036,7 @@ export default function App() {
             {/* Tabs */}
             <div className="flex text-center font-medium text-sm uppercase tracking-wider">
               <button onClick={() => setActiveTab('chats')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'chats' ? "border-white" : "border-transparent opacity-70")}>Chats</button>
-              <button onClick={() => setActiveTab('status')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'status' ? "border-white" : "border-transparent opacity-70")}>Status</button>
+              <button onClick={() => setActiveTab('status')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'status' ? "border-white" : "border-transparent opacity-70")}>Status & Updates</button>
               <button onClick={() => setActiveTab('dating')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'dating' ? "border-white" : "border-transparent opacity-70")}>Dating</button>
               <button onClick={() => setActiveTab('jobs')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'jobs' ? "border-white" : "border-transparent opacity-70")}>Jobs</button>
             </div>
@@ -1081,7 +1111,7 @@ export default function App() {
                 )}
               </div>
             )}
-            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} appSettings={appSettings} showStatusModal={showStatusModal} setShowStatusModal={setShowStatusModal} setShowCreateAd={setShowCreateAd} setAdContent={setAdContent} setAdMediaUrl={setAdMediaUrl} setUploading={setUploading} setUploadProgress={setUploadProgress} setUser={setUser} uploading={uploading} usersMap={usersMap} />}
+            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} jobs={jobs} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} appSettings={appSettings} showStatusModal={showStatusModal} setShowStatusModal={setShowStatusModal} setShowCreateAd={setShowCreateAd} setAdContent={setAdContent} setAdMediaUrl={setAdMediaUrl} setUploading={setUploading} setUploadProgress={setUploadProgress} setUser={setUser} uploading={uploading} usersMap={usersMap} onSelectJob={setSelectedJob} onFollowEmployer={handleFollowEmployer} />}
             {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} setUser={setUser} />}
             {activeTab === 'jobs' && (
               <JobsView 
@@ -1418,7 +1448,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
   );
 };
 
-const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, setUser, uploading, usersMap }: any) => {
+const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer }: any) => {
   const [newPost, setNewPost] = useState('');
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
@@ -1634,7 +1664,7 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
       {/* Status Section */}
       <div className="bg-white dark:bg-[#111b21] p-4 mb-2 shadow-sm">
         <div className="flex justify-between items-center mb-4">
-          <h4 className="text-sm font-bold text-gray-500 dark:text-[#8696a0] uppercase tracking-wider">Status</h4>
+          <h4 className="text-sm font-bold text-gray-500 dark:text-[#8696a0] uppercase tracking-wider">Status & Updates</h4>
           <button onClick={() => setShowStatusModal(true)} className="text-[#00a884] text-xs font-bold flex items-center gap-1">
             <Plus className="w-4 h-4" /> Add Status
           </button>
@@ -1881,10 +1911,17 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
 
         {(() => {
           const elements: React.ReactNode[] = [];
+          const feedPosts = posts.filter(p => !p.isAd);
           const userAds = posts.filter(p => p.isAd);
+          const jobItems = [...(jobs || [])].sort((a, b) => {
+            const timeA = a.createdAt?.toMillis?.() || 0;
+            const timeB = b.createdAt?.toMillis?.() || 0;
+            return timeB - timeA;
+          });
+          let jobIdx = 0;
           let adIndex = 0;
 
-          posts.filter(p => !p.isAd).forEach((post, index) => {
+          feedPosts.forEach((post, index) => {
             const postAuthor = usersMap[post.userId];
             elements.push(
               <div key={post.id} className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -1996,6 +2033,64 @@ const StatusAndWallView = ({ user, statuses, posts, onUserClick, awardPoints, ap
                 </div>
               </div>
             );
+
+            // Featured Jobs Interleaving: After every 4 posts
+            if ((index + 1) % 4 === 0 && jobIdx < jobItems.length) {
+              const job = jobItems[jobIdx];
+              const isFollowing = user?.followingEmployers?.includes(job.employerId);
+              elements.push(
+                <motion.div 
+                  key={`job-feed-${job.id}`}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  className="bg-gradient-to-br from-orange-50 to-white dark:from-orange-950/20 dark:to-[#111b21] p-5 rounded-3xl shadow-sm border border-orange-100 dark:border-orange-900/20 relative overflow-hidden group mb-4"
+                >
+                  <div className="absolute top-0 right-0 p-3">
+                    <div className="bg-orange-500 text-white text-[8px] font-black uppercase px-2 py-1 rounded-bl-xl tracking-tighter shadow-sm">Featured Job</div>
+                  </div>
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 bg-white dark:bg-[#202c33] rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm border border-orange-100 dark:border-gray-700">
+                      <Briefcase className="w-6 h-6 text-orange-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start">
+                        <div onClick={() => onSelectJob?.(job)} className="cursor-pointer">
+                          <h3 className="font-bold text-lg dark:text-[#e9edef] truncate leading-tight hover:underline">{job.title}</h3>
+                          <p className="text-sm text-gray-500 dark:text-[#8696a0] font-medium flex items-center gap-1">
+                            <Building2 className="w-3 h-3 text-[#00a884]" />
+                            <span className="truncate">{job.company}</span>
+                          </p>
+                        </div>
+                        {job.employerId !== user?.uid && (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onFollowEmployer(job.employerId);
+                            }}
+                            className={cn(
+                              "text-[10px] font-black uppercase px-3 py-1 rounded-full transition-all flex items-center gap-1",
+                              isFollowing 
+                                ? "bg-gray-100 dark:bg-gray-800 text-gray-400"
+                                : "bg-[#00a884] text-white shadow-sm hover:scale-105"
+                            )}
+                          >
+                            {isFollowing ? "Following" : <UserPlus className="w-3 h-3" />}
+                            {!isFollowing && "Follow"}
+                          </button>
+                        )}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                         <span className="text-[9px] bg-white/80 dark:bg-gray-800/80 px-2 py-0.5 rounded-full font-bold text-gray-400 uppercase tracking-widest border border-gray-100 dark:border-gray-700">{job.type}</span>
+                         <span className="text-[9px] bg-green-50/50 dark:bg-green-900/20 px-2 py-0.5 rounded-full font-bold text-[#00a884] uppercase tracking-widest border border-green-100/50 dark:border-green-900/30">{job.location}</span>
+                         <button onClick={() => onSelectJob?.(job)} className="text-[9px] text-[#00a884] font-black uppercase tracking-tighter ml-auto hover:underline">Apply Now →</button>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+              jobIdx++;
+            }
 
             // Ad Logic: after 3, 10, then multiples of 2 and 3 after 10
             const pos = index + 1;
@@ -2925,7 +3020,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
   const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, activeAds: 0, totalPoints: 0 });
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'ads' | 'config' | 'payments' | 'vaccancies'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'ads' | 'config' | 'branding' | 'payments' | 'vaccancies'>('users');
   const [ads, setAds] = useState<Post[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -3065,7 +3160,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
       </div>
       
       <div className="flex bg-white dark:bg-[#111b21] border-b border-gray-100 dark:border-gray-800">
-        {['users', 'ads', 'config', 'payments', 'vaccancies'].map((t) => (
+        {['users', 'ads', 'config', 'branding', 'payments', 'vaccancies'].map((t) => (
           <button 
             key={t}
             onClick={() => setActiveTab(t as any)}
@@ -3293,6 +3388,69 @@ const AdminDashboard = ({ user, onBack }: any) => {
             </div>
 
             <button onClick={() => saveSettings(settings)} className="w-full bg-[#00a884] text-white py-4 rounded-2xl font-bold shadow-lg mt-4">Save Configuration</button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'branding' && settings && (
+          <div className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm p-6 space-y-6">
+            <h3 className="font-bold text-gray-700 dark:text-[#e9edef] border-b dark:border-gray-800 pb-2">Site Branding & Identity</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Site Name</label>
+                <input 
+                  type="text" 
+                  value={settings.siteName || ""} 
+                  onChange={(e) => setSettings({...settings, siteName: e.target.value})} 
+                  className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" 
+                  placeholder="Heart Connect"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Site Logo</label>
+                  <div className="flex flex-col gap-2">
+                    {settings.logoUrl && <img src={settings.logoUrl} className="w-12 h-12 object-cover rounded-xl border" alt="Logo" referrerPolicy="no-referrer" />}
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const compressed = await compressImage(file);
+                          const url = await uploadFileToServer(compressed);
+                          setSettings({...settings, logoUrl: url});
+                        }
+                      }}
+                      className="text-[10px] text-gray-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Favicon URL</label>
+                  <div className="flex flex-col gap-2">
+                    {settings.faviconUrl && <img src={settings.faviconUrl} className="w-8 h-8 object-contain rounded border" alt="Favicon" referrerPolicy="no-referrer" />}
+                    <input 
+                      type="file" 
+                      accept="image/x-icon,image/png" 
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const url = await uploadFileToServer(file);
+                          setSettings({...settings, faviconUrl: url});
+                        }
+                      }}
+                      className="text-[10px] text-gray-500"
+                    />
+                  </div>
+                </div>
+              </div>
+              <button 
+                onClick={() => saveSettings(settings)}
+                className="w-full bg-[#00a884] text-white font-bold py-3 rounded-xl shadow-lg active:scale-95 transition-all"
+              >
+                Save Branding Changes
+              </button>
             </div>
           </div>
         )}
@@ -4079,10 +4237,11 @@ const CreateJob = ({ user, onBack, jobToEdit }: any) => {
   );
 };
 
-const JobDetails = ({ job, user, applications, onBack, onApply }: any) => {
+const JobDetails = ({ job, user, applications, onBack, onApply, onFollow }: any) => {
   const application = applications.find((a: any) => a.jobId === job.id && a.seekerId === user.uid);
   const hasApplied = !!application;
   const isEmployer = job.employerId === user?.uid;
+  const isFollowing = user?.followingEmployers?.includes(job.employerId);
   const jobApplicants = applications.filter((a: any) => a.jobId === job.id);
 
   return (
@@ -4094,7 +4253,7 @@ const JobDetails = ({ job, user, applications, onBack, onApply }: any) => {
 
       <div className="flex-1 overflow-y-auto p-4 pt-20 pb-24 space-y-6 custom-scrollbar">
         <div className="bg-white dark:bg-[#111b21] rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-           <div className="flex flex-col items-center text-center space-y-4">
+            <div className="flex flex-col items-center text-center space-y-4">
               <div className="w-20 h-20 bg-[#00a884]/10 rounded-3xl flex items-center justify-center">
                 <Briefcase className="w-10 h-10 text-[#00a884]" />
               </div>
@@ -4111,6 +4270,20 @@ const JobDetails = ({ job, user, applications, onBack, onApply }: any) => {
                 {job.salary && <span className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">{job.salary}</span>}
               </div>
               
+              {!isEmployer && (
+                <button 
+                  onClick={() => onFollow?.(job.employerId)}
+                  className={cn(
+                    "text-[10px] font-black uppercase px-4 py-2 rounded-full transition-all flex items-center gap-2",
+                    isFollowing 
+                      ? "bg-gray-100 dark:bg-gray-800 text-gray-400"
+                      : "bg-[#00a884] text-white shadow-md hover:scale-105"
+                  )}
+                >
+                  {isFollowing ? "Following Employer" : <>Follow Employer <UserPlus className="w-4 h-4" /></>}
+                </button>
+              )}
+
               {isEmployer && (
                 <div className="mt-2 text-xs font-bold text-[#00a884] uppercase bg-[#00a884]/5 px-4 py-2 rounded-xl">
                   {jobApplicants.length} Total Applicants
