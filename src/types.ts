@@ -28,6 +28,35 @@ export interface User {
     };
   };
   friends?: string[];
+  jobRole?: 'employer' | 'seeker';
+}
+
+export interface Job {
+  id: string;
+  employerId: string;
+  title: string;
+  company: string;
+  location: string;
+  type: 'Full-time' | 'Part-time' | 'Contract' | 'Remote';
+  salary?: string;
+  description: string;
+  requirements: string[];
+  createdAt: any;
+  updatedAt: any;
+  status: 'open' | 'closed';
+  boosted?: boolean;
+}
+
+export interface JobApplication {
+  id: string;
+  jobId: string;
+  employerId: string;
+  seekerId: string;
+  seekerName: string;
+  seekerPhoto?: string;
+  status: 'applied' | 'reviewed' | 'accepted' | 'rejected';
+  timestamp: any;
+  coverLetter?: string;
 }
 
 export interface Notification {
@@ -35,7 +64,7 @@ export interface Notification {
   userId: string;
   fromId: string;
   fromName: string;
-  type: 'like' | 'comment' | 'message' | 'friend_request' | 'friend_accept';
+  type: 'like' | 'comment' | 'message' | 'friend_request' | 'friend_accept' | 'job_update';
   text: string;
   read: boolean;
   timestamp: any;

@@ -96,6 +96,41 @@
         "users": { "type": "array", "items": { "type": "string" } },
         "createdAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "Job": {
+      "title": "Job",
+      "description": "A job posting",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employerId": { "type": "string" },
+        "title": { "type": "string" },
+        "company": { "type": "string" },
+        "location": { "type": "string" },
+        "type": { "type": "string", "enum": ["Full-time", "Part-time", "Contract", "Remote"] },
+        "salary": { "type": "string" },
+        "description": { "type": "string" },
+        "requirements": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["open", "closed"] },
+        "boosted": { "type": "boolean" }
+      }
+    },
+    "Application": {
+      "title": "Application",
+      "description": "A job application",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "jobId": { "type": "string" },
+        "seekerId": { "type": "string" },
+        "seekerName": { "type": "string" },
+        "seekerPhoto": { "type": "string" },
+        "status": { "type": "string", "enum": ["applied", "reviewed", "accepted", "rejected"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "coverLetter": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -104,6 +139,8 @@
     "/chats/{chatId}/messages/{messageId}": { "schema": "Message", "description": "Messages within a chat" },
     "/statuses/{statusId}": { "schema": "Status", "description": "Disappearing updates" },
     "/posts/{postId}": { "schema": "Post", "description": "Wall/Feed posts" },
-    "/matches/{matchId}": { "schema": "Match", "description": "Dating matches" }
+    "/matches/{matchId}": { "schema": "Match", "description": "Dating matches" },
+    "/jobs/{jobId}": { "schema": "Job", "description": "Job postings" },
+    "/applications/{applicationId}": { "schema": "Application", "description": "Job applications" }
   }
 }

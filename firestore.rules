@@ -1,3 +1,29 @@
+// Collection: jobs
+// Document ID: {jobId}
+// Fields:
+//   - employerId: string (required)
+//   - title: string (required)
+//   - company: string (required)
+//   - location: string (required)
+//   - type: string (required)
+//   - description: string (required)
+//   - requirements: list (required)
+//   - createdAt: timestamp (required)
+//   - updatedAt: timestamp (required)
+//   - status: string (required)
+//   - salary: string (optional)
+//
+// Collection: applications
+// Document ID: {appId}
+// Fields:
+//   - jobId: string (required)
+//   - seekerId: string (required)
+//   - employerId: string (required)
+//   - status: string (required)
+//   - timestamp: timestamp (required)
+//   - seekerName: string (required)
+//   - seekerPhoto: string (optional)
+//
 // ===============================================================
 // Assumed Data Model
 // ===============================================================
@@ -15,6 +41,8 @@
 //   - role: string (required) - 'user' or 'admin'
 //   - category: string (required) - Membership tier
 //   - points: number (required) - User points
+//   - isVerified: bool (optional) - Verification status
+//   - jobRole: string (optional) - 'employer' or 'seeker'
 //
 // Collection: settings
 // Document ID: {settingId}
@@ -116,7 +144,9 @@ service cloud.firestore {
              (!('isOnline' in data) || data.isOnline == null || data.isOnline is bool) &&
              (!('lastSeen' in data) || data.lastSeen == null || data.lastSeen is timestamp) &&
              (!('suspended' in data) || data.suspended == null || data.suspended is bool) &&
-             (!('datingProfile' in data) || data.datingProfile == null || data.datingProfile is map);
+             (!('datingProfile' in data) || data.datingProfile == null || data.datingProfile is map) &&
+             (!('jobRole' in data) || data.jobRole in ['employer', 'seeker']) &&
+             (!('isVerified' in data) || data.isVerified is bool);
     }
 
     function isValidMessage(data) {
@@ -141,6 +171,26 @@ service cloud.firestore {
              data.userId == request.auth.uid &&
              data.text is string && data.text.size() > 0 && data.text.size() < 1000 &&
              data.createdAt is timestamp;
+    }
+
+    function isValidJob(data) {
+      return data.keys().hasAll(['employerId', 'title', 'company', 'location', 'type', 'description', 'requirements', 'createdAt', 'updatedAt', 'status']) &&
+             data.employerId == request.auth.uid &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isVerified == true &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.company is string && data.company.size() > 0 && data.company.size() < 200 &&
+             data.location is string &&
+             data.type in ['Full-time', 'Part-time', 'Contract', 'Remote'] &&
+             data.description is string && data.description.size() < 10000 &&
+             data.requirements is list &&
+             data.status in ['open', 'closed'];
+    }
+
+    function isValidApplication(data) {
+      return data.keys().hasAll(['jobId', 'seekerId', 'employerId', 'status', 'timestamp', 'seekerName']) &&
+             data.seekerId == request.auth.uid &&
+             data.status == 'applied' &&
+             data.timestamp is timestamp;
     }
 
     // ===============================================================
@@ -223,6 +273,30 @@ service cloud.firestore {
       allow create: if isAuthenticated() && request.resource.data.fromId == request.auth.uid;
       allow update: if isAuthenticated() && (resource.data.toId == request.auth.uid || isAdmin());
       allow delete: if isAuthenticated() && (resource.data.fromId == request.auth.uid || resource.data.toId == request.auth.uid || isAdmin());
+    }
+
+    match /jobs/{jobId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidJob(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (resource.data.employerId == request.auth.uid && isValidJob(request.resource.data)) ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (resource.data.employerId == request.auth.uid || isAdmin());
+    }
+
+    match /applications/{applicationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.seekerId == request.auth.uid || 
+        resource.data.employerId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && isValidApplication(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (resource.data.employerId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
     }
   }
 }

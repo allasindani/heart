@@ -38,7 +38,15 @@ import {
   BarChart3,
   Settings as SettingsIcon,
   ArrowRight,
-  Megaphone
+  Megaphone,
+  Briefcase,
+  Building2,
+  MapPin,
+  DollarSign,
+  ClipboardList,
+  GraduationCap,
+  Filter,
+  Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -72,7 +80,7 @@ import { auth, db } from './firebase';
 import { cn, formatWhatsAppTime } from './lib/utils';
 import { COUNTRIES } from './constants';
 import imageCompression from 'browser-image-compression';
-import { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment, AppSettings, PaymentProof } from './types';
+import { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment, AppSettings, PaymentProof, Job, JobApplication } from './types';
 
 // --- Error Handling ---
 enum OperationType { CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LIST = 'list', GET = 'get', WRITE = 'write' }
@@ -297,18 +305,25 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'chats' | 'status' | 'dating'>('chats');
+  const [activeTab, setActiveTab] = useState<'chats' | 'status' | 'dating' | 'jobs'>('chats');
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [statuses, setStatuses] = useState<Status[]>([]);
+  const [seekerApps, setSeekerApps] = useState<JobApplication[]>([]);
+  const [employerApps, setEmployerApps] = useState<JobApplication[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [applications, setApplications] = useState<JobApplication[]>([]);
+  const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showProfile, setShowProfile] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showCreateAd, setShowCreateAd] = useState(false);
+  const [showCreateJob, setShowCreateJob] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [adContent, setAdContent] = useState('');
   const [adMediaUrl, setAdMediaUrl] = useState('');
@@ -538,7 +553,7 @@ export default function App() {
       if (selectedChat) {
         setSelectedChat(null);
         window.history.pushState(null, '', window.location.pathname);
-      } else if (showProfile || showAdmin || viewingUser || showNotifications || showUpgrade || showLeaderboard || showCreateAd) {
+      } else if (showProfile || showAdmin || viewingUser || showNotifications || showUpgrade || showLeaderboard || showCreateAd || showCreateJob || selectedJob) {
         setShowProfile(false);
         setShowAdmin(false);
         setViewingUser(null);
@@ -546,6 +561,8 @@ export default function App() {
         setShowUpgrade(false);
         setShowLeaderboard(false);
         setShowCreateAd(false);
+        setShowCreateJob(false);
+        setSelectedJob(null);
         window.history.pushState(null, '', window.location.pathname);
       } else {
         setBackPressCount(prev => {
@@ -563,7 +580,84 @@ export default function App() {
     window.history.pushState(null, '', window.location.pathname);
     window.addEventListener('popstate', handleBack);
     return () => window.removeEventListener('popstate', handleBack);
-  }, [selectedChat, showProfile, showAdmin, viewingUser, showNotifications, showUpgrade, showLeaderboard, showCreateAd]);
+  }, [selectedChat, showProfile, showAdmin, viewingUser, showNotifications, showUpgrade, showLeaderboard, showCreateAd, showCreateJob, selectedJob]);
+
+  const handleApplyJob = async (job: Job) => {
+    if (!user) return;
+    try {
+      const existing = applications.find(a => a.jobId === job.id && a.seekerId === user.uid);
+      if (existing) return alert("You already applied!");
+
+      await addDoc(collection(db, 'applications'), {
+        jobId: job.id,
+        employerId: job.employerId,
+        seekerId: user.uid,
+        seekerName: user.displayName,
+        seekerPhoto: user.photoURL || '',
+        status: 'applied',
+        timestamp: serverTimestamp()
+      });
+
+      // Notify Employer
+      await addDoc(collection(db, 'notifications'), {
+        userId: job.employerId,
+        fromId: user.uid,
+        fromName: user.displayName,
+        type: 'job_update',
+        text: `New application for "${job.title}"`,
+        read: false,
+        timestamp: serverTimestamp(),
+        relatedId: job.id
+      });
+
+      const participants = [user.uid, job.employerId].sort();
+      const q = query(collection(db, 'chats'), where('participants', '==', participants), limit(1));
+      const snap = await getDocs(q);
+      
+      let chat: Chat;
+      if (snap.empty) {
+        const ref = await addDoc(collection(db, 'chats'), { participants, updatedAt: serverTimestamp(), lastMessage: { text: `Job App: ${job.title}`, senderId: user.uid, timestamp: serverTimestamp(), type: 'text', status: 'sent' } });
+        await addDoc(collection(db, `chats/${ref.id}/messages`), { senderId: user.uid, text: `I applied for: ${job.title}`, timestamp: serverTimestamp(), type: 'text', status: 'sent' });
+        chat = { id: ref.id, participants } as any;
+      } else {
+        chat = { id: snap.docs[0].id, ...snap.docs[0].data() } as Chat;
+      }
+      setSelectedChat(chat);
+      setActiveTab('chats');
+      alert("Applied!");
+    } catch (e) { alert("Apply failed"); }
+  };
+
+  const handleUpdateApplicationStatus = async (app: JobApplication, status: JobApplication['status']) => {
+    try {
+      await updateDoc(doc(db, 'applications', app.id), { status });
+      
+      const job = jobs.find(j => j.id === app.jobId);
+      
+      await addDoc(collection(db, 'notifications'), {
+        userId: app.seekerId,
+        fromId: user?.uid || 'system',
+        fromName: user?.displayName || 'Employer',
+        type: 'job_update',
+        text: `Application for "${job?.title || 'Job'}" updated to: ${status}`,
+        read: false,
+        timestamp: serverTimestamp(),
+        relatedId: app.jobId
+      });
+      alert(`Status updated to ${status}`);
+    } catch (e) { 
+      console.error(e);
+      alert("Update failed"); 
+    }
+  };
+
+  const handleDeleteJob = async (jobId: string) => {
+    if (!window.confirm("Are you sure you want to delete this job posting? This will also affect existing applications.")) return;
+    try {
+      await deleteDoc(doc(db, 'jobs', jobId));
+      alert("Job deleted");
+    } catch (e) { alert("Delete failed"); }
+  };
 
   useEffect(() => {
     if (backPressCount > 0) {
@@ -610,6 +704,29 @@ export default function App() {
 
     return () => { unsubPosts(); unsubStatus(); unsubNotif(); };
   }, [user, activeTab]);
+
+  useEffect(() => {
+    if (!user) return;
+    const qJobs = query(collection(db, 'jobs'), orderBy('createdAt', 'desc'), limit(50));
+    const unsubJobs = onSnapshot(qJobs, (snap) => setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job))));
+    
+    // Fetch as Seeker
+    const qSeeker = query(collection(db, 'applications'), where('seekerId', '==', user.uid), orderBy('timestamp', 'desc'));
+    const unsubSeeker = onSnapshot(qSeeker, (snap) => setSeekerApps(snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication))));
+
+    // Fetch as Employer
+    const qEmployer = query(collection(db, 'applications'), where('employerId', '==', user.uid), orderBy('timestamp', 'desc'));
+    const unsubEmployer = onSnapshot(qEmployer, (snap) => setEmployerApps(snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication))));
+
+    return () => { unsubJobs(); unsubSeeker(); unsubEmployer(); };
+  }, [user?.uid, activeTab]);
+
+  useEffect(() => {
+    const combined = [...seekerApps, ...employerApps];
+    const unique = Array.from(new Map(combined.map(item => [item.id, item])).values())
+      .sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+    setApplications(unique);
+  }, [seekerApps, employerApps]);
 
   // Optimized Delivered status logic
   useEffect(() => {
@@ -782,6 +899,7 @@ export default function App() {
           <NotificationCenter 
             user={user} 
             notifications={notifications} 
+            usersMap={usersMap}
             onBack={() => setShowNotifications(false)} 
             onNavigate={(tab: string, id: string | null) => {
               setShowNotifications(false);
@@ -809,6 +927,14 @@ export default function App() {
             initialContent={adContent}
             initialMediaUrl={adMediaUrl}
           />
+        </div>
+      ) : showCreateJob ? (
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
+          <CreateJob user={user} jobToEdit={editingJob} onBack={() => { setShowCreateJob(false); setEditingJob(null); }} />
+        </div>
+      ) : selectedJob ? (
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
+          <JobDetails job={selectedJob} user={user} applications={applications} onBack={() => setSelectedJob(null)} onApply={handleApplyJob} />
         </div>
       ) : showLeaderboard ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
@@ -880,8 +1006,9 @@ export default function App() {
             {/* Tabs */}
             <div className="flex text-center font-medium text-sm uppercase tracking-wider">
               <button onClick={() => setActiveTab('chats')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'chats' ? "border-white" : "border-transparent opacity-70")}>Chats</button>
-              <button onClick={() => setActiveTab('status')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'status' ? "border-white" : "border-transparent opacity-70")}>Status & Updates</button>
+              <button onClick={() => setActiveTab('status')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'status' ? "border-white" : "border-transparent opacity-70")}>Status</button>
               <button onClick={() => setActiveTab('dating')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'dating' ? "border-white" : "border-transparent opacity-70")}>Dating</button>
+              <button onClick={() => setActiveTab('jobs')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'jobs' ? "border-white" : "border-transparent opacity-70")}>Jobs</button>
             </div>
           </div>
 
@@ -956,6 +1083,20 @@ export default function App() {
             )}
             {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} appSettings={appSettings} showStatusModal={showStatusModal} setShowStatusModal={setShowStatusModal} setShowCreateAd={setShowCreateAd} setAdContent={setAdContent} setAdMediaUrl={setAdMediaUrl} setUploading={setUploading} setUploadProgress={setUploadProgress} setUser={setUser} uploading={uploading} usersMap={usersMap} />}
             {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} setUser={setUser} />}
+            {activeTab === 'jobs' && (
+              <JobsView 
+                user={user} 
+                jobs={jobs} 
+                applications={applications} 
+                onApply={handleApplyJob} 
+                onCreateClick={() => setShowCreateJob(true)} 
+                onSelectJob={setSelectedJob} 
+                onUpdateStatus={handleUpdateApplicationStatus}
+                onDeleteJob={handleDeleteJob}
+                onEditJob={(j: Job) => { setEditingJob(j); setShowCreateJob(true); }}
+                activeTab={activeTab} 
+              />
+            )}
           </div>
 
           {/* Floating Action Button */}
@@ -965,8 +1106,9 @@ export default function App() {
                 setShowSearch(true);
               } else if (activeTab === 'status') {
                 setShowStatusModal(true);
+              } else if (activeTab === 'jobs' && user.isVerified) {
+                setShowCreateJob(true);
               } else if (activeTab === 'dating') {
-                // Refresh dating or something
                 window.location.reload();
               }
             }}
@@ -2328,7 +2470,7 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat }: any) => {
   );
 };
 
-const NotificationCenter = ({ user, notifications, onBack, onNavigate }: any) => {
+const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate }: any) => {
   const markAsRead = async (id: string) => {
     await updateDoc(doc(db, 'notifications', id), { read: true });
   };
@@ -2783,24 +2925,27 @@ const AdminDashboard = ({ user, onBack }: any) => {
   const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, activeAds: 0, totalPoints: 0 });
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'ads' | 'config' | 'payments'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'ads' | 'config' | 'payments' | 'vaccancies'>('users');
   const [ads, setAds] = useState<Post[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [paymentProofs, setPaymentProofs] = useState<PaymentProof[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
-      const [uSnap, pSnap, sSnap, paySnap] = await Promise.all([
+      const [uSnap, pSnap, sSnap, paySnap, jSnap] = await Promise.all([
         getDocs(collection(db, 'users')),
         getDocs(collection(db, 'posts')),
         getDocs(collection(db, 'settings')),
-        getDocs(collection(db, 'payment_proofs'))
+        getDocs(collection(db, 'payment_proofs')),
+        getDocs(collection(db, 'jobs'))
       ]);
 
       const uList = uSnap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
       const pList = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Post));
       setUsers(uList);
       setAds(pList.filter(p => p.isAd));
+      setJobs(jSnap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
       if (!sSnap.empty) setSettings(sSnap.docs[0].data() as AppSettings);
       setPaymentProofs(paySnap.docs.map(d => ({ id: d.id, ...d.data() } as PaymentProof)));
 
@@ -2920,7 +3065,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
       </div>
       
       <div className="flex bg-white dark:bg-[#111b21] border-b border-gray-100 dark:border-gray-800">
-        {['users', 'ads', 'config', 'payments'].map((t) => (
+        {['users', 'ads', 'config', 'payments', 'vaccancies'].map((t) => (
           <button 
             key={t}
             onClick={() => setActiveTab(t as any)}
@@ -3185,6 +3330,47 @@ const AdminDashboard = ({ user, onBack }: any) => {
             )}
           </div>
         )}
+
+        {activeTab === 'vaccancies' && (
+          <div className="space-y-4">
+            <h3 className="font-bold text-gray-700 dark:text-[#e9edef]">Manage Vacancies</h3>
+            {jobs.length === 0 ? (
+              <div className="bg-white dark:bg-[#111b21] p-8 rounded-2xl text-center text-gray-500 dark:text-[#8696a0]">No job postings found.</div>
+            ) : (
+              jobs.map(job => (
+                <div key={job.id} className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-[#00a884]/10 rounded-xl flex items-center justify-center">
+                        <Briefcase className="w-6 h-6 text-[#00a884]" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm dark:text-[#e9edef]">{job.title}</h4>
+                        <p className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">{job.company} • {job.location}</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={async () => {
+                        if (confirm('Delete this job?')) {
+                          await deleteDoc(doc(db, 'jobs', job.id));
+                          setJobs(jobs.filter(j => j.id !== job.id));
+                        }
+                      }} 
+                      className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-[#8696a0] line-clamp-2">{job.description}</p>
+                  <div className="flex justify-between items-center pt-2 border-t border-gray-50 dark:border-gray-800">
+                    <span className="text-[10px] text-[#00a884] font-bold uppercase">{job.type}</span>
+                    <span className="text-[10px] text-gray-400 font-bold">{job.status === 'open' ? '🟢 OPEN' : '🔴 CLOSED'}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3205,6 +3391,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
   const [country, setCountry] = useState(user.datingProfile?.country || '');
   const [city, setCity] = useState(user.datingProfile?.city || '');
   const [photoURL, setPhotoURL] = useState(user.photoURL || '');
+  const [jobRole, setJobRole] = useState(user.jobRole || 'seeker');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -3243,6 +3430,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
         lastName: lastName.trim(),
         photoURL,
         status,
+        jobRole,
         datingProfile: {
           ...user.datingProfile,
           bio: datingBio,
@@ -3412,6 +3600,36 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
             </div>
           </section>
 
+          <section className="bg-white dark:bg-[#111b21] rounded-xl p-4 shadow-sm space-y-4">
+            <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider block">Job Marketplace Role</label>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setJobRole('seeker')}
+                className={cn("flex-1 py-3 rounded-xl border-2 transition-all font-bold text-sm flex flex-col items-center gap-1", jobRole === 'seeker' ? "border-[#00a884] bg-green-50 dark:bg-green-900/10 text-[#00a884]" : "border-gray-100 dark:border-gray-800 text-gray-400 dark:text-[#8696a0]")}
+              >
+                <GraduationCap className="w-5 h-5" />
+                Job Seeker
+              </button>
+              <button 
+                onClick={() => {
+                  if (user.isVerified) {
+                    setJobRole('employer');
+                  } else {
+                    alert("Verification Required: Only verified users can register as employers and post jobs.");
+                  }
+                }}
+                className={cn(
+                  "flex-1 py-3 rounded-xl border-2 transition-all font-bold text-sm flex flex-col items-center gap-1", 
+                  jobRole === 'employer' ? "border-[#00a884] bg-green-50 dark:bg-green-900/10 text-[#00a884]" : "border-gray-100 dark:border-gray-800 text-gray-400 dark:text-[#8696a0]",
+                  !user.isVerified && "grayscale opacity-60"
+                )}
+              >
+                <Building2 className="w-5 h-5" />
+                Employer
+              </button>
+            </div>
+          </section>
+
           {setDarkMode && (
             <section className="bg-white dark:bg-[#111b21] rounded-xl p-4 shadow-sm space-y-4">
               <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider block">Appearance</label>
@@ -3445,6 +3663,511 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
           </button>
         </div>
       </div>
+    </div>
+  );
+};
+
+const JobsView = ({ user, jobs, applications, onApply, onCreateClick, onSelectJob, activeTab, onUpdateStatus, onDeleteJob, onEditJob }: any) => {
+  const [jobSubTab, setJobSubTab] = useState<'find' | 'applications' | 'postings' | 'reviews'>('find');
+  const [filterType, setFilterType] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  const canManage = user?.isVerified;
+
+  const jobTypes = ['All', 'Full-time', 'Part-time', 'Contract', 'Remote'];
+
+  const filteredJobs = jobs.filter((j: any) => {
+    const matchesSearch = j.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                         j.company.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesType = filterType === 'All' || j.type === filterType;
+    return matchesSearch && matchesType && j.status === 'open';
+  });
+
+  const myPostings = jobs.filter((j: any) => j.employerId === user?.uid);
+  const myApplications = applications.filter((a: any) => a.seekerId === user?.uid);
+  const receivedApplications = applications.filter((a: any) => a.employerId === user?.uid);
+
+  return (
+    <div className="flex flex-col h-full bg-[#f0f2f5] dark:bg-[#0b141a]">
+      {/* Sub Tabs */}
+      <div className="flex bg-white dark:bg-[#111b21] p-1 border-b border-gray-100 dark:border-gray-800 overflow-x-auto no-scrollbar">
+        <button 
+          onClick={() => setJobSubTab('find')}
+          className={cn("flex-shrink-0 px-4 py-2 text-[10px] font-bold uppercase transition-all rounded-lg whitespace-nowrap", jobSubTab === 'find' ? "bg-[#00a884] text-white" : "text-gray-400")}
+        >
+          Browse
+        </button>
+        <button 
+          onClick={() => setJobSubTab('applications')}
+          className={cn("flex-shrink-0 px-4 py-2 text-[10px] font-bold uppercase transition-all rounded-lg whitespace-nowrap", jobSubTab === 'applications' ? "bg-[#00a884] text-white" : "text-gray-400")}
+        >
+          My Apps
+        </button>
+        {canManage && (
+          <>
+            <button 
+              onClick={() => setJobSubTab('postings')}
+              className={cn("flex-shrink-0 px-4 py-2 text-[10px] font-bold uppercase transition-all rounded-lg whitespace-nowrap", jobSubTab === 'postings' ? "bg-[#00a884] text-white" : "text-gray-400")}
+            >
+              My Jobs
+            </button>
+            <button 
+              onClick={() => setJobSubTab('reviews')}
+              className={cn("flex-shrink-0 px-4 py-2 text-[10px] font-bold uppercase transition-all rounded-lg whitespace-nowrap", jobSubTab === 'reviews' ? "bg-[#00a884] text-white" : "text-gray-400")}
+            >
+              Applicants ({receivedApplications.length})
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+        {!canManage && (
+          <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-2xl border border-blue-100 dark:border-blue-800 flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-tight">Employer Verification Required</p>
+              <p className="text-[11px] text-blue-600 dark:text-blue-500 font-medium leading-tight mt-1">
+                Only verified accounts can post jobs and manage applicants. Contact admin or upgrade to a premium tier to receive your verification badge.
+              </p>
+            </div>
+          </div>
+        )}
+        {jobSubTab === 'find' && (
+          <>
+            {/* Search & Filters */}
+            <div className="flex gap-2 sticky top-0 z-10 bg-[#f0f2f5] dark:bg-[#0b141a] py-2">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input 
+                  type="text" 
+                  placeholder="Titles, companies..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white dark:bg-[#202c33] border-none p-2 pl-10 rounded-xl text-sm outline-none shadow-sm dark:text-[#e9edef]"
+                />
+              </div>
+              <div className="relative">
+                <select 
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="bg-white dark:bg-[#202c33] border-none p-2 rounded-xl text-xs font-bold pr-8 outline-none shadow-sm dark:text-[#e9edef] appearance-none"
+                >
+                  {jobTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <Filter className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+
+            <div className="grid gap-3">
+              {filteredJobs.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">No jobs found matching your criteria.</div>
+              ) : (
+                filteredJobs.map((job: any) => (
+                  <div 
+                    key={job.id} 
+                    onClick={() => onSelectJob(job)}
+                    className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-transparent hover:border-[#00a884] transition-all cursor-pointer group"
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex gap-3">
+                        <div className="w-12 h-12 bg-[#00a884]/10 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:bg-[#00a884]/20 transition-colors">
+                          <Briefcase className="w-6 h-6 text-[#00a884]" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-lg dark:text-[#e9edef] leading-tight">{job.title}</h4>
+                          <div className="flex items-center gap-1 text-xs text-gray-500 font-medium">
+                            <Building2 className="w-3 h-3" />
+                            {job.company}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <span className="flex items-center gap-1 text-[10px] font-bold bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-2 py-1 rounded-full uppercase tracking-wider">
+                        <MapPin className="w-3 h-3" />
+                        {job.location}
+                      </span>
+                      <span className="flex items-center gap-1 text-[10px] font-bold bg-green-50 dark:bg-green-900/20 text-[#00a884] px-2 py-1 rounded-full uppercase tracking-wider">
+                        <DollarSign className="w-3 h-3" />
+                        {job.salary || 'Competitive'}
+                      </span>
+                      <span className="text-[10px] font-bold bg-gray-50 dark:bg-gray-800 text-gray-500 px-2 py-1 rounded-full uppercase tracking-wider">
+                        {job.type}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
+        )}
+
+        {jobSubTab === 'applications' && (
+          <div className="space-y-3">
+            <h3 className="text-sm font-bold dark:text-[#e9edef] px-1">My Job Applications</h3>
+            {myApplications.length === 0 ? (
+              <div className="text-center py-12 text-gray-500 bg-white dark:bg-[#111b21] rounded-2xl">You haven't applied to any jobs yet.</div>
+            ) : (
+              myApplications.map((app: any) => {
+                const job = jobs.find((j: any) => j.id === app.jobId);
+                return (
+                  <div key={app.id} className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-50 dark:border-gray-800">
+                    <div className="flex justify-between items-center mb-2">
+                       <h4 className="font-bold text-sm dark:text-[#e9edef]">{job?.title || "Unknown Job"}</h4>
+                       <span className={cn("text-[10px] font-bold min-w-[70px] text-center uppercase px-2 py-1 rounded-full", 
+                        app.status === 'applied' ? "bg-blue-50 text-blue-500" :
+                        app.status === 'reviewed' ? "bg-yellow-50 text-yellow-600" :
+                        app.status === 'accepted' ? "bg-green-50 text-[#00a884]" :
+                        "bg-red-50 text-red-500"
+                       )}>
+                         {app.status}
+                       </span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase">{job?.company} • {app.timestamp?.toDate ? formatWhatsAppTime(app.timestamp.toDate()) : 'Recently'}</p>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {jobSubTab === 'postings' && (
+          <div className="space-y-3">
+            <div className="flex justify-between items-center px-1">
+              <h3 className="text-sm font-bold dark:text-[#e9edef]">My Active Postings</h3>
+              <button onClick={onCreateClick} className="text-[10px] font-bold text-[#00a884] uppercase">Post New</button>
+            </div>
+            {myPostings.length === 0 ? (
+              <div className="text-center py-12 text-gray-500 bg-white dark:bg-[#111b21] rounded-2xl">You haven't posted any jobs yet.</div>
+            ) : (
+              myPostings.map((job: any) => (
+                <div key={job.id} className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-50 dark:border-gray-800">
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="font-bold text-sm dark:text-[#e9edef]">{job.title}</h4>
+                    <div className="flex gap-1">
+                      <button 
+                        onClick={() => onEditJob(job)}
+                        className="p-1 text-gray-400 hover:text-[#00a884]"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => onDeleteJob(job.id)}
+                        className="p-1 text-gray-400 hover:text-red-500"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-end">
+                    <p className="text-[10px] text-gray-400 font-bold uppercase">{job.type} • {job.location}</p>
+                    <button 
+                      onClick={() => onSelectJob(job)}
+                      className="text-[10px] font-bold text-[#00a884] underline"
+                    >
+                      View Details
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {jobSubTab === 'reviews' && (
+          <div className="space-y-3">
+            <h3 className="text-sm font-bold dark:text-[#e9edef] px-1">Manage Applicants</h3>
+            {receivedApplications.length === 0 ? (
+              <div className="text-center py-12 text-gray-500 bg-white dark:bg-[#111b21] rounded-2xl">No applications received yet.</div>
+            ) : (
+              receivedApplications.map((app: any) => {
+                const job = jobs.find((j: any) => j.id === app.jobId);
+                return (
+                  <div key={app.id} className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex gap-2">
+                        {app.seekerPhoto ? (
+                          <img src={app.seekerPhoto} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                            <UserIcon className="w-4 h-4 text-gray-400" />
+                          </div>
+                        )}
+                        <div>
+                          <h4 className="font-bold text-sm dark:text-[#e9edef]">{app.seekerName}</h4>
+                          <p className="text-[10px] text-gray-500 font-medium">Applied for: {job?.title}</p>
+                        </div>
+                      </div>
+                      <span className={cn("text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-full", 
+                        app.status === 'applied' ? "bg-blue-50 text-blue-500" :
+                        app.status === 'reviewed' ? "bg-yellow-50 text-yellow-600" :
+                        app.status === 'accepted' ? "bg-green-50 text-[#00a884]" :
+                        "bg-red-50 text-red-500"
+                      )}>
+                        {app.status}
+                      </span>
+                    </div>
+                    
+                    <div className="flex gap-2 pt-2 border-t border-gray-50 dark:border-gray-800">
+                      <button 
+                        onClick={() => onUpdateStatus(app, 'reviewed')}
+                        className="flex-1 py-1.5 text-[10px] font-bold border border-gray-200 dark:border-gray-700 rounded-lg dark:text-gray-300"
+                      >
+                        Review
+                      </button>
+                      <button 
+                        onClick={() => onUpdateStatus(app, 'accepted')}
+                        className="flex-1 py-1.5 text-[10px] font-bold bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400 rounded-lg"
+                      >
+                        Accept
+                      </button>
+                      <button 
+                        onClick={() => onUpdateStatus(app, 'rejected')}
+                        className="flex-1 py-1.5 text-[10px] font-bold bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded-lg"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const CreateJob = ({ user, onBack, jobToEdit }: any) => {
+  const [formData, setFormData] = useState({
+    title: jobToEdit?.title || '',
+    company: jobToEdit?.company || '',
+    location: jobToEdit?.location || '',
+    type: jobToEdit?.type || 'Full-time',
+    description: jobToEdit?.description || '',
+    requirements: jobToEdit?.requirements?.join('\n') || '',
+    salary: jobToEdit?.salary || '',
+    status: jobToEdit?.status || 'open'
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title || !formData.company || !formData.description) return alert("Required fields missing");
+    
+    setLoading(true);
+    try {
+      if (jobToEdit) {
+        await updateDoc(doc(db, 'jobs', jobToEdit.id), {
+          ...formData,
+          requirements: formData.requirements.split('\n').filter((r: string) => r.trim()),
+          updatedAt: serverTimestamp()
+        });
+        alert("Job Updated Successfully!");
+      } else {
+        await addDoc(collection(db, 'jobs'), {
+          ...formData,
+          employerId: user.uid,
+          requirements: formData.requirements.split('\n').filter((r: string) => r.trim()),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        
+        // If not already an employer, become one
+        if (user.jobRole !== 'employer') {
+          await updateDoc(doc(db, 'users', user.uid), { jobRole: 'employer' });
+        }
+        
+        alert("Job Posted Successfully!");
+      }
+      onBack();
+    } catch (e) { 
+      console.error("Action failed", e);
+      alert("Action failed"); 
+    }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col h-full bg-[#f0f2f5] dark:bg-[#0b141a]">
+      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+        <button onClick={onBack} className="p-1 transition-colors hover:bg-white/10 rounded-full"><ChevronLeft className="w-6 h-6" /></button>
+        <h2 className="text-xl font-medium">Post a Vacancy</h2>
+      </div>
+
+      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar pb-10">
+        <div className="bg-white dark:bg-[#111b21] rounded-2xl p-6 shadow-sm space-y-4 border border-gray-100 dark:border-gray-800">
+          <div>
+            <label className="text-xs font-bold text-[#00a884] uppercase block mb-1">Job Title*</label>
+            <input 
+              type="text" 
+              required
+              value={formData.title}
+              onChange={(e) => setFormData({...formData, title: e.target.value})}
+              placeholder="e.g. Senior Frontend Developer"
+              className="w-full p-3 bg-gray-50 dark:bg-[#202c33] rounded-xl border-none focus:ring-2 focus:ring-[#00a884] dark:text-[#e9edef] outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-[#00a884] uppercase block mb-1">Company Name*</label>
+            <input 
+              type="text" 
+              required
+              value={formData.company}
+              onChange={(e) => setFormData({...formData, company: e.target.value})}
+              placeholder="Your company name"
+              className="w-full p-3 bg-gray-50 dark:bg-[#202c33] rounded-xl border-none focus:ring-2 focus:ring-[#00a884] dark:text-[#e9edef] outline-none"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-[#00a884] uppercase block mb-1">Location</label>
+              <input 
+                type="text" 
+                value={formData.location}
+                onChange={(e) => setFormData({...formData, location: e.target.value})}
+                placeholder="City, Country"
+                className="w-full p-3 bg-gray-50 dark:bg-[#202c33] rounded-xl border-none focus:ring-2 focus:ring-[#00a884] dark:text-[#e9edef] outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-[#00a884] uppercase block mb-1">Type</label>
+              <select 
+                value={formData.type}
+                onChange={(e) => setFormData({...formData, type: e.target.value})}
+                className="w-full p-3 bg-gray-50 dark:bg-[#202c33] rounded-xl border-none focus:ring-2 focus:ring-[#00a884] dark:text-[#e9edef] outline-none appearance-none"
+              >
+                <option value="Full-time">Full-time</option>
+                <option value="Part-time">Part-time</option>
+                <option value="Contract">Contract</option>
+                <option value="Remote">Remote</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-[#00a884] uppercase block mb-1">Description*</label>
+            <textarea 
+              required
+              value={formData.description}
+              onChange={(e) => setFormData({...formData, description: e.target.value})}
+              placeholder="Describe the role in detail..."
+              className="w-full p-3 bg-gray-50 dark:bg-[#202c33] rounded-xl border-none focus:ring-2 focus:ring-[#00a884] dark:text-[#e9edef] h-32 resize-none outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-[#00a884] uppercase block mb-1">Requirements (one per line)</label>
+            <textarea 
+              value={formData.requirements}
+              onChange={(e) => setFormData({...formData, requirements: e.target.value})}
+              placeholder="Requirement 1&#10;Requirement 2..."
+              className="w-full p-3 bg-gray-50 dark:bg-[#202c33] rounded-xl border-none focus:ring-2 focus:ring-[#00a884] dark:text-[#e9edef] h-32 resize-none outline-none"
+            />
+          </div>
+        </div>
+        <button 
+          type="submit"
+          disabled={loading}
+          className="w-full bg-[#00a884] text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+        >
+          {loading ? <CircleDashed className="w-6 h-6 animate-spin" /> : <Plus className="w-6 h-6" />}
+          Post Job Now
+        </button>
+      </form>
+    </div>
+  );
+};
+
+const JobDetails = ({ job, user, applications, onBack, onApply }: any) => {
+  const application = applications.find((a: any) => a.jobId === job.id && a.seekerId === user.uid);
+  const hasApplied = !!application;
+  const isEmployer = job.employerId === user?.uid;
+  const jobApplicants = applications.filter((a: any) => a.jobId === job.id);
+
+  return (
+    <div className="flex-1 flex flex-col h-full bg-[#f0f2f5] dark:bg-[#0b141a]">
+      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md fixed top-0 w-full z-10">
+        <button onClick={onBack} className="p-1 transition-colors hover:bg-white/10 rounded-full"><ChevronLeft className="w-6 h-6" /></button>
+        <h2 className="text-xl font-medium truncate">Job Details</h2>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 pt-20 pb-24 space-y-6 custom-scrollbar">
+        <div className="bg-white dark:bg-[#111b21] rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+           <div className="flex flex-col items-center text-center space-y-4">
+              <div className="w-20 h-20 bg-[#00a884]/10 rounded-3xl flex items-center justify-center">
+                <Briefcase className="w-10 h-10 text-[#00a884]" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-black dark:text-[#e9edef] leading-tight">{job.title}</h1>
+                <p className="text-lg text-gray-500 font-medium flex items-center justify-center gap-2 mt-1">
+                  <Building2 className="w-5 h-5 text-[#00a884]" />
+                  {job.company}
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-2">
+                <span className="bg-gray-100 dark:bg-gray-800 text-gray-500 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">{job.type}</span>
+                <span className="bg-green-100 dark:bg-green-900/30 text-[#00a884] px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">{job.location}</span>
+                {job.salary && <span className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">{job.salary}</span>}
+              </div>
+              
+              {isEmployer && (
+                <div className="mt-2 text-xs font-bold text-[#00a884] uppercase bg-[#00a884]/5 px-4 py-2 rounded-xl">
+                  {jobApplicants.length} Total Applicants
+                </div>
+              )}
+
+              {hasApplied && (
+                <div className="mt-2 text-xs font-bold uppercase px-4 py-2 rounded-xl flex items-center gap-2 bg-blue-50 text-blue-500 dark:bg-blue-900/20">
+                  Application Status: <span className="font-black">{application.status}</span>
+                </div>
+              )}
+           </div>
+
+           <div className="mt-8 space-y-8">
+              <div>
+                <h3 className="font-bold text-[#111b21] dark:text-[#e9edef] mb-3 flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 pb-2">
+                  <ClipboardList className="w-5 h-5 text-[#00a884]" />
+                  About the Role
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-[#d1d7db] leading-relaxed whitespace-pre-wrap">{job.description}</p>
+              </div>
+
+              {job.requirements && job.requirements.length > 0 && (
+                <div>
+                  <h3 className="font-bold text-[#111b21] dark:text-[#e9edef] mb-3 flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 pb-2">
+                    <GraduationCap className="w-5 h-5 text-[#00a884]" />
+                    Requirements
+                  </h3>
+                  <ul className="space-y-3">
+                    {job.requirements.map((req: string, i: number) => (
+                      <li key={i} className="flex items-start gap-3 text-sm text-gray-600 dark:text-[#d1d7db]">
+                        <div className="w-2 h-2 bg-[#00a884] rounded-full mt-1.5 flex-shrink-0" />
+                        {req}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+           </div>
+        </div>
+      </div>
+
+      {!isEmployer && (
+        <div className="fixed bottom-0 w-full p-4 bg-white/80 dark:bg-[#111b21]/80 backdrop-blur-md border-t border-gray-100 dark:border-gray-800 z-10">
+          <button 
+            onClick={() => onApply(job)}
+            disabled={hasApplied}
+            className={cn(
+              "w-full py-4 rounded-2xl font-bold shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2",
+              hasApplied ? "bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed" : "bg-[#00a884] text-white hover:bg-[#008f6f]"
+            )}
+          >
+            {hasApplied ? <CheckCheck className="w-6 h-6" /> : <ArrowRight className="w-6 h-6" />}
+            {hasApplied ? "Applied - Check status above" : "Apply for this Job"}
+          </button>
+        </div>
+      )}
     </div>
   );
 };
