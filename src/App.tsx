@@ -146,40 +146,60 @@ const Logo = ({ size = 40, className = "", url }: { size?: number, className?: s
   </div>
 );
 
-const SplashScreen = ({ siteName, logoUrl }: { siteName?: string, logoUrl?: string }) => (
-  <div className="fixed inset-0 z-[1000] bg-white dark:bg-[#111b21] flex flex-col items-center justify-center">
-    <motion.div
-      initial={{ scale: 0.8, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ duration: 0.5, ease: "easeOut" }}
-      className="flex flex-col items-center gap-6"
-    >
-      <Logo size={80} url={logoUrl} />
-      <div className="flex flex-col items-center">
-        <h1 className="text-2xl font-black text-[#111b21] dark:text-[#e9edef] tracking-tighter">{siteName || "Heart Connect"}</h1>
-        <p className="text-sm text-[#667781] dark:text-[#8696a0] font-medium">Connecting Hearts, One Chat at a Time</p>
-      </div>
-      <div className="mt-12 flex flex-col items-center gap-4">
-        <div className="w-48 h-1 bg-gray-100 dark:bg-[#2a3942] rounded-full overflow-hidden">
-          <motion.div
-            initial={{ width: "0%" }}
-            animate={{ width: "100%" }}
-            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-            className="h-full bg-[#00a884]"
-          />
+const SplashScreen = ({ siteName, logoUrl, onForceLoad }: { siteName?: string, logoUrl?: string, onForceLoad?: () => void }) => {
+  const [showBypass, setShowBypass] = useState(false);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => setShowBypass(true), 6000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[1000] bg-white dark:bg-[#111b21] flex flex-col items-center justify-center">
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="flex flex-col items-center gap-6"
+      >
+        <Logo size={80} url={logoUrl} />
+        <div className="flex flex-col items-center">
+          <h1 className="text-2xl font-black text-[#111b21] dark:text-[#e9edef] tracking-tighter">{siteName || "Heart Connect"}</h1>
+          <p className="text-sm text-[#667781] dark:text-[#8696a0] font-medium">Connecting Hearts, One Chat at a Time</p>
         </div>
-        <div className="flex items-center gap-2 text-[10px] text-gray-400 uppercase font-bold tracking-widest">
-          <ShieldCheck className="w-3 h-3 text-[#00a884]" />
-          End-to-End Encrypted
+        <div className="mt-12 flex flex-col items-center gap-4">
+          <div className="w-48 h-1 bg-gray-100 dark:bg-[#2a3942] rounded-full overflow-hidden">
+            <motion.div
+              initial={{ width: "0%" }}
+              animate={{ width: "100%" }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              className="h-full bg-[#00a884]"
+            />
+          </div>
+          <div className="flex items-center gap-2 text-[10px] text-gray-400 uppercase font-bold tracking-widest">
+            <ShieldCheck className="w-3 h-3 text-[#00a884]" />
+            End-to-End Encrypted
+          </div>
         </div>
+        
+        {showBypass && onForceLoad && (
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            onClick={onForceLoad}
+            className="mt-8 px-6 py-2 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs font-bold rounded-full hover:bg-gray-200 transition-colors"
+          >
+            Entering App...
+          </motion.button>
+        )}
+      </motion.div>
+      <div className="absolute bottom-12 flex flex-col items-center gap-1">
+        <p className="text-[10px] text-gray-400 uppercase font-black tracking-[0.2em]">Powered by</p>
+        <p className="text-sm font-bold text-[#00a884]">{siteName || "Heart Connect"}</p>
       </div>
-    </motion.div>
-    <div className="absolute bottom-12 flex flex-col items-center gap-1">
-      <p className="text-[10px] text-gray-400 uppercase font-black tracking-[0.2em]">Powered by</p>
-      <p className="text-sm font-bold text-[#00a884]">{siteName || "Heart Connect"}</p>
     </div>
-  </div>
-);
+  );
+};
 
 const compressImage = async (file: File) => {
   if (file.size > 0.5 * 1024 * 1024 && file.type.startsWith('image/')) {
@@ -915,7 +935,16 @@ export default function App() {
     processDelivered();
   }, [chats, user?.uid]);
 
-  if (loading) return <SplashScreen siteName={appSettings?.siteName} logoUrl={appSettings?.logoUrl} />;
+  if (loading) return (
+    <SplashScreen 
+      siteName={appSettings?.siteName} 
+      logoUrl={appSettings?.logoUrl} 
+      onForceLoad={() => {
+        console.warn("Emergency bypass triggered.");
+        setLoading(false);
+      }}
+    />
+  );
   if (!user) return <AuthScreen settings={appSettings} />;
 
   if (user.suspended) return (
