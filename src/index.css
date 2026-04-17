@@ -36,6 +36,19 @@
   .hover-scale {
     @apply transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98];
   }
+
+  .skeleton {
+    @apply bg-gray-200 dark:bg-gray-800 animate-pulse rounded;
+  }
+
+  @keyframes rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .animate-rotate {
+    animation: rotate 1s linear infinite;
+  }
 }
 
 /* Custom scrollbar for WhatsApp look */

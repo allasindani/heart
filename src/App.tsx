@@ -48,7 +48,8 @@ import {
   Filter,
   Edit2,
   Sparkles,
-  Download
+  Download,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -308,11 +309,11 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
   return (
     <div className="min-h-screen bg-[#f0f2f5] flex items-center justify-center p-4">
       <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full text-center">
-        <Logo size={60} className="mx-auto mb-6" url={settings?.logoUrl} />
-        <h2 className="text-3xl font-black mb-2 text-[#111b21] tracking-tighter">{settings?.siteName || "Heart Connect"}</h2>
-        <p className="text-gray-500 mb-6 font-medium">Connecting Hearts, One Chat at a Time</p>
+        <Logo size={48} className="mx-auto mb-4" url={settings?.logoUrl} />
+        <h2 className="text-2xl font-black mb-1 text-[#111b21] tracking-tighter">{settings?.siteName || "Heart Connect"}</h2>
+        <p className="text-xs text-gray-500 mb-5 font-medium">Connecting Hearts, One Chat at a Time</p>
         
-        <div className="mb-8 p-1">
+        <div className="mb-6 p-1">
           <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Featured Singles Nearby</h3>
           <div className="flex justify-center gap-5">
             {[
@@ -518,6 +519,34 @@ export default function App() {
     const saved = localStorage.getItem('darkMode');
     return saved ? JSON.parse(saved) : false;
   });
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [startY, setStartY] = useState<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (scrollRef.current?.scrollTop === 0) {
+      setStartY(e.touches[0].pageY);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (startY !== null && scrollRef.current?.scrollTop === 0) {
+      const distance = e.touches[0].pageY - startY;
+      if (distance > 0) {
+        setPullDistance(Math.min(distance * 0.4, 100));
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (pullDistance > 60) {
+      setIsRefreshing(true);
+      setTimeout(() => setIsRefreshing(false), 1500);
+    }
+    setPullDistance(0);
+    setStartY(null);
+  };
 
   useEffect(() => {
     console.log("App: Component mounted accurately");
@@ -1275,16 +1304,8 @@ export default function App() {
           <div className="bg-[#008069] text-white p-4 pb-2 shadow-md relative z-30">
             <div className="flex justify-between items-center mb-4">
               <div 
-                className="flex items-center gap-3 cursor-pointer group"
-                onClick={() => {
-                  setActiveTab('chats');
-                  setSelectedChat(null);
-                  setShowSearch(false);
-                  setSearchQuery('');
-                  // Scroll to top
-                  const scrollArea = document.querySelector('.custom-scrollbar');
-                  if (scrollArea) scrollArea.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
+                className="flex items-center gap-3 cursor-pointer group active:scale-95 transition-transform"
+                onClick={() => window.location.reload()}
               >
                 <Logo size={32} className="shadow-none group-hover:scale-110 transition-transform" url={appSettings?.logoUrl} />
                 <h1 className="text-xl font-black tracking-tighter group-hover:opacity-80 transition-opacity">{appSettings?.siteName || "Heart Connect"}</h1>
@@ -1352,7 +1373,43 @@ export default function App() {
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21] overscroll-contain scroll-smooth custom-scrollbar">
+          <div 
+            ref={scrollRef}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21] overscroll-contain scroll-smooth custom-scrollbar relative"
+          >
+            {/* Pull to Refresh Indicator */}
+            <motion.div 
+              style={{ height: pullDistance, opacity: pullDistance / 60 }}
+              className="flex items-center justify-center overflow-hidden bg-gray-50/50 dark:bg-black/10"
+            >
+              <div className={cn("p-2 rounded-full bg-white dark:bg-[#2a3942] shadow-md", pullDistance > 60 && "text-[#00a884]")}>
+                <RefreshCw className={cn("w-5 h-5", pullDistance > 60 && "animate-rotate")} />
+              </div>
+            </motion.div>
+
+            {/* Refreshing Overlay */}
+            <AnimatePresence>
+              {isRefreshing && (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 z-[60] bg-white/40 dark:bg-black/20 backdrop-blur-[2px] flex items-center justify-center"
+                >
+                  <motion.div 
+                    animate={{ rotate: 360 }}
+                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                    className="p-4 bg-white dark:bg-[#2a3942] rounded-full shadow-xl"
+                  >
+                    <RefreshCw className="w-8 h-8 text-[#00a884]" />
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Install Prompt Overlay */}
             {deferredPrompt && !isInstalled && (
               <motion.div 
@@ -1380,7 +1437,11 @@ export default function App() {
 
             {activeTab === 'chats' && (
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                {chats.length === 0 ? (
+                {isRefreshing ? (
+                  <div className="p-0">
+                    {[1, 2, 3, 4, 5, 6].map(i => <SkeletonChat key={i} />)}
+                  </div>
+                ) : chats.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-4">
                     <div className="w-20 h-20 bg-gray-50 dark:bg-[#111b21] rounded-full flex items-center justify-center">
                       <MessageCircle className="w-10 h-10 text-gray-200 dark:text-gray-800" />
@@ -1407,18 +1468,24 @@ export default function App() {
                   }).map(chat => {
                     const otherId = chat.participants.find((p: string) => p !== user.uid);
                     const otherUser = users.find(u => u.uid === otherId);
+                    const isTyping = chat.typing && Object.entries(chat.typing).some(([uid, typing]) => uid === otherId && typing);
                     const chatName = chat.groupName || otherUser?.displayName || "Chat";
                     const chatPhoto = otherUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`;
                     
                     return (
-                      <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 active:bg-gray-100 transition-colors cursor-pointer">
-                        <img 
-                          src={chatPhoto} 
-                          className="w-14 h-14 rounded-full object-cover" 
-                          alt="Chat" 
-                          referrerPolicy="no-referrer" 
-                          onError={handleImageError}
-                        />
+                      <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 active:bg-gray-100 dark:active:bg-[#202c33] transition-colors cursor-pointer group">
+                        <div className="relative">
+                          <img 
+                            src={chatPhoto} 
+                            className="w-14 h-14 rounded-full object-cover group-hover:scale-105 transition-transform" 
+                            alt="Chat" 
+                            referrerPolicy="no-referrer" 
+                            onError={handleImageError}
+                          />
+                          {otherUser?.isOnline && (
+                             <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white dark:border-[#111b21] shadow-sm"></div>
+                          )}
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-center mb-1">
                             <h3 className="font-bold text-[#111b21] truncate flex items-center gap-1">
@@ -1426,25 +1493,34 @@ export default function App() {
                               <TierBadge tier={otherUser?.category} size={14} />
                               {otherUser?.isVerified && <VerifiedBadge size={14} />}
                             </h3>
-                            <span className="text-xs text-[#667781]">{chat.updatedAt?.toDate ? formatWhatsAppTime(chat.updatedAt.toDate()) : ''}</span>
+                            <span className="text-xs text-[#667781] dark:text-[#8696a0]">{chat.updatedAt?.toDate ? formatWhatsAppTime(chat.updatedAt.toDate()) : ''}</span>
                           </div>
-                          <p className="text-[14px] text-[#667781] truncate flex items-center gap-1">
-                            {chat.lastMessage?.senderId === user.uid && (
-                              chat.lastMessage.status === 'sent' ? (
-                                <Check className="w-4 h-4 text-[#8696a0]" />
-                              ) : (
-                                <CheckCheck className={cn("w-4 h-4", chat.lastMessage.status === 'seen' ? "text-[#53bdeb]" : "text-[#8696a0]")} />
-                              )
+                          <div className="text-[14px] text-[#667781] dark:text-[#8696a0] truncate flex items-center gap-1">
+                            {isTyping ? (
+                              <span className="text-[#00a884] font-bold animate-pulse text-[13px] tracking-tight flex items-center gap-1">
+                                <CircleDashed className="w-3 h-3 animate-spin" /> Typing...
+                              </span>
+                            ) : (
+                              <>
+                                {chat.lastMessage?.senderId === user.uid && (
+                                  chat.lastMessage.status === 'sent' ? (
+                                    <Check className="w-4 h-4 text-[#8696a0]" />
+                                  ) : (
+                                    <CheckCheck className={cn("w-4 h-4", chat.lastMessage.status === 'seen' ? "text-[#53bdeb]" : "text-[#8696a0]")} />
+                                  )
+                                )}
+                                <span className="truncate">{chat.lastMessage?.text || "Start a conversation"}</span>
+                              </>
                             )}
-                            {chat.lastMessage?.text || "Start a conversation"}
-                          </p>
+                          </div>
                         </div>
                       </div>
                     );
                   })
-                )}
-              </div>
-            )}
+                )
+              }
+            </div>
+          )}
             {activeTab === 'status' && <StatusAndWallView 
               user={user} 
               statuses={statuses} 
@@ -1467,6 +1543,8 @@ export default function App() {
               usersMap={usersMap} 
               onSelectJob={setSelectedJob} 
               onFollowEmployer={handleFollowEmployer} 
+              targetPostId={targetPostId}
+              isRefreshing={isRefreshing}
             />}
             {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} setUser={setUser} />}
             {activeTab === 'jobs' && (
@@ -1803,7 +1881,35 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
   );
 };
 
-const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, showPostModal, setShowPostModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer, targetPostId }: any) => {
+const SkeletonPost = () => (
+  <div className="bg-white dark:bg-[#111b21] p-4 rounded-3xl shadow-sm border border-gray-50 dark:border-gray-800 space-y-4">
+    <div className="flex items-center gap-3">
+      <div className="w-10 h-10 skeleton rounded-full" />
+      <div className="space-y-2">
+        <div className="w-24 h-3 skeleton" />
+        <div className="w-16 h-2 skeleton" />
+      </div>
+    </div>
+    <div className="w-full h-4 skeleton" />
+    <div className="w-3/4 h-4 skeleton" />
+    <div className="w-full h-48 skeleton rounded-2xl" />
+  </div>
+);
+
+const SkeletonChat = () => (
+  <div className="flex items-center gap-4 p-4 border-b border-gray-50 dark:border-gray-800">
+    <div className="w-14 h-14 skeleton rounded-full" />
+    <div className="flex-1 space-y-2">
+      <div className="flex justify-between">
+        <div className="w-24 h-3 skeleton" />
+        <div className="w-12 h-2 skeleton" />
+      </div>
+      <div className="w-3/4 h-3 skeleton" />
+    </div>
+  </div>
+);
+
+const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, showPostModal, setShowPostModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer, targetPostId, isRefreshing }: any) => {
   const [newPost, setNewPost] = useState('');
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
@@ -2285,8 +2391,16 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
 
       {/* Wall Section */}
       <div ref={wallRef} className="p-4 space-y-6 pb-24 h-full overflow-y-auto no-scrollbar">
-        <div className="bg-white dark:bg-[#111b21] p-5 rounded-3xl shadow-md border border-gray-100 dark:border-gray-800 transition-all hover:shadow-lg">
-          <div className="flex items-center gap-3 mb-4">
+        {isRefreshing ? (
+          <div className="space-y-6">
+            <SkeletonPost />
+            <SkeletonPost />
+            <SkeletonPost />
+          </div>
+        ) : (
+          <>
+            <div className="bg-white dark:bg-[#111b21] p-5 rounded-3xl shadow-md border border-gray-100 dark:border-gray-800 transition-all hover:shadow-lg">
+            <div className="flex items-center gap-3 mb-4">
             <img 
               src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
               className="w-10 h-10 rounded-full" 
@@ -2618,7 +2732,9 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
           });
           return elements;
         })()}
-      </div>
+          </>
+      )}
+    </div>
 
       {showComments && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">

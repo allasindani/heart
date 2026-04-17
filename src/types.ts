@@ -96,6 +96,7 @@ export interface Chat {
   updatedAt: any;
   groupName?: string;
   groupPhoto?: string;
+  typing?: Record<string, boolean>;
 }
 
 export interface Message {
