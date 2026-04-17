@@ -1660,6 +1660,27 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [editContent, setEditContent] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const postMediaInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePostMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    let file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadProgress(0);
+    try {
+      if (file.type.startsWith('image/')) {
+        file = await compressImage(file);
+      }
+      const url = await uploadFileToServer(file, (p: number) => setUploadProgress(p));
+      setPostMedia(url);
+      setPostMediaType(file.type.startsWith('image/') ? 'image' : 'video' as any);
+    } catch (error: any) {
+      alert("Media upload failed: " + (error.message || "Unknown error"));
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+    }
+  };
 
   const handleDeletePost = async (postId: string) => {
     if (!window.confirm("Are you sure you want to delete this post?")) return;
@@ -2170,10 +2191,11 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                     <div className="flex items-center justify-between border border-gray-200 dark:border-gray-700 rounded-xl p-3">
                       <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Add to your post</span>
                       <div className="flex gap-2">
-                        <button onClick={() => fileInputRef.current?.click()} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-green-500">
+                        <input type="file" ref={postMediaInputRef} onChange={handlePostMediaUpload} className="hidden" accept="image/*,video/*" />
+                        <button onClick={() => postMediaInputRef.current?.click()} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-green-500">
                           <ImageIcon className="w-6 h-6" />
                         </button>
-                        <button onClick={() => fileInputRef.current?.click()} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-red-500">
+                        <button onClick={() => postMediaInputRef.current?.click()} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-red-500">
                           <VideoIcon className="w-6 h-6" />
                         </button>
                         <button onClick={() => setShowCreateAd(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-blue-500">
