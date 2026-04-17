@@ -49,7 +49,8 @@ import {
   Edit2,
   Sparkles,
   Download,
-  RefreshCw
+  RefreshCw,
+  Users,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -80,7 +81,7 @@ import {
   deleteField
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { cn, formatWhatsAppTime } from './lib/utils';
+import { cn, formatWhatsAppTime, formatLastSeen } from './lib/utils';
 import { COUNTRIES } from './constants';
 import imageCompression from 'browser-image-compression';
 import { getAI } from './lib/gemini';
@@ -144,6 +145,76 @@ const Logo = ({ size = 40, className = "", url }: { size?: number, className?: s
     </div>
   </div>
 );
+
+const Avatar = ({ src, name, size = 40, className = "", isOnline, children }: { src?: string | null, name?: string, size?: number, className?: string, isOnline?: boolean, children?: React.ReactNode }) => {
+  const getInitials = (n?: string) => {
+    if (!n) return '?';
+    const parts = n.split(' ').filter(Boolean);
+    if (parts.length >= 2) return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+    return n.charAt(0).toUpperCase();
+  };
+
+  const colors = [
+    'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-purple-500', 
+    'bg-pink-500', 'bg-indigo-500', 'bg-teal-500', 'bg-orange-500'
+  ];
+  const colorIndex = name ? name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length : 0;
+  const bgColor = colors[colorIndex];
+
+  return (
+    <div className={cn("relative flex-shrink-0", className)} style={{ width: size, height: size }}>
+      {src ? (
+        <img 
+          src={src} 
+          className="w-full h-full rounded-full object-cover" 
+          alt={name} 
+          referrerPolicy="no-referrer"
+          onError={(e) => {
+            const target = e.currentTarget;
+            target.style.display = 'none';
+            const next = target.nextElementSibling as HTMLElement;
+            if (next) next.classList.remove('hidden');
+          }}
+        />
+      ) : null}
+      <div 
+        className={cn("w-full h-full rounded-full items-center justify-center text-white font-bold", bgColor, src ? "hidden" : "flex")}
+        style={{ fontSize: size * 0.4 }}
+      >
+        {getInitials(name)}
+      </div>
+      {isOnline && !children && (
+        <div className="absolute bottom-0.5 right-0.5 w-[25%] h-[25%] bg-green-500 rounded-full border-2 border-white dark:border-[#111b21] shadow-sm animate-pulse" />
+      )}
+      {children}
+    </div>
+  );
+};
+
+const ProfileReminder = ({ user, onClick }: { user: User, onClick: () => void }) => {
+  const isIncomplete = !user.photoURL || !user.datingProfile?.bio || !user.datingProfile?.age;
+  if (!isIncomplete) return null;
+
+  return (
+    <motion.div 
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: 'auto', opacity: 1 }}
+      className="bg-yellow-50 dark:bg-yellow-900/10 border-b border-yellow-100 dark:border-yellow-900/20 p-3 flex items-center justify-between gap-3 cursor-pointer"
+      onClick={onClick}
+    >
+      <div className="flex items-center gap-3">
+        <div className="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-full text-yellow-600">
+          <UserIcon className="w-5 h-5" />
+        </div>
+        <div className="flex-1">
+          <h4 className="text-[11px] font-bold text-yellow-800 dark:text-yellow-500 uppercase tracking-tight">Profile Incomplete</h4>
+          <p className="text-[10px] text-yellow-700/80 dark:text-yellow-600">Add a photo and bio to get 2x more matches!</p>
+        </div>
+      </div>
+      <ChevronRight className="w-4 h-4 text-yellow-600" />
+    </motion.div>
+  );
+};
 
 const SplashScreen = ({ siteName, logoUrl, onForceLoad }: { siteName?: string, logoUrl?: string, onForceLoad?: () => void }) => {
   const [showBypass, setShowBypass] = useState(false);
@@ -1300,6 +1371,7 @@ export default function App() {
         </div>
       ) : (
         <div className="flex-1 flex flex-col overflow-hidden relative">
+          <ProfileReminder user={user} onClick={() => setShowProfile(true)} />
           {/* App Header */}
           <div className="bg-[#008069] text-white p-4 pb-2 shadow-md relative z-30">
             <div className="flex justify-between items-center mb-4">
@@ -1470,22 +1542,17 @@ export default function App() {
                     const otherUser = users.find(u => u.uid === otherId);
                     const isTyping = chat.typing && Object.entries(chat.typing).some(([uid, typing]) => uid === otherId && typing);
                     const chatName = chat.groupName || otherUser?.displayName || "Chat";
-                    const chatPhoto = otherUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`;
+                    const chatPhoto = otherUser?.photoURL;
                     
                     return (
                       <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 active:bg-gray-100 dark:active:bg-[#202c33] transition-colors cursor-pointer group">
-                        <div className="relative">
-                          <img 
-                            src={chatPhoto} 
-                            className="w-14 h-14 rounded-full object-cover group-hover:scale-105 transition-transform" 
-                            alt="Chat" 
-                            referrerPolicy="no-referrer" 
-                            onError={handleImageError}
-                          />
-                          {otherUser?.isOnline && (
-                             <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white dark:border-[#111b21] shadow-sm"></div>
-                          )}
-                        </div>
+                        <Avatar 
+                          src={chatPhoto} 
+                          name={chatName} 
+                          size={56} 
+                          isOnline={otherUser?.isOnline} 
+                          className="group-hover:scale-105 transition-transform"
+                        />
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-center mb-1">
                             <h3 className="font-bold text-[#111b21] truncate flex items-center gap-1">
@@ -1723,12 +1790,11 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
     <div className="flex-1 flex flex-col h-full relative">
       <div className="bg-[#008069] text-white p-3 flex items-center gap-2 shadow-md cursor-pointer" onClick={() => otherUser && onUserClick(otherUser)}>
         <button onClick={(e) => { e.stopPropagation(); onBack(); }} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
-        <img 
-          src={otherUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`} 
-          className="w-10 h-10 rounded-full" 
-          alt="Chat" 
-          referrerPolicy="no-referrer" 
-          onError={handleImageError}
+        <Avatar 
+          src={otherUser?.photoURL} 
+          name={otherUser?.displayName || chat.groupName || "Chat"} 
+          size={40} 
+          isOnline={otherUser?.isOnline} 
         />
         <div className="flex-1 min-w-0">
           <h3 className="font-bold truncate flex items-center gap-1">
@@ -1745,7 +1811,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
                 online
               </>
             ) : (
-              otherUser?.lastSeen?.toDate ? `last seen ${formatWhatsAppTime(otherUser.lastSeen.toDate())}` : 'offline'
+              otherUser?.lastSeen?.toDate ? `last seen ${formatLastSeen(otherUser.lastSeen.toDate())}` : 'offline'
             )}
           </p>
         </div>
@@ -2179,17 +2245,12 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
         </div>
         <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
           <div className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => setShowStatusModal(true)}>
-            <div className="relative">
-              <img 
-                src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
-                className="w-16 h-16 rounded-full border-2 border-gray-200 dark:border-gray-800" 
-                alt="Me" 
-                referrerPolicy="no-referrer" 
-                onError={handleImageError}
-              />
-              <div className="absolute bottom-0 right-0 bg-[#00a884] rounded-full p-1 border-2 border-white dark:border-[#111b21]"><Plus className="w-3 h-3 text-white" /></div>
-            </div>
-            <span className="text-xs text-gray-600 dark:text-[#8696a0]">My Status</span>
+            <Avatar src={user.photoURL} name={user.displayName} size={64} className="border-2 border-gray-200 dark:border-gray-800">
+              <div className="absolute bottom-0 right-0 bg-[#00a884] rounded-full p-1 border-2 border-white dark:border-[#111b21] shadow-sm">
+                <Plus className="w-3 h-3 text-white" />
+              </div>
+            </Avatar>
+            <span className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase tracking-tighter mt-1">My Status</span>
           </div>
           {statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true).length === 0 ? (
             <div className="flex flex-col items-center justify-center min-w-[100px] opacity-40">
@@ -2203,17 +2264,11 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
               const statusUser = usersMap[s.userId];
               return (
                 <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => handleViewStatus(s)}>
-                  <div className="p-0.5 rounded-full border-2 border-[#00a884]">
-                    <img 
-                      src={statusUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.userId}`} 
-                      className="w-16 h-16 rounded-full border-2 border-white dark:border-[#111b21]" 
-                      alt="User" 
-                      referrerPolicy="no-referrer" 
-                      onError={handleImageError}
-                    />
+                  <div className="p-0.5 rounded-full border-2 border-[#00a884] ring-2 ring-white dark:ring-[#111b21]">
+                    <Avatar src={statusUser?.photoURL} name={statusUser?.displayName} size={56} />
                   </div>
-                  <span className="text-xs text-gray-600 dark:text-[#8696a0] truncate w-16 text-center flex items-center justify-center gap-0.5">
-                    {statusUser?.displayName || "User"}
+                  <span className="text-[10px] text-gray-600 dark:text-[#8696a0] truncate w-16 text-center flex items-center justify-center gap-0.5 font-bold">
+                    {statusUser?.uid === user.uid ? 'Me' : (statusUser?.displayName?.split(' ')[0] || "User")}
                     <TierBadge tier={statusUser?.category} size={10} />
                     {statusUser?.isVerified && <VerifiedBadge size={10} />}
                   </span>
@@ -2401,14 +2456,8 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
           <>
             <div className="bg-white dark:bg-[#111b21] p-5 rounded-3xl shadow-md border border-gray-100 dark:border-gray-800 transition-all hover:shadow-lg">
             <div className="flex items-center gap-3 mb-4">
-            <img 
-              src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
-              className="w-10 h-10 rounded-full" 
-              alt="Me" 
-              referrerPolicy="no-referrer" 
-              onError={handleImageError}
-            />
-            <div className="flex-1 bg-gray-50 dark:bg-[#2a3942] rounded-full px-4 py-2 text-gray-400 text-sm cursor-pointer" onClick={() => setShowPostModal(true)}>
+            <Avatar src={user.photoURL} name={user.displayName} size={40} />
+            <div className="flex-1 bg-gray-50 dark:bg-[#2a3942] rounded-full px-4 py-2 text-gray-400 text-sm cursor-pointer border border-gray-100 dark:border-gray-800" onClick={() => setShowPostModal(true)}>
               What's on your mind?
             </div>
           </div>
@@ -2443,7 +2492,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
 
                   <div className="space-y-4">
                     <div className="flex items-center gap-3 mb-2">
-                      <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} className="w-10 h-10 rounded-full" alt="Me" />
+                      <Avatar src={user.photoURL} name={user.displayName} size={40} />
                       <div>
                         <div className="font-bold text-sm dark:text-white">{user.displayName}</div>
                         <div className="text-[10px] text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full w-fit">Public</div>
@@ -2521,13 +2570,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                 className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden transition-all duration-500"
               >
                 <div className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => onUserClick({ uid: post.userId, displayName: postAuthor?.displayName, photoURL: postAuthor?.photoURL })}>
-                  <img 
-                    src={postAuthor?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} 
-                    className="w-10 h-10 rounded-full" 
-                    alt="User" 
-                    referrerPolicy="no-referrer" 
-                    onError={handleImageError}
-                  />
+                  <Avatar src={postAuthor?.photoURL} name={postAuthor?.displayName || "User"} size={40} isOnline={postAuthor?.isOnline} />
                   <div>
                     <h4 className="font-bold text-[#111b21] dark:text-[#e9edef] text-[15px] flex items-center gap-1">
                       {postAuthor?.displayName || "User"}
@@ -2705,7 +2748,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                 elements.push(
                   <div key={`ad-${pos}`} className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden border-l-4 border-l-yellow-400">
                     <div className="p-3 flex items-center gap-3">
-                      <img src={adAuthor?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentAd.userId}`} className="w-8 h-8 rounded-full" alt="Ad" referrerPolicy="no-referrer" />
+                      <Avatar src={adAuthor?.photoURL} name={adAuthor?.displayName || "Sponsored"} size={32} />
                       <div className="flex-1">
                         <h4 className="font-bold text-xs dark:text-[#e9edef]">{adAuthor?.displayName || "Sponsored"}</h4>
                         <p className="text-[9px] text-yellow-600 font-bold uppercase tracking-tighter">Sponsored Ad</p>
@@ -2746,7 +2789,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
             <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
               {comments.map(c => (
                 <div key={c.id} className="flex gap-3">
-                  <img src={c.userPhoto || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.userId}`} className="w-8 h-8 rounded-full" alt="User" referrerPolicy="no-referrer" />
+                  <Avatar src={c.userPhoto} name={c.userName} size={32} />
                   <div className="flex-1 bg-gray-50 p-3 rounded-2xl">
                     <h4 className="font-bold text-xs mb-1">{c.userName}</h4>
                     <p className="text-sm text-gray-700">{c.text}</p>
@@ -3594,7 +3637,7 @@ const PointsLeaderboard = ({ onBack }: any) => {
               <div className={cn("w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm", i === 0 ? "bg-yellow-100 text-yellow-700" : i === 1 ? "bg-gray-100 text-gray-700" : i === 2 ? "bg-orange-100 text-orange-700" : "text-gray-400")}>
                 {i + 1}
               </div>
-              <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-12 h-12 rounded-full" alt="User" referrerPolicy="no-referrer" />
+              <Avatar src={u.photoURL} name={u.displayName} size={48} isOnline={u.isOnline} />
               <div className="flex-1">
                 <h4 className="font-bold text-[#111b21] flex items-center gap-1">
                   {u.displayName}
@@ -3832,66 +3875,44 @@ const AdminDashboard = ({ user, onBack }: any) => {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-40 scroll-smooth custom-scrollbar">
-        {activeTab === 'users' && (
-          <>
-            {/* Stats Grid */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm text-center">
-                <UserIcon className="w-5 h-5 text-blue-500 mx-auto mb-1" />
-                <div className="text-xl font-bold dark:text-[#e9edef]">{stats.totalUsers}</div>
-                <div className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">Users</div>
+      <div className={cn("flex-1 p-4 space-y-6 pb-40 scroll-smooth custom-scrollbar", activeTab === 'users' ? "flex flex-col h-full overflow-hidden" : "overflow-y-auto")}>
+        {activeTab === 'users' ? (
+          <div className="flex-1 flex flex-col overflow-hidden gap-6 h-full pb-20">
+            {/* Scrollable Stats Section */}
+            <div className="flex-shrink-0 space-y-4 max-h-[40%] overflow-y-auto p-1 custom-scrollbar pr-2 mb-2">
+              <div className="flex justify-between items-center mb-1">
+                <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Dashboard Overview</h3>
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_5px_rgba(34,197,94,0.5)]" />
               </div>
-              <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm text-center">
-                <BarChart3 className="w-5 h-5 text-green-500 mx-auto mb-1" />
-                <div className="text-xl font-bold dark:text-[#e9edef]">{stats.totalPoints}</div>
-                <div className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">Total Points</div>
-              </div>
-            </div>
-
-            {/* System Status */}
-            <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-gray-700 dark:text-[#e9edef] flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-[#00a884]" />
-                  System Status
-                </h3>
-                <span className="flex items-center gap-1 text-[10px] font-bold text-[#00a884] uppercase">
-                  <div className="w-2 h-2 bg-[#00a884] rounded-full animate-pulse" />
-                  Online
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-[11px]">
-                <div className="space-y-1">
-                  <p className="text-gray-400 dark:text-[#8696a0] uppercase font-bold">Server</p>
-                  <p className="font-bold dark:text-[#e9edef]">Production Node</p>
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm text-center border border-gray-100 dark:border-gray-800">
+                  <UserIcon className="w-5 h-5 text-blue-500 mx-auto mb-1" />
+                  <div className="text-xl font-bold dark:text-[#e9edef]">{stats.totalUsers}</div>
+                  <div className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">Users</div>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-gray-400 dark:text-[#8696a0] uppercase font-bold">Storage</p>
-                  <p className="font-bold dark:text-[#e9edef]">NVMe</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-gray-400 dark:text-[#8696a0] uppercase font-bold">Node Version</p>
-                  <p className="font-bold dark:text-[#e9edef]">v24.14.1</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-gray-400 dark:text-[#8696a0] uppercase font-bold">Features</p>
-                  <p className="font-bold dark:text-[#e9edef]">Reels, Chat, Dating</p>
+                <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm text-center border border-gray-100 dark:border-gray-800">
+                  <BarChart3 className="w-5 h-5 text-green-500 mx-auto mb-1" />
+                  <div className="text-xl font-bold dark:text-[#e9edef]">{stats.totalPoints}</div>
+                  <div className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">Total Points</div>
                 </div>
               </div>
             </div>
 
-            {/* User Management */}
-            <div className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-                <h3 className="font-bold text-gray-700 dark:text-[#e9edef]">User Management</h3>
-                <SettingsIcon className="w-4 h-4 text-gray-400" />
+            {/* Scrollable User Management Section */}
+            <div className="flex-1 bg-white dark:bg-[#111b21] rounded-3xl shadow-lg border border-gray-100 dark:border-gray-800 overflow-hidden flex flex-col min-h-0">
+              <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/30 dark:bg-gray-800/20">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-[#00a884]" />
+                  <h3 className="font-bold text-gray-800 dark:text-[#e9edef] text-sm tracking-tight uppercase">User Management</h3>
+                </div>
+                <div className="text-[10px] font-black text-[#00a884] bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-full uppercase tracking-widest">{users.length} Records</div>
               </div>
-              <div className="divide-y divide-gray-50 dark:divide-gray-800 max-h-[500px] overflow-y-auto custom-scrollbar">
+              <div className="flex-1 overflow-y-auto divide-y divide-gray-50 dark:divide-gray-800 custom-scrollbar">
                 {users.map(u => (
-                  <div key={u.uid} className="p-4 space-y-3">
+                  <div key={u.uid} className="p-4 space-y-3 hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
                     <div className="flex items-center gap-3">
-                      <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-10 h-10 rounded-full" alt="User" referrerPolicy="no-referrer" />
+                      <Avatar src={u.photoURL} name={u.displayName} size={42} isOnline={u.isOnline} />
                       <div className="flex-1 min-w-0">
                         <h4 className="font-bold text-sm truncate dark:text-[#e9edef] flex items-center gap-1">
                           {u.displayName}
@@ -3899,16 +3920,16 @@ const AdminDashboard = ({ user, onBack }: any) => {
                         </h4>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">{u.role}</span>
-                          <span className="text-[10px] text-[#00a884] font-bold">{u.points} pts</span>
+                          <span className="text-[10px] text-[#00a884] font-bold">{u.points || 0} pts</span>
                         </div>
                       </div>
-                      <button onClick={() => setEditingUser(u)} className="p-2 text-gray-400 hover:text-[#00a884]"><SettingsIcon className="w-4 h-4" /></button>
+                      <button onClick={() => setEditingUser(u)} className="p-2 text-gray-400 hover:text-[#00a884] hover:bg-white dark:hover:bg-gray-800 rounded-full transition-all shadow-sm"><SettingsIcon className="w-4 h-4" /></button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <select 
                         value={u.category} 
                         onChange={(e) => setUserCategory(u, e.target.value)}
-                        className="text-[10px] font-bold bg-gray-50 dark:bg-[#2a3942] border-none rounded-full px-2 py-1 outline-none dark:text-[#e9edef]"
+                        className="text-[10px] font-bold bg-gray-50 dark:bg-[#2a3942] border-none rounded-full px-3 py-1 outline-none dark:text-[#e9edef] appearance-none"
                       >
                         {['General', 'Bronze', 'Silver', 'Gold', 'Platinum'].map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
@@ -3925,24 +3946,19 @@ const AdminDashboard = ({ user, onBack }: any) => {
                         {u.suspended ? "Unsuspend" : "Suspend"}
                       </button>
                       <button 
-                        onClick={() => toggleUserVerification(u)}
-                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.isVerified ? "bg-blue-50 dark:bg-blue-900/20 text-blue-500" : "bg-gray-50 dark:bg-gray-800 text-gray-400")}
+                         onClick={() => deleteUser(u)}
+                         className="p-1 px-3 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full hover:bg-red-100 transition-colors text-[10px] font-bold uppercase tracking-widest"
                       >
-                        {u.isVerified ? "Verified" : "Verify"}
-                      </button>
-                      <button 
-                        onClick={() => deleteUser(u)}
-                        className="p-2 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full hover:bg-red-100 transition-colors"
-                      >
-                        <Trash2 className="w-3 h-3" />
+                        Delete
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-          </>
-        )}
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-40 scroll-smooth custom-scrollbar">
 
         {activeTab === 'ads' && (
           <div className="space-y-4">
@@ -3954,7 +3970,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
                 <div key={ad.id} className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm space-y-3">
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-3">
-                        <img src={usersMap[ad.userId]?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${ad.userId}`} className="w-8 h-8 rounded-full" alt="Ad" referrerPolicy="no-referrer" />
+                        <Avatar src={usersMap[ad.userId]?.photoURL} name={usersMap[ad.userId]?.displayName || "Advertiser"} size={32} />
                         <div>
                           <h4 className="font-bold text-sm dark:text-[#e9edef]">{usersMap[ad.userId]?.displayName || "Advertiser"}</h4>
                           <p className="text-[10px] text-gray-400 dark:text-[#8696a0]">Sponsored</p>
@@ -4224,8 +4240,10 @@ const AdminDashboard = ({ user, onBack }: any) => {
           </div>
         )}
       </div>
-    </div>
-  );
+    )}
+  </div>
+</div>
+);
 };
 const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: { 
   user: User, 
@@ -4331,12 +4349,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         <div className="flex flex-col items-center py-8 bg-white dark:bg-[#111b21] mb-6">
           <div className="relative group">
-            <img 
-              src={photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
-              className={cn("w-40 h-40 rounded-full shadow-lg object-cover", !photoURL && "grayscale")} 
-              alt="Profile" 
-              referrerPolicy="no-referrer"
-            />
+            <Avatar src={photoURL} name={user.displayName} size={160} className={cn("shadow-lg", !photoURL && "grayscale")} />
             {!photoURL && (
               <motion.div 
                 initial={{ scale: 0 }} 
