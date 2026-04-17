@@ -66,8 +66,9 @@ export interface Notification {
   userId: string;
   fromId: string;
   fromName: string;
-  type: 'like' | 'comment' | 'message' | 'friend_request' | 'friend_accept' | 'job_update';
+  type: 'like' | 'comment' | 'message' | 'friend_request' | 'friend_accept' | 'job_update' | 'broadcast';
   text: string;
+  title?: string;
   read: boolean;
   timestamp: any;
   relatedId?: string;

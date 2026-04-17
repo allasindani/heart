@@ -251,6 +251,7 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [error, setError] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const handleGoogleLogin = () => signInWithPopup(auth, new GoogleAuthProvider());
   
@@ -260,6 +261,11 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
     
     if (!isLogin && (!firstName.trim() || !lastName.trim())) {
       setError('Please provide Name and Surname');
+      return;
+    }
+
+    if (!isLogin && !acceptedTerms) {
+      setError('You must accept the terms and conditions to sign up.');
       return;
     }
 
@@ -282,10 +288,16 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
           category: 'General',
           points: 0,
           isOnline: true,
+          notificationsEnabled: true, // Auto-subscribe
           lastSeen: serverTimestamp(),
           status: "Hey there! I am using Heart Connect.",
         };
         await setDoc(userDocRef, userData);
+        
+        // Request notification permission on browser if available
+        if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission();
+        }
       }
     } catch (err: any) {
       setError(err.message);
@@ -336,6 +348,24 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
             className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-[#00a884]/20"
             required
           />
+
+          {!isLogin && (
+            <div className="flex items-start gap-3 text-left px-1">
+              <input 
+                type="checkbox" 
+                id="terms"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="mt-1 w-4 h-4 rounded border-gray-300 text-[#00a884] focus:ring-[#00a884]"
+              />
+              <label htmlFor="terms" className="text-[11px] text-gray-500 leading-tight">
+                I accept the <span className="text-[#00a884] font-bold cursor-pointer">Terms & Conditions</span> and 
+                <span className="text-[#00a884] font-bold cursor-pointer ml-1">Privacy Policy</span>. 
+                I also agree to receive site notifications.
+              </label>
+            </div>
+          )}
+
           {error && <p className="text-red-500 text-xs font-bold">{error}</p>}
           <button type="submit" className="w-full bg-[#00a884] text-white font-bold py-4 rounded-xl shadow-lg shadow-[#00a884]/20 active:scale-95 transition-all">
             {isLogin ? 'Log In' : 'Sign Up'}
@@ -364,14 +394,14 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Featured Singles Online</h3>
           <div className="flex justify-center gap-4">
             {[
-              { city: 'Bulawayo', age: 25, seed: 'zim1' },
-              { city: 'Harare', age: 30, seed: 'zim2' },
-              { city: 'Gweru', age: 35, seed: 'zim3' }
+              { city: 'Bulawayo', age: 25, seed: 'woman1', img: 'https://picsum.photos/seed/zim1/200' },
+              { city: 'Harare', age: 30, seed: 'woman2', img: 'https://picsum.photos/seed/zim2/200' },
+              { city: 'Gweru', age: 35, seed: 'woman3', img: 'https://picsum.photos/seed/zim3/200' }
             ].map((s) => (
               <div key={s.seed} className="relative">
                 <img 
-                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${s.seed}&gender=female&top=longHair,bob,curly`} 
-                  className="w-12 h-12 rounded-full border-2 border-white shadow-sm" 
+                  src={s.img} 
+                  className="w-12 h-12 rounded-full border-2 border-white shadow-sm object-cover" 
                   alt={s.city} 
                   referrerPolicy="no-referrer"
                 />
@@ -464,6 +494,23 @@ export default function App() {
     }, 8000);
     return () => clearTimeout(initTimer);
   }, []);
+
+  const lastNotifRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (notifications.length > 0) {
+      const latest = notifications[0];
+      if (!latest.read && latest.id !== lastNotifRef.current) {
+        lastNotifRef.current = latest.id;
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification(latest.title || 'Heart Connect', { 
+            body: latest.text || (latest as any).content || 'You have a new message',
+            icon: '/favicon.ico'
+          });
+        }
+      }
+    }
+  }, [notifications]);
 
   useEffect(() => {
     if (darkMode) {
@@ -604,7 +651,7 @@ export default function App() {
         {
           uid: 'zim_harare_25',
           displayName: 'Chipo',
-          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=harare1&gender=female',
+          photoURL: 'https://picsum.photos/seed/zim4/200',
           role: 'user',
           category: 'General',
           points: 100,
@@ -623,7 +670,7 @@ export default function App() {
         {
           uid: 'zim_harare_30',
           displayName: 'Nyasha',
-          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=harare2&gender=female',
+          photoURL: 'https://picsum.photos/seed/zim5/200',
           role: 'user',
           category: 'General',
           points: 150,
@@ -642,7 +689,7 @@ export default function App() {
         {
           uid: 'zim_harare_35',
           displayName: 'Ruvimbo',
-          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=harare3&gender=female',
+          photoURL: 'https://picsum.photos/seed/zim6/200',
           role: 'user',
           category: 'General',
           points: 200,
@@ -3265,7 +3312,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
   const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, activeAds: 0, totalPoints: 0 });
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'ads' | 'config' | 'branding' | 'payments' | 'vaccancies'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'ads' | 'config' | 'branding' | 'payments' | 'vaccancies' | 'notifications'>('users');
   const [ads, setAds] = useState<Post[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -3372,6 +3419,41 @@ const AdminDashboard = ({ user, onBack }: any) => {
     setStats({ ...stats, totalUsers: stats.totalUsers - 1 });
   };
 
+  const broadcastNotification = async (title: string, body: string) => {
+    if (!confirm(`Are you sure you want to broadcast this message to ${users.length} users?`)) return;
+    
+    setLoading(true);
+    try {
+      const batch = writeBatch(db);
+      users.forEach(u => {
+        const notifRef = doc(collection(db, 'notifications'));
+        batch.set(notifRef, {
+          userId: u.uid,
+          fromId: user.uid,
+          fromName: user.displayName,
+          type: 'broadcast',
+          text: body,
+          title: title,
+          read: false,
+          timestamp: serverTimestamp()
+        });
+      });
+      await batch.commit();
+      
+      // Attempt local browser notification for admin immediately
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, { body });
+      }
+      
+      alert("Broadcast sent successfully!");
+    } catch (e) {
+      console.error("Broadcast failed:", e);
+      alert("Failed to send broadcast.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleUpdateUser = async (updatedUser: User) => {
     try {
       await updateDoc(doc(db, 'users', updatedUser.uid), updatedUser as any);
@@ -3404,12 +3486,12 @@ const AdminDashboard = ({ user, onBack }: any) => {
         <h2 className="text-xl font-medium flex items-center gap-2"><Shield className="w-5 h-5 text-[#00a884]" /> Admin Dashboard</h2>
       </div>
       
-      <div className="flex bg-white dark:bg-[#111b21] border-b border-gray-100 dark:border-gray-800">
-        {['users', 'ads', 'config', 'branding', 'payments', 'vaccancies'].map((t) => (
+      <div className="flex bg-white dark:bg-[#111b21] border-b border-gray-100 dark:border-gray-800 overflow-x-auto">
+        {['users', 'ads', 'config', 'branding', 'payments', 'vaccancies', 'notifications'].map((t) => (
           <button 
             key={t}
             onClick={() => setActiveTab(t as any)}
-            className={cn("flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2", activeTab === t ? "border-[#00a884] text-[#00a884]" : "border-transparent text-gray-400 dark:text-[#8696a0]")}
+            className={cn("flex-shrink-0 px-4 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2", activeTab === t ? "border-[#00a884] text-[#00a884]" : "border-transparent text-gray-400 dark:text-[#8696a0]")}
           >
             {t}
           </button>
@@ -3634,6 +3716,39 @@ const AdminDashboard = ({ user, onBack }: any) => {
 
             <button onClick={() => saveSettings(settings)} className="w-full bg-[#00a884] text-white py-4 rounded-2xl font-bold shadow-lg mt-4">Save Configuration</button>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'notifications' && (
+          <div className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm p-6 space-y-6">
+            <h3 className="font-bold text-gray-700 dark:text-[#e9edef] border-b dark:border-gray-800 pb-2 flex items-center gap-2">
+              <Bell className="w-5 h-5 text-[#00a884]" />
+              System Broadcast
+            </h3>
+            <p className="text-sm text-gray-500">Send a notification to all registered users. This will appear in their in-app notifications and as a browser popup if they have enabled it.</p>
+            
+            <form onSubmit={(e: any) => {
+              e.preventDefault();
+              const title = e.currentTarget.title.value;
+              const body = e.currentTarget.body.value;
+              if (title && body) {
+                broadcastNotification(title, body);
+                e.currentTarget.reset();
+              }
+            }} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Notification Title</label>
+                <input name="title" type="text" required className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" placeholder="E.g. Weekend Special Offer!" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Message Content</label>
+                <textarea name="body" required className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef] h-24" placeholder="Type your message here..." />
+              </div>
+              <button type="submit" className="w-full bg-[#00a884] text-white py-4 rounded-2xl font-bold translate-y-0 active:translate-y-1 transition-all shadow-lg flex items-center justify-center gap-2">
+                <Send size={18} />
+                Send Broadcast to {users.length} Users
+              </button>
+            </form>
           </div>
         )}
 
