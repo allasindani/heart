@@ -93,6 +93,16 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   console.error('Firestore Error: ', JSON.stringify({ error: error instanceof Error ? error.message : String(error), operationType, path }));
 }
 
+const capitalizeName = (name: string) => {
+  if (!name) return "";
+  return name
+    .toLowerCase()
+    .split(' ')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
 const VerifiedBadge = ({ size = 14 }: { size?: number }) => (
   <ShieldCheck className="text-blue-500 fill-blue-500/10" style={{ width: size, height: size }} />
 );
@@ -165,8 +175,8 @@ const SplashScreen = ({ siteName, logoUrl }: { siteName?: string, logoUrl?: stri
       </div>
     </motion.div>
     <div className="absolute bottom-12 flex flex-col items-center gap-1">
-      <p className="text-[10px] text-gray-400 uppercase font-black tracking-[0.2em]">From</p>
-      <p className="text-sm font-bold text-[#00a884]">STYN TECHNOLOGIES</p>
+      <p className="text-[10px] text-gray-400 uppercase font-black tracking-[0.2em]">Powered by</p>
+      <p className="text-sm font-bold text-[#00a884]">{siteName || "Heart Connect"}</p>
     </div>
   </div>
 );
@@ -400,50 +410,71 @@ export default function App() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'users'), limit(200));
+    const q = query(collection(db, 'users'), limit(300));
     const unsubscribe = onSnapshot(q, (snap) => {
-      setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
-    });
+      setUsers(snap.docs.map(d => {
+        const data = d.data();
+        return { 
+          uid: d.id, 
+          ...data,
+          displayName: capitalizeName(data.displayName || '')
+        } as User;
+      }));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
     return unsubscribe;
   }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const { getDoc } = await import('firebase/firestore');
-        const userSnap = await getDoc(userDocRef);
-        
-        let userData: User;
-        if (userSnap.exists()) {
-          userData = { uid: firebaseUser.uid, ...userSnap.data() } as User;
-          // Update online status
-          await updateDoc(userDocRef, { isOnline: true, lastSeen: serverTimestamp() });
-          userData.isOnline = true;
+      try {
+        if (firebaseUser) {
+          const userDocRef = doc(db, 'users', firebaseUser.uid);
+          const { getDoc } = await import('firebase/firestore');
+          const userSnap = await getDoc(userDocRef);
           
-          // Set default dating filters based on gender
-          if (userData.datingProfile?.gender) {
-            setDatingFilters(prev => ({
-              ...prev,
-              gender: userData.datingProfile?.gender === 'male' ? 'female' : 'male'
-            }));
+          let userData: User;
+          if (userSnap.exists()) {
+            const data = userSnap.data();
+            userData = { 
+              uid: firebaseUser.uid, 
+              ...data,
+              displayName: capitalizeName(data.displayName || '')
+            } as User;
+            // Update online status
+            await updateDoc(userDocRef, { isOnline: true, lastSeen: serverTimestamp() });
+            userData.isOnline = true;
+            
+            // Set default dating filters based on gender
+            if (userData.datingProfile?.gender) {
+              setDatingFilters(prev => ({
+                ...prev,
+                gender: userData.datingProfile?.gender === 'male' ? 'female' : 'male'
+              }));
+            }
+          } else {
+            const rawName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous';
+            userData = {
+              uid: firebaseUser.uid,
+              displayName: capitalizeName(rawName),
+              photoURL: firebaseUser.photoURL || null,
+              role: firebaseUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
+              category: 'General',
+              points: 0,
+              isOnline: true,
+              lastSeen: serverTimestamp(),
+              status: "Hey there! I am using Heart Connect.",
+            };
+            try { await setDoc(userDocRef, userData, { merge: true }); } catch (e) { handleFirestoreError(e, OperationType.WRITE, `users/${firebaseUser.uid}`); }
           }
-        } else {
-          userData = {
-            uid: firebaseUser.uid,
-            displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous',
-            photoURL: firebaseUser.photoURL || null,
-            role: firebaseUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
-            category: 'General',
-            points: 0,
-            isOnline: true,
-            lastSeen: serverTimestamp(),
-            status: "Hey there! I am using Heart Connect.",
-          };
-          try { await setDoc(userDocRef, userData, { merge: true }); } catch (e) { handleFirestoreError(e, OperationType.WRITE, `users/${firebaseUser.uid}`); }
-        }
-        setUser(userData);
-      } else { setUser(null); }
+          setUser(userData);
+        } else { setUser(null); }
+      } catch (err) {
+        console.error("Critical error in onAuthStateChanged:", err);
+      } finally {
+        setLoading(false);
+      }
+    }, (error) => {
+      console.error("Auth state error:", error);
       setLoading(false);
     });
     return unsubscribe;
@@ -699,12 +730,16 @@ export default function App() {
 
   useEffect(() => {
     const fetchSettings = async () => {
-      const docSnap = await getDocs(collection(db, 'settings'));
-      if (!docSnap.empty) {
-        setAppSettings(docSnap.docs[0].data() as AppSettings);
-      } else {
-        // Initialize settings if they don't exist
-        await addDoc(collection(db, 'settings'), appSettings);
+      try {
+        const docSnap = await getDocs(collection(db, 'settings'));
+        if (!docSnap.empty) {
+          setAppSettings(docSnap.docs[0].data() as AppSettings);
+        } else {
+          // Initialize settings if they don't exist
+          await addDoc(collection(db, 'settings'), appSettings);
+        }
+      } catch (e) {
+        handleFirestoreError(e, OperationType.GET, 'settings');
       }
     };
     fetchSettings();
@@ -741,12 +776,12 @@ export default function App() {
     if (!user || activeTab !== 'status') return;
     const qPosts = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(50));
     const qStatus = query(collection(db, 'statuses'), orderBy('createdAt', 'desc'));
-    const unsubPosts = onSnapshot(qPosts, (snap) => setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Post))));
-    const unsubStatus = onSnapshot(qStatus, (snap) => setStatuses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Status))));
+    const unsubPosts = onSnapshot(qPosts, (snap) => setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Post))), (e) => handleFirestoreError(e, OperationType.LIST, 'posts'));
+    const unsubStatus = onSnapshot(qStatus, (snap) => setStatuses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Status))), (e) => handleFirestoreError(e, OperationType.LIST, 'statuses'));
     
     // Notifications listener
     const qNotif = query(collection(db, 'notifications'), where('userId', '==', user.uid), orderBy('timestamp', 'desc'), limit(20));
-    const unsubNotif = onSnapshot(qNotif, (snap) => setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification))));
+    const unsubNotif = onSnapshot(qNotif, (snap) => setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification))), (e) => handleFirestoreError(e, OperationType.LIST, 'notifications'));
 
     return () => { unsubPosts(); unsubStatus(); unsubNotif(); };
   }, [user, activeTab]);
@@ -754,15 +789,15 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     const qJobs = query(collection(db, 'jobs'), orderBy('createdAt', 'desc'), limit(50));
-    const unsubJobs = onSnapshot(qJobs, (snap) => setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job))));
+    const unsubJobs = onSnapshot(qJobs, (snap) => setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job))), (e) => handleFirestoreError(e, OperationType.LIST, 'jobs'));
     
     // Fetch as Seeker
     const qSeeker = query(collection(db, 'applications'), where('seekerId', '==', user.uid), orderBy('timestamp', 'desc'));
-    const unsubSeeker = onSnapshot(qSeeker, (snap) => setSeekerApps(snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication))));
+    const unsubSeeker = onSnapshot(qSeeker, (snap) => setSeekerApps(snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication))), (e) => handleFirestoreError(e, OperationType.LIST, 'applications/seeker'));
 
     // Fetch as Employer
     const qEmployer = query(collection(db, 'applications'), where('employerId', '==', user.uid), orderBy('timestamp', 'desc'));
-    const unsubEmployer = onSnapshot(qEmployer, (snap) => setEmployerApps(snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication))));
+    const unsubEmployer = onSnapshot(qEmployer, (snap) => setEmployerApps(snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication))), (e) => handleFirestoreError(e, OperationType.LIST, 'applications/employer'));
 
     return () => { unsubJobs(); unsubSeeker(); unsubEmployer(); };
   }, [user?.uid, activeTab]);
@@ -3320,7 +3355,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
               <div className="grid grid-cols-2 gap-4 text-[11px]">
                 <div className="space-y-1">
                   <p className="text-gray-400 dark:text-[#8696a0] uppercase font-bold">Server</p>
-                  <p className="font-bold dark:text-[#e9edef]">STYN VPS</p>
+                  <p className="font-bold dark:text-[#e9edef]">Production Node</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-gray-400 dark:text-[#8696a0] uppercase font-bold">Storage</p>
@@ -3698,11 +3733,13 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
     setSaving(true);
     try {
       const userDoc = doc(db, 'users', user.uid);
-      const displayName = `${firstName.trim()} ${lastName.trim()}`;
+      const capFirstName = capitalizeName(firstName.trim());
+      const capLastName = capitalizeName(lastName.trim());
+      const displayName = `${capFirstName} ${capLastName}`;
       const updatedData = {
         displayName,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
+        firstName: capFirstName,
+        lastName: capLastName,
         photoURL,
         status,
         jobRole,
@@ -3790,7 +3827,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
                 <input 
                   type="text" 
                   value={firstName} 
-                  onChange={(e) => setFirstName(e.target.value)}
+                  onChange={(e) => setFirstName(capitalizeName(e.target.value))}
                   className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
                 />
               </div>
@@ -3799,7 +3836,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
                 <input 
                   type="text" 
                   value={lastName} 
-                  onChange={(e) => setLastName(e.target.value)}
+                  onChange={(e) => setLastName(capitalizeName(e.target.value))}
                   className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
                 />
               </div>

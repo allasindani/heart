@@ -54,7 +54,7 @@ async function getAvailablePort(startPort: number): Promise<number> {
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || (process.env.NODE_ENV === 'production' ? 3007 : 3000);
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(compression());
   app.use(express.json());
@@ -64,7 +64,7 @@ async function startServer() {
   app.get("/api/health", (req, res) => {
     res.json({ 
       status: "online",
-      server: "STYN VPS",
+      server: "Production Node",
       storage: "NVMe",
       features: ["Reels", "Chat", "Dating", "Blockbuster"],
       nodeVersion: "v24.14.1",
