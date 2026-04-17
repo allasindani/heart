@@ -46,7 +46,8 @@ import {
   ClipboardList,
   GraduationCap,
   Filter,
-  Edit2
+  Edit2,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -80,7 +81,11 @@ import { auth, db } from './firebase';
 import { cn, formatWhatsAppTime } from './lib/utils';
 import { COUNTRIES } from './constants';
 import imageCompression from 'browser-image-compression';
+import { GoogleGenAI } from "@google/genai";
 import { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment, AppSettings, PaymentProof, Job, JobApplication } from './types';
+
+// --- Gemini Initialization ---
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // --- Error Handling ---
 enum OperationType { CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LIST = 'list', GET = 'get', WRITE = 'write' }
@@ -359,6 +364,7 @@ export default function App() {
   const [showMenu, setShowMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showPostModal, setShowPostModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
@@ -904,7 +910,7 @@ export default function App() {
       )}
       {selectedChat ? (
         <div className="absolute inset-0 z-50 bg-[#efeae2] flex flex-col">
-          <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} />
+          <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} onUserClick={(u: any) => { setViewingUser(u); setSelectedChat(null); }} />
         </div>
       ) : showProfile ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
@@ -978,7 +984,6 @@ export default function App() {
               <div className="flex items-center gap-3">
                 <Logo size={32} className="shadow-none" url={appSettings?.logoUrl} />
                 <h1 className="text-xl font-black tracking-tighter">{appSettings?.siteName || "Heart Connect"}</h1>
-                <span className="bg-white/20 text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-widest">v1.2.0</span>
               </div>
               <div className="flex gap-5 items-center">
                 <Camera className="w-6 h-6 cursor-pointer" onClick={() => setActiveTab('status')} />
@@ -1111,7 +1116,29 @@ export default function App() {
                 )}
               </div>
             )}
-            {activeTab === 'status' && <StatusAndWallView user={user} statuses={statuses} posts={posts} jobs={jobs} onUserClick={(u: User) => setViewingUser(u)} awardPoints={awardPoints} appSettings={appSettings} showStatusModal={showStatusModal} setShowStatusModal={setShowStatusModal} setShowCreateAd={setShowCreateAd} setAdContent={setAdContent} setAdMediaUrl={setAdMediaUrl} setUploading={setUploading} setUploadProgress={setUploadProgress} setUser={setUser} uploading={uploading} usersMap={usersMap} onSelectJob={setSelectedJob} onFollowEmployer={handleFollowEmployer} />}
+            {activeTab === 'status' && <StatusAndWallView 
+              user={user} 
+              statuses={statuses} 
+              posts={posts} 
+              jobs={jobs} 
+              onUserClick={(u: User) => setViewingUser(u)} 
+              awardPoints={awardPoints} 
+              appSettings={appSettings} 
+              showStatusModal={showStatusModal} 
+              setShowStatusModal={setShowStatusModal} 
+              showPostModal={showPostModal}
+              setShowPostModal={setShowPostModal}
+              setShowCreateAd={setShowCreateAd} 
+              setAdContent={setAdContent} 
+              setAdMediaUrl={setAdMediaUrl} 
+              setUploading={setUploading} 
+              setUploadProgress={setUploadProgress} 
+              setUser={setUser} 
+              uploading={uploading} 
+              usersMap={usersMap} 
+              onSelectJob={setSelectedJob} 
+              onFollowEmployer={handleFollowEmployer} 
+            />}
             {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} setUser={setUser} />}
             {activeTab === 'jobs' && (
               <JobsView 
@@ -1167,7 +1194,7 @@ export default function App() {
 
 // --- Sub-Components ---
 
-const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
+const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: any) => {
   const [input, setInput] = useState('');
   const [otherUser, setOtherUser] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
@@ -1287,8 +1314,8 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
 
   return (
     <div className="flex-1 flex flex-col h-full relative">
-      <div className="bg-[#008069] text-white p-3 flex items-center gap-2 shadow-md">
-        <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
+      <div className="bg-[#008069] text-white p-3 flex items-center gap-2 shadow-md cursor-pointer" onClick={() => otherUser && onUserClick(otherUser)}>
+        <button onClick={(e) => { e.stopPropagation(); onBack(); }} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <img 
           src={otherUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.id}`} 
           className="w-10 h-10 rounded-full" 
@@ -1407,16 +1434,16 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
         ))}
         {uploading && <div className="flex justify-center"><CircleDashed className="w-6 h-6 animate-spin text-[#00a884]" /></div>}
       </div>
-      <div className="bg-[#f0f2f5] dark:bg-[#111b21] p-3 pb-8 flex items-center gap-2">
+      <div className="bg-[#f0f2f5] dark:bg-[#111b21] p-2 pb-6 flex items-center gap-2">
         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*,video/*" />
-        <div className="bg-white dark:bg-[#2a3942] flex-1 flex items-center px-3 py-2 rounded-full shadow-sm">
-          <Smile className="w-6 h-6 text-gray-500 dark:text-[#8696a0] mr-2" />
+        <div className="bg-white dark:bg-[#2a3942] flex-1 flex items-center px-3 py-2 rounded-full shadow-sm max-w-[calc(100%-60px)]">
+          <Smile className="w-6 h-6 text-gray-500 dark:text-[#8696a0] mr-2 shrink-0" />
           <input 
             type="text" 
             value={input} 
             onChange={(e) => handleTyping(e.target.value)} 
             placeholder="Message" 
-            className="flex-1 bg-transparent border-none outline-none text-[16px] dark:text-[#e9edef]" 
+            className="flex-1 bg-transparent border-none outline-none text-[16px] dark:text-[#e9edef] w-full" 
             onKeyDown={(e) => { 
               if (e.key === 'Enter' && input.trim()) { 
                 onSendMessage(input); 
@@ -1426,9 +1453,8 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
               } 
             }} 
           />
-          <button onClick={() => onSendMessage("This is a test message! 🚀")} className="text-[10px] font-bold text-[#00a884] uppercase px-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors">Test</button>
-          <Paperclip className="w-6 h-6 text-gray-500 dark:text-[#8696a0] ml-2 cursor-pointer" onClick={() => fileInputRef.current?.click()} />
-          <Camera className="w-6 h-6 text-gray-500 dark:text-[#8696a0] ml-3 cursor-pointer" onClick={() => fileInputRef.current?.click()} />
+          <Paperclip className="w-6 h-6 text-gray-500 dark:text-[#8696a0] ml-2 cursor-pointer shrink-0" onClick={() => fileInputRef.current?.click()} />
+          <Camera className="w-6 h-6 text-gray-500 dark:text-[#8696a0] ml-2 cursor-pointer shrink-0" onClick={() => fileInputRef.current?.click()} />
         </div>
         <button 
           onClick={() => { 
@@ -1439,7 +1465,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
               updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false });
             } 
           }} 
-          className="w-12 h-12 bg-[#00a884] rounded-full flex items-center justify-center text-white shadow-md"
+          className="w-12 h-12 bg-[#00a884] rounded-full flex items-center justify-center text-white shadow-md shrink-0 active:scale-90 transition-transform"
         >
           {input.trim() ? <Send className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
         </button>
@@ -1448,7 +1474,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage }: any) => {
   );
 };
 
-const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer }: any) => {
+const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, showPostModal, setShowPostModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer }: any) => {
   const [newPost, setNewPost] = useState('');
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
@@ -1605,6 +1631,18 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
       setUploading(false);
       setUploadProgress(0);
     }
+  };
+
+  const clearPostModal = () => {
+    setShowPostModal(false);
+    setNewPost('');
+    setPostMedia(null);
+    setPostMediaType(null);
+  };
+
+  const handleCreatePost = async () => {
+    await handlePost();
+    clearPostModal();
   };
 
   const handleCreateStatus = async (mediaUrl?: string, type: string = 'text') => {
@@ -1892,22 +1930,96 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
               referrerPolicy="no-referrer" 
               onError={handleImageError}
             />
-            <div className="flex-1 bg-gray-50 dark:bg-[#2a3942] rounded-full px-4 py-2 text-gray-400 text-sm cursor-pointer" onClick={() => setShowStatusModal(true)}>
+            <div className="flex-1 bg-gray-50 dark:bg-[#2a3942] rounded-full px-4 py-2 text-gray-400 text-sm cursor-pointer" onClick={() => setShowPostModal(true)}>
               What's on your mind?
             </div>
           </div>
           <div className="flex justify-around border-t border-gray-50 dark:border-gray-800 pt-3">
-            <button onClick={() => setShowStatusModal(true)} className="flex items-center gap-2 text-gray-500 dark:text-[#8696a0] text-xs font-bold hover:text-[#00a884] transition-colors">
+            <button onClick={() => setShowPostModal(true)} className="flex items-center gap-2 text-gray-500 dark:text-[#8696a0] text-xs font-bold hover:text-[#00a884] transition-colors">
               <ImageIcon className="w-4 h-4 text-green-500" /> Photo
             </button>
-            <button onClick={() => setShowStatusModal(true)} className="flex items-center gap-2 text-gray-500 dark:text-[#8696a0] text-xs font-bold hover:text-[#00a884] transition-colors">
+            <button onClick={() => setShowPostModal(true)} className="flex items-center gap-2 text-gray-500 dark:text-[#8696a0] text-xs font-bold hover:text-[#00a884] transition-colors">
               <VideoIcon className="w-4 h-4 text-red-500" /> Video
             </button>
-            <button onClick={() => setShowStatusModal(true)} className="flex items-center gap-2 text-gray-500 dark:text-[#8696a0] text-xs font-bold hover:text-[#00a884] transition-colors">
+            <button onClick={() => setShowCreateAd(true)} className="flex items-center gap-2 text-gray-500 dark:text-[#8696a0] text-xs font-bold hover:text-[#00a884] transition-colors">
               <Megaphone className="w-4 h-4 text-blue-500" /> Boost
             </button>
           </div>
         </div>
+
+        {/* Post Creation Modal */}
+        <AnimatePresence>
+          {showPostModal && (
+            <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white dark:bg-[#202c33] w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl"
+              >
+                <div className="p-6">
+                  <div className="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-800 pb-4">
+                    <h3 className="text-xl font-bold text-[#111b21] dark:text-[#e9edef]">Create Post</h3>
+                    <button onClick={clearPostModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"><X className="w-6 h-6 text-gray-400" /></button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} className="w-10 h-10 rounded-full" alt="Me" />
+                      <div>
+                        <div className="font-bold text-sm dark:text-white">{user.displayName}</div>
+                        <div className="text-[10px] text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full w-fit">Public</div>
+                      </div>
+                    </div>
+
+                    <textarea 
+                      value={newPost}
+                      onChange={(e) => setNewPost(e.target.value)}
+                      placeholder="Share what's happening..."
+                      className="w-full bg-transparent border-none outline-none text-lg dark:text-[#e9edef] resize-none h-40 focus:ring-0"
+                    />
+
+                    {postMedia && (
+                      <div className="relative mt-2 rounded-xl overflow-hidden border border-gray-100 dark:border-gray-800">
+                        {postMediaType === 'image' ? (
+                          <img src={postMedia} className="w-full h-48 object-cover" alt="Selected" />
+                        ) : (
+                          <video src={postMedia} className="w-full h-48 object-cover" />
+                        )}
+                        <button onClick={() => { setPostMedia(null); setPostMediaType(null); }} className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full hover:bg-black/70 transition-colors">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Add to your post</span>
+                      <div className="flex gap-2">
+                        <button onClick={() => fileInputRef.current?.click()} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-green-500">
+                          <ImageIcon className="w-6 h-6" />
+                        </button>
+                        <button onClick={() => fileInputRef.current?.click()} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-red-500">
+                          <VideoIcon className="w-6 h-6" />
+                        </button>
+                        <button onClick={() => setShowCreateAd(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-blue-500">
+                          <Megaphone className="w-6 h-6" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={handleCreatePost}
+                      disabled={(!newPost.trim() && !postMedia) || uploading}
+                      className="w-full bg-[#00a884] text-white py-3.5 rounded-xl font-bold shadow-lg shadow-[#00a884]/20 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {uploading ? <CircleDashed className="w-5 h-5 animate-spin" /> : "Post"}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         {(() => {
           const elements: React.ReactNode[] = [];
@@ -2085,6 +2197,11 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                          <span className="text-[9px] bg-green-50/50 dark:bg-green-900/20 px-2 py-0.5 rounded-full font-bold text-[#00a884] uppercase tracking-widest border border-green-100/50 dark:border-green-900/30">{job.location}</span>
                          <button onClick={() => onSelectJob?.(job)} className="text-[9px] text-[#00a884] font-black uppercase tracking-tighter ml-auto hover:underline">Apply Now →</button>
                       </div>
+                      {job.summary && (
+                        <p className="mt-2 text-xs text-gray-600 dark:text-gray-400 italic line-clamp-2">
+                          "{job.summary}"
+                        </p>
+                      )}
                     </div>
                   </div>
                 </motion.div>
@@ -4105,11 +4222,31 @@ const CreateJob = ({ user, onBack, jobToEdit }: any) => {
     location: jobToEdit?.location || '',
     type: jobToEdit?.type || 'Full-time',
     description: jobToEdit?.description || '',
+    summary: jobToEdit?.summary || '',
     requirements: jobToEdit?.requirements?.join('\n') || '',
     salary: jobToEdit?.salary || '',
     status: jobToEdit?.status || 'open'
   });
   const [loading, setLoading] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+
+  const generateSummary = async () => {
+    if (!formData.description) return;
+    setSummarizing(true);
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Summarize this job description in 2-3 short sentences for a social media feed. Focus on the core role and key benefits: ${formData.description}`,
+      });
+      if (response.text) {
+        setFormData(prev => ({ ...prev, summary: response.text || '' }));
+      }
+    } catch (e) {
+      console.error("Summary generation failed:", e);
+    } finally {
+      setSummarizing(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -4117,18 +4254,31 @@ const CreateJob = ({ user, onBack, jobToEdit }: any) => {
     
     setLoading(true);
     try {
+      let finalSummary = formData.summary;
+      if (!finalSummary) {
+        const response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: `Summarize this job description in 2-3 short sentences: ${formData.description}`,
+        });
+        finalSummary = response.text || '';
+      }
+
+      const jobData = {
+        ...formData,
+        summary: finalSummary,
+        requirements: formData.requirements.split('\n').filter((r: string) => r.trim()),
+      };
+
       if (jobToEdit) {
         await updateDoc(doc(db, 'jobs', jobToEdit.id), {
-          ...formData,
-          requirements: formData.requirements.split('\n').filter((r: string) => r.trim()),
+          ...jobData,
           updatedAt: serverTimestamp()
         });
         alert("Job Updated Successfully!");
       } else {
         await addDoc(collection(db, 'jobs'), {
-          ...formData,
+          ...jobData,
           employerId: user.uid,
-          requirements: formData.requirements.split('\n').filter((r: string) => r.trim()),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
@@ -4212,6 +4362,26 @@ const CreateJob = ({ user, onBack, jobToEdit }: any) => {
               onChange={(e) => setFormData({...formData, description: e.target.value})}
               placeholder="Describe the role in detail..."
               className="w-full p-3 bg-gray-50 dark:bg-[#202c33] rounded-xl border-none focus:ring-2 focus:ring-[#00a884] dark:text-[#e9edef] h-32 resize-none outline-none"
+            />
+          </div>
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-xs font-bold text-[#00a884] uppercase block">Job Summary (Short)</label>
+              <button 
+                type="button" 
+                onClick={generateSummary}
+                disabled={summarizing || !formData.description}
+                className="text-[10px] bg-[#00a884]/10 text-[#00a884] px-2 py-1 rounded-lg font-bold hover:bg-[#00a884]/20 transition-colors flex items-center gap-1 disabled:opacity-50"
+              >
+                {summarizing ? <CircleDashed className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                Auto-Generate
+              </button>
+            </div>
+            <textarea 
+              value={formData.summary}
+              onChange={(e) => setFormData({...formData, summary: e.target.value})}
+              placeholder="A short summary that appears in the feed..."
+              className="w-full p-3 bg-gray-50 dark:bg-[#202c33] rounded-xl border-none focus:ring-2 focus:ring-[#00a884] dark:text-[#e9edef] h-20 resize-none outline-none text-sm"
             />
           </div>
           <div>

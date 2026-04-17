@@ -41,6 +41,7 @@ export interface Job {
   type: 'Full-time' | 'Part-time' | 'Contract' | 'Remote';
   salary?: string;
   description: string;
+  summary?: string;
   requirements: string[];
   createdAt: any;
   updatedAt: any;
