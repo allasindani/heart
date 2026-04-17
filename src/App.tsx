@@ -47,7 +47,8 @@ import {
   GraduationCap,
   Filter,
   Edit2,
-  Sparkles
+  Sparkles,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -309,8 +310,30 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
       <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full text-center">
         <Logo size={60} className="mx-auto mb-6" url={settings?.logoUrl} />
         <h2 className="text-3xl font-black mb-2 text-[#111b21] tracking-tighter">{settings?.siteName || "Heart Connect"}</h2>
-        <p className="text-gray-500 mb-8 font-medium">Connecting Hearts, One Chat at a Time</p>
+        <p className="text-gray-500 mb-6 font-medium">Connecting Hearts, One Chat at a Time</p>
         
+        <div className="mb-8 p-1">
+          <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Featured Singles Nearby</h3>
+          <div className="flex justify-center gap-5">
+            {[
+              { city: 'Bulawayo', age: 25, seed: 'woman1', img: 'https://picsum.photos/seed/zim1/200' },
+              { city: 'Harare', age: 30, seed: 'woman2', img: 'https://picsum.photos/seed/zim2/200' },
+              { city: 'Gweru', age: 35, seed: 'woman3', img: 'https://picsum.photos/seed/zim3/200' }
+            ].map((s) => (
+              <div key={s.seed} className="relative group cursor-pointer" onClick={() => alert(`${s.city} member online!`)}>
+                <img 
+                  src={s.img} 
+                  className="w-14 h-14 rounded-full border-2 border-[#00a884]/20 shadow-sm object-cover group-hover:scale-110 transition-transform" 
+                  alt={s.city} 
+                  referrerPolicy="no-referrer"
+                />
+                <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
+                <div className="text-[9px] font-bold text-gray-500 mt-1">{s.city}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
           {!isLogin && (
             <div className="grid grid-cols-2 gap-4">
@@ -389,28 +412,6 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
         >
           {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Log In"}
         </button>
-
-        <div className="mt-8 pt-6 border-t border-gray-100">
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Featured Singles Online</h3>
-          <div className="flex justify-center gap-4">
-            {[
-              { city: 'Bulawayo', age: 25, seed: 'woman1', img: 'https://picsum.photos/seed/zim1/200' },
-              { city: 'Harare', age: 30, seed: 'woman2', img: 'https://picsum.photos/seed/zim2/200' },
-              { city: 'Gweru', age: 35, seed: 'woman3', img: 'https://picsum.photos/seed/zim3/200' }
-            ].map((s) => (
-              <div key={s.seed} className="relative">
-                <img 
-                  src={s.img} 
-                  className="w-12 h-12 rounded-full border-2 border-white shadow-sm object-cover" 
-                  alt={s.city} 
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
-                <div className="text-[8px] font-bold text-gray-500 mt-1">{s.city}</div>
-              </div>
-            ))}
-          </div>
-        </div>
       </motion.div>
     </div>
   );
@@ -448,6 +449,46 @@ export default function App() {
   const [backPressCount, setBackPressCount] = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstall = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+    }
+
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  }, []);
+
+  // Update App Badge
+  useEffect(() => {
+    const unreadCount = notifications.filter(n => !n.read).length;
+    if ('setAppBadge' in navigator) {
+      if (unreadCount > 0) {
+        (navigator as any).setAppBadge(unreadCount).catch((e: any) => console.log('Badging error:', e));
+      } else {
+        (navigator as any).clearAppBadge().catch((e: any) => console.log('Badging error:', e));
+      }
+    }
+  }, [notifications]);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+      setIsInstalled(true);
+    }
+  };
+
   const usersMap = useMemo(() => {
     const map: Record<string, User> = {};
     users.forEach(u => { map[u.uid] = u; });
@@ -486,12 +527,12 @@ export default function App() {
     const initTimer = setTimeout(() => {
       setLoading(prev => {
         if (prev) {
-          console.warn("App: 8s safety timeout reached - forcing load");
+          console.warn("App: 4s safety timeout reached - forcing load");
           return false;
         }
         return false;
       });
-    }, 8000);
+    }, 4000);
     return () => clearTimeout(initTimer);
   }, []);
 
@@ -899,7 +940,34 @@ export default function App() {
         }
         link.href = appSettings.faviconUrl;
       }
-      // Manifest or Title logic
+      
+      // Dynamic Manifest for PWA Icon
+      if (appSettings.logoUrl) {
+        const manifest = {
+          short_name: appSettings.siteName || "HeartConnect",
+          name: appSettings.siteName || "Heart Connect - Dating & Social",
+          icons: [
+            {
+              src: appSettings.logoUrl,
+              sizes: "192x192 512x512",
+              type: "image/png"
+            }
+          ],
+          start_url: ".",
+          display: "standalone",
+          theme_color: "#00a884",
+          background_color: "#ffffff"
+        };
+        const stringManifest = JSON.stringify(manifest);
+        const blob = new Blob([stringManifest], {type: 'application/json'});
+        const manifestURL = URL.createObjectURL(blob);
+        let manifestLink: HTMLLinkElement | null = document.querySelector('link[rel="manifest"]');
+        if (manifestLink) {
+          manifestLink.href = manifestURL;
+        }
+      }
+
+      // Title logic
       if (appSettings.siteName) {
         document.title = appSettings.siteName;
       }
@@ -1205,9 +1273,20 @@ export default function App() {
           {/* App Header */}
           <div className="bg-[#008069] text-white p-4 pb-2 shadow-md relative z-30">
             <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-3">
-                <Logo size={32} className="shadow-none" url={appSettings?.logoUrl} />
-                <h1 className="text-xl font-black tracking-tighter">{appSettings?.siteName || "Heart Connect"}</h1>
+              <div 
+                className="flex items-center gap-3 cursor-pointer group"
+                onClick={() => {
+                  setActiveTab('chats');
+                  setSelectedChat(null);
+                  setShowSearch(false);
+                  setSearchQuery('');
+                  // Scroll to top
+                  const scrollArea = document.querySelector('.custom-scrollbar');
+                  if (scrollArea) scrollArea.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                <Logo size={32} className="shadow-none group-hover:scale-110 transition-transform" url={appSettings?.logoUrl} />
+                <h1 className="text-xl font-black tracking-tighter group-hover:opacity-80 transition-opacity">{appSettings?.siteName || "Heart Connect"}</h1>
               </div>
               <div className="flex gap-5 items-center">
                 <Camera className="w-6 h-6 cursor-pointer" onClick={() => setActiveTab('status')} />
@@ -1273,6 +1352,31 @@ export default function App() {
 
           {/* Tab Content */}
           <div className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21] overscroll-contain scroll-smooth custom-scrollbar">
+            {/* Install Prompt Overlay */}
+            {deferredPrompt && !isInstalled && (
+              <motion.div 
+                initial={{ y: 50, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                className="mx-4 mb-4 p-4 glass-card rounded-2xl flex items-center justify-between border-[#00a884]/30"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-[#00a884] rounded-lg">
+                    <Download className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold dark:text-white">Install Web App</h4>
+                    <p className="text-[10px] text-gray-500 dark:text-[#8696a0]">Install for faster access and better notifications!</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={handleInstallClick}
+                  className="bg-[#00a884] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-[#008069] transition-colors"
+                >
+                  Install Now
+                </button>
+              </motion.div>
+            )}
+
             {activeTab === 'chats' && (
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
                 {chats.length === 0 ? (
