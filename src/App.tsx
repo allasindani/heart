@@ -588,6 +588,7 @@ export default function App() {
   });
 
   useEffect(() => {
+    if (!user) return;
     const q = query(collection(db, 'users'), limit(300));
     const unsubscribe = onSnapshot(q, (snap) => {
       setUsers(snap.docs.map(d => {
@@ -600,7 +601,7 @@ export default function App() {
       }));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
     return unsubscribe;
-  }, []);
+  }, [user?.uid]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
