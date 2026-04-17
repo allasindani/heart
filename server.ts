@@ -86,16 +86,8 @@ async function startServer() {
     const vite = await createViteServer({
       server: { 
         middlewareMode: true,
-        hmr: false,
-        watch: {
-          usePolling: true,
-          interval: 1000
-        }
       },
       appType: "spa",
-      optimizeDeps: {
-        include: ['react', 'react-dom', 'lucide-react', 'motion/react', 'firebase/app', 'firebase/auth', 'firebase/firestore']
-      }
     });
     app.use(vite.middlewares);
   } else {

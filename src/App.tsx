@@ -81,11 +81,8 @@ import { auth, db } from './firebase';
 import { cn, formatWhatsAppTime } from './lib/utils';
 import { COUNTRIES } from './constants';
 import imageCompression from 'browser-image-compression';
-import { GoogleGenAI } from "@google/genai";
+import { getAI } from './lib/gemini';
 import { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment, AppSettings, PaymentProof, Job, JobApplication } from './types';
-
-// --- Gemini Initialization ---
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // --- Error Handling ---
 enum OperationType { CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LIST = 'list', GET = 'get', WRITE = 'write' }
@@ -150,7 +147,11 @@ const SplashScreen = ({ siteName, logoUrl, onForceLoad }: { siteName?: string, l
   const [showBypass, setShowBypass] = useState(false);
   
   useEffect(() => {
-    const timer = setTimeout(() => setShowBypass(true), 6000);
+    // Show bypass button after 4 seconds instead of 6
+    const timer = setTimeout(() => {
+      console.log("SplashScreen: showing bypass button");
+      setShowBypass(true);
+    }, 4000);
     return () => clearTimeout(timer);
   }, []);
 
@@ -447,18 +448,21 @@ export default function App() {
     return saved ? JSON.parse(saved) : false;
   });
 
-  // Safety Timeout for Loading State
   useEffect(() => {
-    const timer = setTimeout(() => {
+    console.log("App: Component mounted accurately");
+    const debugEl = document.getElementById('debug-boot');
+    if (debugEl) debugEl.innerText = 'App Rendered';
+    
+    const initTimer = setTimeout(() => {
       setLoading(prev => {
         if (prev) {
-          console.warn("Auth check timed out, forcing app to load.");
+          console.warn("App: 8s safety timeout reached - forcing load");
           return false;
         }
         return false;
       });
-    }, 12000);
-    return () => clearTimeout(timer);
+    }, 8000);
+    return () => clearTimeout(initTimer);
   }, []);
 
   useEffect(() => {
@@ -4360,6 +4364,8 @@ const CreateJob = ({ user, onBack, jobToEdit }: any) => {
     if (!formData.description) return;
     setSummarizing(true);
     try {
+      const ai = getAI();
+      if (!ai) return;
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Summarize this job description in 2-3 short sentences for a social media feed. Focus on the core role and key benefits: ${formData.description}`,
@@ -4382,6 +4388,8 @@ const CreateJob = ({ user, onBack, jobToEdit }: any) => {
     try {
       let finalSummary = formData.summary;
       if (!finalSummary) {
+        const ai = getAI();
+        if (!ai) return;
         const response = await ai.models.generateContent({
           model: "gemini-3-flash-preview",
           contents: `Summarize this job description in 2-3 short sentences: ${formData.description}`,
