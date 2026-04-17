@@ -227,6 +227,8 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [error, setError] = useState('');
 
   const handleGoogleLogin = () => signInWithPopup(auth, new GoogleAuthProvider());
@@ -234,11 +236,35 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    if (!isLogin && (!firstName.trim() || !lastName.trim())) {
+      setError('Please provide Name and Surname');
+      return;
+    }
+
     try {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        // Create user document immediately with capitalized names
+        const userDocRef = doc(db, 'users', userCredential.user.uid);
+        const capFirst = capitalizeName(firstName);
+        const capLast = capitalizeName(lastName);
+        const userData = {
+          uid: userCredential.user.uid,
+          displayName: `${capFirst} ${capLast}`,
+          firstName: capFirst,
+          lastName: capLast,
+          photoURL: null,
+          role: userCredential.user.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
+          category: 'General',
+          points: 0,
+          isOnline: true,
+          lastSeen: serverTimestamp(),
+          status: "Hey there! I am using Heart Connect.",
+        };
+        await setDoc(userDocRef, userData);
       }
     } catch (err: any) {
       setError(err.message);
@@ -253,6 +279,26 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
         <p className="text-gray-500 mb-8 font-medium">Connecting Hearts, One Chat at a Time</p>
         
         <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
+          {!isLogin && (
+            <div className="grid grid-cols-2 gap-4">
+              <input 
+                type="text" 
+                placeholder="Name" 
+                value={firstName}
+                onChange={(e) => setFirstName(capitalizeName(e.target.value))}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-[#00a884]/20"
+                required
+              />
+              <input 
+                type="text" 
+                placeholder="Surname" 
+                value={lastName}
+                onChange={(e) => setLastName(capitalizeName(e.target.value))}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-[#00a884]/20"
+                required
+              />
+            </div>
+          )}
           <input 
             type="email" 
             placeholder="Email" 
@@ -380,6 +426,20 @@ export default function App() {
     const saved = localStorage.getItem('darkMode');
     return saved ? JSON.parse(saved) : false;
   });
+
+  // Safety Timeout for Loading State
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setLoading(prev => {
+        if (prev) {
+          console.warn("Auth check timed out, forcing app to load.");
+          return false;
+        }
+        return false;
+      });
+    }, 12000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (darkMode) {
