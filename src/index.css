@@ -24,6 +24,18 @@
     color: var(--text-primary);
     @apply antialiased transition-colors duration-300;
   }
+
+  .glass-card {
+    @apply bg-white/70 dark:bg-[#111b21]/70 backdrop-blur-xl border border-white/20 dark:border-white/5;
+  }
+
+  .whatsapp-shadow {
+    box-shadow: 0 1px 3px rgba(11, 20, 26, 0.08);
+  }
+
+  .hover-scale {
+    @apply transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98];
+  }
 }
 
 /* Custom scrollbar for WhatsApp look */

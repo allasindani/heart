@@ -503,10 +503,16 @@ export default function App() {
       if (!latest.read && latest.id !== lastNotifRef.current) {
         lastNotifRef.current = latest.id;
         if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification(latest.title || 'Heart Connect', { 
+          const n = new Notification(latest.title || 'Heart Connect', { 
             body: latest.text || (latest as any).content || 'You have a new message',
-            icon: '/favicon.ico'
+            icon: appSettings.faviconUrl || '/favicon.ico'
           });
+          n.onclick = () => {
+            window.focus();
+            setShowNotifications(true);
+            // We can't easily trigger the specific click here without passing data, 
+            // but opening the center is a good first step.
+          };
         }
       }
     }
@@ -876,19 +882,32 @@ export default function App() {
     fetchSettings();
   }, []);
 
+  const [targetPostId, setTargetPostId] = useState<string | null>(null);
+
   useEffect(() => {
     if (appSettings.siteName) {
       document.title = appSettings.siteName;
     }
-    if (appSettings.faviconUrl) {
-      let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
-      if (!link) {
-        link = document.createElement('link');
-        link.rel = 'icon';
-        document.head.appendChild(link);
+    const updateBranding = () => {
+      // Favicon logic
+      if (appSettings.faviconUrl) {
+        let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
+        if (!link) {
+          link = document.createElement('link');
+          link.rel = 'icon';
+          document.head.appendChild(link);
+        }
+        link.href = appSettings.faviconUrl;
       }
-      link.href = appSettings.faviconUrl;
-    }
+      // Manifest or Title logic
+      if (appSettings.siteName) {
+        document.title = appSettings.siteName;
+      }
+    };
+    updateBranding();
+    // Fast update interval for logo/favicon in case of dynamic changes
+    const timer = setInterval(updateBranding, 2000);
+    return () => clearInterval(timer);
   }, [appSettings]);
 
   useEffect(() => {
@@ -1010,6 +1029,25 @@ export default function App() {
   const sendMessage = async (text: string, type: string = 'text') => {
     if (!selectedChat || !text.trim()) return;
     
+    // Constraint: Users without profile photos allowed 3 messages only
+    if (!user.photoURL && (user.messageCount || 0) >= 3) {
+      alert("⚠️ Profile Photo Required! To ensure community safety, users without profile photos are limited to 3 messages. Please upload a profile photo to continue messaging.");
+      setShowProfile(true);
+      
+      // Send them a formal notification as well
+      await addDoc(collection(db, 'notifications'), {
+        userId: user.uid,
+        fromId: 'system',
+        fromName: appSettings.siteName || 'Heart Connect',
+        type: 'broadcast',
+        text: 'Action Required: Please upload a profile photo to unlock unlimited messaging. Your safety is our priority!',
+        title: 'Messaging Limit Reached',
+        read: false,
+        timestamp: serverTimestamp()
+      });
+      return;
+    }
+    
     // Scramble phone numbers
     const scrambledText = text.replace(/\d{8,}/g, (match) => {
       return match.split('').sort(() => Math.random() - 0.5).join('');
@@ -1035,6 +1073,12 @@ export default function App() {
         status: 'sent'
       }, 
       updatedAt: serverTimestamp() 
+    });
+
+    // Update user message count
+    const { increment } = await import('firebase/firestore');
+    const userUpdatePromise = updateDoc(doc(db, 'users', user.uid), {
+      messageCount: increment(1)
     });
 
     const otherId = selectedChat.participants.find(p => p !== user.uid);
@@ -1121,6 +1165,11 @@ export default function App() {
                 setActiveTab('dating');
               } else if (tab === 'status') {
                 setActiveTab('status');
+                if (id) {
+                  setTargetPostId(id);
+                  // Reset target after some time
+                  setTimeout(() => setTargetPostId(null), 3000);
+                }
               }
             }}
           />
@@ -1351,14 +1400,14 @@ export default function App() {
         </div>
       )}
       {showExitConfirm && (
-        <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4">
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white p-6 rounded-3xl shadow-2xl max-w-xs w-full text-center">
+        <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="glass-card p-6 rounded-3xl shadow-2xl max-w-xs w-full text-center border-white/20">
             <LogOut className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <h3 className="text-lg font-bold mb-2">Exit App?</h3>
-            <p className="text-gray-500 text-sm mb-6">Are you sure you want to exit Heart Connect?</p>
+            <p className="text-gray-500 dark:text-[#8696a0] text-sm mb-6">Are you sure you want to exit {appSettings.siteName || 'Heart Connect'}?</p>
             <div className="flex gap-3">
-              <button onClick={() => setShowExitConfirm(false)} className="flex-1 py-3 bg-gray-100 rounded-xl font-bold">Cancel</button>
-              <button onClick={() => window.close()} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold">Exit</button>
+              <button onClick={() => setShowExitConfirm(false)} className="flex-1 py-3 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold dark:text-white hover:bg-gray-200 transition-colors">Cancel</button>
+              <button onClick={() => window.close()} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-all shadow-md">Exit</button>
             </div>
           </motion.div>
         </div>
@@ -1649,7 +1698,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
   );
 };
 
-const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, showPostModal, setShowPostModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer }: any) => {
+const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, showPostModal, setShowPostModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer, targetPostId }: any) => {
   const [newPost, setNewPost] = useState('');
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
@@ -1661,6 +1710,20 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
   const [editContent, setEditContent] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const postMediaInputRef = useRef<HTMLInputElement>(null);
+  const wallRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (targetPostId && wallRef.current) {
+      const element = document.getElementById(`post-${targetPostId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        element.classList.add('ring-2', 'ring-[#00a884]', 'ring-offset-4', 'dark:ring-offset-[#111b21]');
+        setTimeout(() => {
+          element.classList.remove('ring-2', 'ring-[#00a884]', 'ring-offset-4', 'dark:ring-offset-[#111b21]');
+        }, 3000);
+      }
+    }
+  }, [targetPostId]);
 
   const handlePostMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let file = e.target.files?.[0];
@@ -2116,7 +2179,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
       </AnimatePresence>
 
       {/* Wall Section */}
-      <div className="p-4 space-y-6 pb-24">
+      <div ref={wallRef} className="p-4 space-y-6 pb-24 h-full overflow-y-auto no-scrollbar">
         <div className="bg-white dark:bg-[#111b21] p-5 rounded-3xl shadow-md border border-gray-100 dark:border-gray-800 transition-all hover:shadow-lg">
           <div className="flex items-center gap-3 mb-4">
             <img 
@@ -2233,7 +2296,11 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
           feedPosts.forEach((post, index) => {
             const postAuthor = usersMap[post.userId];
             elements.push(
-              <div key={post.id} className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+              <div 
+                key={post.id} 
+                id={`post-${post.id}`}
+                className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden transition-all duration-500"
+              >
                 <div className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => onUserClick({ uid: post.userId, displayName: postAuthor?.displayName, photoURL: postAuthor?.photoURL })}>
                   <img 
                     src={postAuthor?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} 
@@ -2889,9 +2956,9 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate 
     if (n.type === 'message' && n.relatedId) {
       onNavigate('chat', n.relatedId);
     } else if (n.type === 'friend_request') {
-      onNavigate('dating', null); // Or a specific friend requests view if we had one
-    } else if (n.type === 'like' || n.type === 'comment') {
-      onNavigate('status', null);
+      onNavigate('dating', null);
+    } else if (n.type === 'like' || n.type === 'comment' || n.type === 'broadcast') {
+      onNavigate('status', n.relatedId || null);
     }
   };
 
@@ -2911,10 +2978,13 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate 
               onClick={() => handleNotificationClick(n)}
               className={cn("bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm flex items-center gap-4 border-l-4 transition-all cursor-pointer", n.read ? "border-transparent opacity-70" : "border-[#00a884]")}
             >
-              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-[#00a884]">
+              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-[#00a884] shrink-0">
                 {n.type === 'like' && <ThumbsUp className="w-6 h-6" />}
                 {n.type === 'message' && <MessageSquare className="w-6 h-6" />}
                 {n.type === 'friend_request' && <UserPlus className="w-6 h-6" />}
+                {n.type === 'comment' && <MessageCircle className="w-6 h-6" />}
+                {n.type === 'broadcast' && <Megaphone className="w-6 h-6" />}
+                {n.type === 'job_update' && <Briefcase className="w-6 h-6" />}
               </div>
               <div className="flex-1">
                 <p className="text-sm text-[#111b21] dark:text-[#e9edef]">
@@ -3446,6 +3516,26 @@ const AdminDashboard = ({ user, onBack }: any) => {
     
     setLoading(true);
     try {
+      // 1. Create a Public Post on the Wall
+      const postRef = await addDoc(collection(db, 'posts'), {
+        userId: user.uid,
+        content: `📢 ${title}\n\n${body}`,
+        media: [],
+        mediaType: 'text',
+        likes: [],
+        hashtags: ['#Announcment', '#Update'],
+        isReel: false,
+        commentCount: 0,
+        createdAt: serverTimestamp(),
+        isAd: false,
+        user: {
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          isVerified: true
+        }
+      });
+
+      // 2. Send Notifications to all users
       const batch = writeBatch(db);
       users.forEach(u => {
         const notifRef = doc(collection(db, 'notifications'));
@@ -3457,7 +3547,8 @@ const AdminDashboard = ({ user, onBack }: any) => {
           text: body,
           title: title,
           read: false,
-          timestamp: serverTimestamp()
+          timestamp: serverTimestamp(),
+          relatedId: postRef.id // Link to the post
         });
       });
       await batch.commit();
@@ -3467,7 +3558,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
         new Notification(title, { body });
       }
       
-      alert("Broadcast sent successfully!");
+      alert("Broadcast and Wall Post sent successfully!");
     } catch (e) {
       console.error("Broadcast failed:", e);
       alert("Failed to send broadcast.");
@@ -4021,10 +4112,20 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
           <div className="relative group">
             <img 
               src={photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
-              className="w-40 h-40 rounded-full shadow-lg object-cover" 
+              className={cn("w-40 h-40 rounded-full shadow-lg object-cover", !photoURL && "grayscale")} 
               alt="Profile" 
               referrerPolicy="no-referrer"
             />
+            {!photoURL && (
+              <motion.div 
+                initial={{ scale: 0 }} 
+                animate={{ scale: 1 }} 
+                className="absolute -top-2 -right-2 bg-red-500 text-white p-2 rounded-full shadow-lg z-10"
+                title="Profile photo missing"
+              >
+                <ShieldAlert className="w-5 h-5" />
+              </motion.div>
+            )}
             <label className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
               <Camera className="text-white w-8 h-8" />
               <input 
@@ -4044,8 +4145,14 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
           </div>
           <h3 className="mt-4 text-xl font-bold dark:text-[#e9edef] flex items-center gap-2">
             {firstName} {lastName}
+            <TierBadge tier={user.category} size={20} />
             {user.isVerified && <VerifiedBadge size={20} />}
           </h3>
+          {!photoURL && (
+            <p className="text-red-500 text-[10px] font-bold mt-1 animate-pulse">
+              ⚠️ Upload photo to unlock full messaging features (Max 3 msgs allowed)
+            </p>
+          )}
         </div>
 
         <div className="space-y-6 px-4 pb-8">

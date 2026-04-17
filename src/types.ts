@@ -14,6 +14,7 @@ export interface User {
   isVerified?: boolean;
   uploadCount?: number;
   matchCount?: number;
+  messageCount?: number;
   datingProfile?: {
     age: number;
     gender: 'male' | 'female' | 'other';
