@@ -1481,7 +1481,7 @@ export default function App() {
         <div className="flex-1 flex flex-col overflow-hidden relative">
           <ProfileReminder user={user} onClick={() => setShowProfile(true)} />
           {/* App Header */}
-          <div className="bg-[#008069] text-white p-4 pb-2 shadow-md relative z-30">
+          <div className="bg-[#008069] dark:bg-[#202c33] text-white p-4 pb-2 shadow-md relative z-30 transition-colors duration-300">
             <div className="flex justify-between items-center mb-4">
               <div 
                 className="flex items-center gap-3 cursor-pointer group active:scale-95 transition-transform"
@@ -1668,7 +1668,7 @@ export default function App() {
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-center mb-1">
-                            <h3 className="font-bold text-[#111b21] truncate flex items-center gap-1">
+                            <h3 className="font-bold text-[#111b21] dark:text-[#e9edef] truncate flex items-center gap-1">
                               {chatName}
                               <TierBadge tier={otherUser?.category} size={14} />
                               {otherUser?.isVerified && <VerifiedBadge size={14} />}
@@ -1908,7 +1908,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
 
   return (
     <div className="flex-1 flex flex-col h-full relative">
-      <div className="bg-[#008069] text-white p-3 flex items-center gap-2 shadow-md cursor-pointer" onClick={() => otherUser && onUserClick(otherUser)}>
+      <div className="bg-[#008069] dark:bg-[#202c33] text-white p-3 flex items-center gap-2 shadow-md cursor-pointer transition-colors duration-300" onClick={() => otherUser && onUserClick(otherUser)}>
         <button onClick={(e) => { e.stopPropagation(); onBack(); }} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <Avatar 
           src={otherUser?.photoURL} 
@@ -1943,7 +1943,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
       </div>
       <div 
         ref={scrollRef} 
-        className="flex-1 overflow-y-auto p-4 space-y-2 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] dark:bg-none dark:bg-[#0b141a] bg-repeat custom-scrollbar"
+        className="flex-1 overflow-y-auto p-4 space-y-2 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] dark:bg-[#0b141a] dark:bg-none bg-repeat custom-scrollbar"
         onClick={() => setReactingTo(null)}
       >
         {messages.map((msg: any) => (
@@ -2029,7 +2029,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
       </div>
       <div className="bg-[#f0f2f5] dark:bg-[#111b21] p-2 pb-6 flex items-center gap-2">
         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*,video/*" />
-        <div className="bg-white dark:bg-[#2a3942] flex-1 flex items-center px-3 py-2 rounded-full shadow-sm max-w-[calc(100%-60px)]">
+        <div className="bg-white dark:bg-[#111b21] flex-1 flex items-center px-3 py-2 rounded-full shadow-sm max-w-[calc(100%-60px)]">
           <Smile className="w-6 h-6 text-gray-500 dark:text-[#8696a0] mr-2 shrink-0" />
           <input 
             type="text" 
@@ -2368,7 +2368,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
             <Plus className="w-4 h-4" /> Add Status
           </button>
         </div>
-        <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
+        <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar">
           <div className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => setShowStatusModal(true)}>
             <Avatar src={user.photoURL} name={user.displayName} size={64} className="border-2 border-gray-200 dark:border-gray-800">
               <div className="absolute bottom-0 right-0 bg-[#00a884] rounded-full p-1 border-2 border-white dark:border-[#111b21] shadow-sm">
@@ -2570,7 +2570,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
       </AnimatePresence>
 
       {/* Wall Section */}
-      <div ref={wallRef} className="p-4 space-y-6 pb-24 h-full overflow-y-auto no-scrollbar">
+      <div ref={wallRef} className="p-4 space-y-6 pb-24 h-full overflow-y-auto custom-scrollbar">
         {isRefreshing ? (
           <div className="space-y-6">
             <SkeletonPost />
@@ -3094,7 +3094,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
       {featuredSingles.length > 0 && (
         <div className="mb-6">
           <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] mb-3 px-1">Featured Singles</h3>
-          <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar px-1">
+          <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar px-1">
             {featuredSingles.map(single => (
               <div key={single.uid} onClick={() => onUserClick(single)} className="flex-shrink-0 w-24 space-y-2 cursor-pointer group">
                 <div className="relative w-24 h-24 rounded-3xl overflow-hidden border-2 border-[#00a884]/20 group-hover:border-[#00a884] transition-all">
@@ -3459,7 +3459,7 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate 
 
   return (
     <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a]">
-      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+      <div className="bg-[#008069] dark:bg-[#202c33] text-white p-4 flex items-center gap-6 shadow-md transition-colors duration-300">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Notifications</h2>
       </div>
@@ -3584,7 +3584,7 @@ const CreateAd = ({ user, onBack, settings, initialContent = '', initialMediaUrl
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#f0f2f5] dark:bg-[#0b141a]">
-      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+      <div className="bg-[#008069] dark:bg-[#202c33] text-white p-4 flex items-center gap-6 shadow-md transition-colors duration-300">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Create Advertisement</h2>
       </div>
@@ -3751,7 +3751,7 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#f0f2f5] dark:bg-[#0b141a]">
-      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md shrink-0">
+      <div className="bg-[#008069] dark:bg-[#202c33] text-white p-4 flex items-center gap-6 shadow-md shrink-0 transition-colors duration-300">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Upgrade Membership</h2>
       </div>
@@ -3854,8 +3854,8 @@ const PointsLeaderboard = ({ onBack }: any) => {
   }, []);
 
   return (
-    <div className="flex-1 flex flex-col bg-[#f0f2f5]">
-      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+    <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a]">
+      <div className="bg-[#008069] dark:bg-[#202c33] text-white p-4 flex items-center gap-6 shadow-md transition-colors duration-300">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Points Leaderboard</h2>
       </div>
@@ -3864,13 +3864,13 @@ const PointsLeaderboard = ({ onBack }: any) => {
           <div className="flex justify-center py-20"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>
         ) : (
           leaders.map((u, i) => (
-            <div key={u.uid} className="bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4">
+            <div key={u.uid} className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex items-center gap-4">
               <div className={cn("w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm", i === 0 ? "bg-yellow-100 text-yellow-700" : i === 1 ? "bg-gray-100 text-gray-700" : i === 2 ? "bg-orange-100 text-orange-700" : "text-gray-400")}>
                 {i + 1}
               </div>
               <Avatar src={u.photoURL} name={u.displayName} size={48} isOnline={u.isOnline} />
               <div className="flex-1">
-                <h4 className="font-bold text-[#111b21] flex items-center gap-1">
+                <h4 className="font-bold text-[#111b21] dark:text-[#e9edef] flex items-center gap-1">
                   {u.displayName}
                   <TierBadge tier={u.category} size={14} />
                   {u.isVerified && <VerifiedBadge size={14} />}
@@ -4623,7 +4623,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#f0f2f5] dark:bg-[#0b141a]">
-      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+      <div className="bg-[#008069] dark:bg-[#202c33] text-white p-4 flex items-center gap-6 shadow-md transition-colors duration-300">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Edit Profile</h2>
       </div>
@@ -4855,7 +4855,7 @@ const JobsView = ({ user, jobs, applications, onApply, onCreateClick, onSelectJo
   return (
     <div className="flex flex-col h-full bg-[#f0f2f5] dark:bg-[#0b141a]">
       {/* Sub Tabs */}
-      <div className="flex bg-white dark:bg-[#111b21] p-1 border-b border-gray-100 dark:border-gray-800 overflow-x-auto no-scrollbar">
+      <div className="flex bg-white dark:bg-[#111b21] p-1 border-b border-gray-100 dark:border-gray-800 overflow-x-auto custom-scrollbar">
         <button 
           onClick={() => setJobSubTab('find')}
           className={cn("flex-shrink-0 px-4 py-2 text-[10px] font-bold uppercase transition-all rounded-lg whitespace-nowrap", jobSubTab === 'find' ? "bg-[#00a884] text-white" : "text-gray-400")}
@@ -5194,7 +5194,7 @@ const CreateJob = ({ user, onBack, jobToEdit }: any) => {
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#f0f2f5] dark:bg-[#0b141a]">
-      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+      <div className="bg-[#008069] dark:bg-[#202c33] text-white p-4 flex items-center gap-6 shadow-md transition-colors duration-300">
         <button onClick={onBack} className="p-1 transition-colors hover:bg-white/10 rounded-full"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Post a Vacancy</h2>
       </div>
@@ -5310,7 +5310,7 @@ const JobDetails = ({ job, user, applications, onBack, onApply, onFollow }: any)
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#f0f2f5] dark:bg-[#0b141a]">
-      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md fixed top-0 w-full z-10">
+      <div className="bg-[#008069] dark:bg-[#202c33] text-white p-4 flex items-center gap-6 shadow-md fixed top-0 w-full z-10 transition-colors duration-300">
         <button onClick={onBack} className="p-1 transition-colors hover:bg-white/10 rounded-full"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium truncate">Job Details</h2>
       </div>
@@ -5427,7 +5427,7 @@ const AffiliateDashboard = ({ user, onBack }: any) => {
 
   return (
     <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a]">
-      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+      <div className="bg-[#008069] dark:bg-[#202c33] text-white p-4 flex items-center gap-6 shadow-md transition-colors duration-300">
         <button onClick={onBack} className="p-1 transition-colors hover:bg-white/10 rounded-full"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium">Affiliate Program</h2>
       </div>
