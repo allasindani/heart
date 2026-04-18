@@ -3906,30 +3906,45 @@ const AdminDashboard = ({ user, onBack }: any) => {
   const [paymentProofs, setPaymentProofs] = useState<PaymentProof[]>([]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      const [uSnap, pSnap, sSnap, paySnap, jSnap] = await Promise.all([
-        getDocs(collection(db, 'users')),
-        getDocs(collection(db, 'posts')),
-        getDocs(collection(db, 'settings')),
-        getDocs(collection(db, 'payment_proofs')),
-        getDocs(collection(db, 'jobs'))
-      ]);
-
-      const uList = uSnap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
-      const pList = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Post));
-      setUsers(uList);
-      setAds(pList.filter(p => p.isAd));
-      setJobs(jSnap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
-      if (!sSnap.empty) setSettings(sSnap.docs[0].data() as AppSettings);
-      setPaymentProofs(paySnap.docs.map(d => ({ id: d.id, ...d.data() } as PaymentProof)));
-
-      setStats({
-        totalUsers: uList.length,
-        totalPosts: pList.length,
-        activeAds: pList.filter(d => d.isAd).length,
-        totalPoints: uList.reduce((acc, curr) => acc + (curr.points || 0), 0)
+    const timer = setTimeout(() => {
+      setLoading(prev => {
+        if (prev) console.warn("AdminDashboard: fetch safety timeout - forcing load");
+        return false;
       });
-      setLoading(false);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [uSnap, pSnap, sSnap, paySnap, jSnap] = await Promise.all([
+          getDocs(collection(db, 'users')),
+          getDocs(collection(db, 'posts')),
+          getDocs(collection(db, 'settings')),
+          getDocs(collection(db, 'payment_proofs')),
+          getDocs(collection(db, 'jobs'))
+        ]);
+
+        const uList = uSnap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
+        const pList = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Post));
+        setUsers(uList);
+        setAds(pList.filter(p => p.isAd));
+        setJobs(jSnap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
+        if (!sSnap.empty) setSettings(sSnap.docs[0].data() as AppSettings);
+        setPaymentProofs(paySnap.docs.map(d => ({ id: d.id, ...d.data() } as PaymentProof)));
+
+        setStats({
+          totalUsers: uList.length,
+          totalPosts: pList.length,
+          activeAds: pList.filter(d => d.isAd).length,
+          totalPoints: uList.reduce((acc, curr) => acc + (curr.points || 0), 0)
+        });
+      } catch (error) {
+        console.error("AdminDashboard fetchData error:", error);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchData();
   }, []);
