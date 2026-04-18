@@ -55,6 +55,8 @@ import {
   Copy,
   Clock,
   Gift,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -93,8 +95,19 @@ import { User, Chat, Message, Post, Status, Notification as AppNotification, Pos
 
 // --- Error Handling ---
 enum OperationType { CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LIST = 'list', GET = 'get', WRITE = 'write' }
+let firestoreErrorHandler: ((error: string) => void) | null = null;
+
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  console.error('Firestore Error: ', JSON.stringify({ error: error instanceof Error ? error.message : String(error), operationType, path }));
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  // User-friendly mapping
+  let userFriendly = errorMessage;
+  if (errorMessage.includes('permission-denied')) userFriendly = 'Permission denied. You might need to sign in or upgrade your tier.';
+  if (errorMessage.includes('quota-exceeded')) userFriendly = 'Database quota exceeded. The app will reset soon.';
+  if (errorMessage.includes('offline')) userFriendly = 'Connection lost. Please check your internet.';
+  
+  const msg = `Action failed: ${userFriendly}`;
+  console.error('Firestore Error:', { error: errorMessage, operationType, path });
+  if (firestoreErrorHandler) firestoreErrorHandler(msg);
 }
 
 // --- Helpers ---
@@ -203,13 +216,26 @@ const Avatar = ({ src, name, size = 40, className = "", isOnline, children }: { 
       >
         {getInitials(name)}
       </div>
-      {isOnline && !children && (
-        <div className="absolute bottom-0.5 right-0.5 w-[25%] h-[25%] bg-green-500 rounded-full border-2 border-white dark:border-[#111b21] shadow-sm animate-pulse" />
+      {isOnline && (
+        <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-[#111b21] shadow-md z-10 animate-pulse" />
       )}
       {children}
     </div>
   );
 };
+
+const Toast = ({ message, onClose }: { message: string, onClose: () => void }) => (
+  <motion.div 
+    initial={{ y: 50, opacity: 0 }} 
+    animate={{ y: 0, opacity: 1 }} 
+    exit={{ y: 50, opacity: 0 }}
+    className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[1000] px-6 py-3 bg-red-500 text-white rounded-2xl shadow-2xl border border-red-400 backdrop-blur-md flex items-center gap-3 min-w-[280px] max-w-[90vw]"
+  >
+    <ShieldAlert className="w-5 h-5 shrink-0" />
+    <p className="text-sm font-bold leading-tight flex-1">{message}</p>
+    <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-full transition-colors"><X className="w-4 h-4" /></button>
+  </motion.div>
+);
 
 const ProfileReminder = ({ user, onClick }: { user: User, onClick: () => void }) => {
   const isIncomplete = !user.photoURL || !user.datingProfile?.bio || !user.datingProfile?.age;
@@ -581,6 +607,14 @@ export default function App() {
   const [applyingJob, setApplyingJob] = useState<Job | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    firestoreErrorHandler = (msg: string) => {
+      setErrorMessage(msg);
+      setTimeout(() => setErrorMessage(null), 5000);
+    };
+  }, []);
 
   useEffect(() => {
     const handleBeforeInstall = (e: any) => {
@@ -1418,8 +1452,9 @@ export default function App() {
             user={user} 
             targetUser={viewingUser} 
             onBack={() => setViewingUser(null)} 
-            onStartChat={(chat) => { setViewingUser(null); setSelectedChat(chat); }}
+            onStartChat={(chat: any) => { setViewingUser(null); setSelectedChat(chat); }}
             onOpenAffiliate={() => { setViewingUser(null); setShowAffiliate(true); }}
+            onEditProfile={() => { setViewingUser(null); setShowProfile(true); }}
           />
         </div>
       ) : showNotifications ? (
@@ -1492,7 +1527,18 @@ export default function App() {
                   {appSettings?.siteName || "Heart Connect"}
                 </h1>
               </div>
-              <div className="flex gap-5 items-center">
+              <div className="flex gap-4 items-center">
+                <button 
+                  onClick={() => {
+                    const newMode = !darkMode;
+                    setDarkMode(newMode);
+                    localStorage.setItem('darkMode', JSON.stringify(newMode));
+                  }}
+                  className="p-1.5 hover:bg-white/10 rounded-full transition-colors"
+                  title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                >
+                  {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                </button>
                 <Camera className="w-6 h-6 cursor-pointer" onClick={() => setActiveTab('status')} />
                 <Search className="w-6 h-6 cursor-pointer" onClick={() => setShowSearch(!showSearch)} />
                 <div className="relative cursor-pointer" onClick={() => setShowNotifications(true)}>
@@ -1595,7 +1641,12 @@ export default function App() {
               )}
             </AnimatePresence>
 
-            {/* Install Prompt Overlay */}
+            <AnimatePresence>
+              {errorMessage && (
+                <Toast message={errorMessage} onClose={() => setErrorMessage(null)} />
+              )}
+            </AnimatePresence>
+
             {deferredPrompt && !isInstalled && (
               <motion.div 
                 initial={{ y: 50, opacity: 0 }}
@@ -1659,17 +1710,18 @@ export default function App() {
                     
                     return (
                       <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 active:bg-gray-100 dark:active:bg-[#202c33] transition-colors cursor-pointer group">
-                        <Avatar 
-                          src={chatPhoto} 
-                          name={chatName} 
-                          size={56} 
-                          isOnline={otherUser?.isOnline} 
-                          className="group-hover:scale-105 transition-transform"
-                        />
+          <Avatar 
+            src={chatPhoto} 
+            name={chatName} 
+            size={56} 
+            isOnline={otherUser?.isOnline} 
+            className="group-hover:scale-105 transition-transform"
+          />
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-center mb-1">
                             <h3 className="font-bold text-[#111b21] dark:text-[#e9edef] truncate flex items-center gap-1">
                               {chatName}
+                              {otherUser?.isOnline && <div className="w-1.5 h-1.5 bg-green-500 rounded-full shrink-0" />}
                               <TierBadge tier={otherUser?.category} size={14} />
                               {otherUser?.isVerified && <VerifiedBadge size={14} />}
                             </h3>
@@ -1919,6 +1971,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
         <div className="flex-1 min-w-0">
           <h3 className="font-bold truncate flex items-center gap-1">
             {otherUser?.displayName || chat.groupName || "Chat"}
+            {otherUser?.isOnline && <div className="w-2 h-2 bg-white rounded-full shrink-0 animate-pulse" />}
             <TierBadge tier={otherUser?.category} size={14} />
             {otherUser?.isVerified && <VerifiedBadge size={14} />}
           </h3>
@@ -2036,7 +2089,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
             value={input} 
             onChange={(e) => handleTyping(e.target.value)} 
             placeholder="Message" 
-            className="flex-1 bg-transparent border-none outline-none text-[16px] dark:text-[#e9edef] w-full" 
+            className="flex-1 bg-transparent border-none outline-none text-[16px] text-[#111b21] dark:text-[#e9edef] w-full" 
             onKeyDown={(e) => { 
               if (e.key === 'Enter' && input.trim()) { 
                 onSendMessage(input); 
@@ -3224,7 +3277,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
   );
 };
 
-const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliate }: any) => {
+const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliate, onEditProfile }: any) => {
   const [fullUser, setFullUser] = useState<User | null>(null);
   const [uploading, setUploading] = useState(false);
   const [requestStatus, setRequestStatus] = useState<'none' | 'pending' | 'accepted'>('none');
@@ -3254,41 +3307,45 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliat
 
   const sendFriendRequest = async () => {
     if (!fullUser || fullUser.uid === user.uid) return;
-    await addDoc(collection(db, 'friend_requests'), {
-      fromId: user.uid,
-      toId: fullUser.uid,
-      status: 'pending',
-      timestamp: serverTimestamp()
-    });
-    await addDoc(collection(db, 'notifications'), {
-      userId: fullUser.uid,
-      fromId: user.uid,
-      fromName: user.displayName,
-      type: 'friend_request',
-      text: 'sent you a friend request',
-      read: false,
-      timestamp: serverTimestamp()
-    });
-    setRequestStatus('pending');
+    try {
+      await addDoc(collection(db, 'friend_requests'), {
+        fromId: user.uid,
+        toId: fullUser.uid,
+        status: 'pending',
+        timestamp: serverTimestamp()
+      });
+      await addDoc(collection(db, 'notifications'), {
+        userId: fullUser.uid,
+        fromId: user.uid,
+        fromName: user.displayName,
+        type: 'friend_request',
+        text: 'sent you a friend request',
+        read: false,
+        timestamp: serverTimestamp()
+      });
+      setRequestStatus('pending');
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'friend_requests'); }
   };
 
   const handleStartChat = async () => {
     if (!fullUser) return;
-    // Check if chat exists
-    const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
-    const snap = await getDocs(q);
-    let existingChat = snap.docs.find(d => (d.data() as Chat).participants.includes(fullUser.uid));
-    
-    if (existingChat) {
-      onStartChat({ id: existingChat.id, ...existingChat.data() });
-    } else {
-      const newChat = await addDoc(collection(db, 'chats'), {
-        participants: [user.uid, fullUser.uid],
-        type: 'private',
-        updatedAt: serverTimestamp()
-      });
-      onStartChat({ id: newChat.id, participants: [user.uid, fullUser.uid], type: 'private' });
-    }
+    try {
+      // Check if chat exists
+      const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
+      const snap = await getDocs(q);
+      let existingChat = snap.docs.find(d => (d.data() as Chat).participants.includes(fullUser.uid));
+      
+      if (existingChat) {
+        onStartChat({ id: existingChat.id, ...existingChat.data() });
+      } else {
+        const newChat = await addDoc(collection(db, 'chats'), {
+          participants: [user.uid, fullUser.uid],
+          type: 'private',
+          updatedAt: serverTimestamp()
+        });
+        onStartChat({ id: newChat.id, participants: [user.uid, fullUser.uid], type: 'private' });
+      }
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'chats'); }
   };
 
   if (!fullUser) return <div className="flex-1 flex items-center justify-center bg-white dark:bg-[#0b141a]"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>;
@@ -3304,7 +3361,17 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliat
           onError={handleImageError}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-        <button onClick={onBack} className="absolute top-4 left-4 p-2 bg-black/20 backdrop-blur-md rounded-full text-white"><ChevronLeft className="w-6 h-6" /></button>
+        <div className="absolute top-4 left-0 right-0 px-4 flex justify-between items-center z-10">
+          <button onClick={onBack} className="p-2 bg-black/20 backdrop-blur-md rounded-full text-white"><ChevronLeft className="w-6 h-6" /></button>
+          {fullUser.uid === user.uid && (
+            <button 
+              onClick={onEditProfile} 
+              className="px-4 py-2 bg-[#00a884] text-white rounded-full text-xs font-bold shadow-lg shadow-[#00a884]/20 flex items-center gap-2 active:scale-95 transition-all"
+            >
+              <Edit2 className="w-4 h-4" /> Edit Profile
+            </button>
+          )}
+        </div>
         <div className="absolute bottom-6 left-6 text-white">
           <h2 className="text-3xl font-bold flex items-center gap-2">
             {fullUser.displayName}
@@ -3312,7 +3379,7 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliat
             {fullUser.isVerified && <VerifiedBadge size={24} />}
           </h2>
           <p className="opacity-80 flex items-center gap-2">
-            {fullUser.isOnline ? <span className="w-2 h-2 bg-green-500 rounded-full"></span> : null}
+            {fullUser.isOnline ? <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> : null}
             {fullUser.isOnline ? 'Online' : 'Offline'}
           </p>
         </div>
