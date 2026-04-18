@@ -17,12 +17,13 @@
     --text-primary: #e9edef;
     --bg-card: #202c33;
     --border-color: #3b4a54;
+    color-scheme: dark;
   }
 
   body {
     background-color: var(--bg-app);
     color: var(--text-primary);
-    @apply antialiased transition-colors duration-300;
+    @apply antialiased transition-colors duration-300 text-[16px] leading-relaxed;
   }
 
   .glass-card {

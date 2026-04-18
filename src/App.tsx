@@ -51,6 +51,10 @@ import {
   Download,
   RefreshCw,
   Users,
+  Star,
+  Copy,
+  Clock,
+  Gift,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -92,6 +96,22 @@ enum OperationType { CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LI
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   console.error('Firestore Error: ', JSON.stringify({ error: error instanceof Error ? error.message : String(error), operationType, path }));
 }
+
+// --- Helpers ---
+const censorText = (text: string, words: string[]) => {
+  if (!text || !words || words.length === 0) return text;
+  let censored = text;
+  words.forEach(word => {
+    if (!word) return;
+    const regex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    censored = censored.replace(regex, '***');
+  });
+  return censored;
+};
+
+const generateAffiliateCode = (uid: string) => {
+  return uid.substring(0, 8).toUpperCase();
+};
 
 const capitalizeName = (name: string) => {
   if (!name) return "";
@@ -325,6 +345,13 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
   const [lastName, setLastName] = useState('');
   const [error, setError] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [referredBy, setReferredBy] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref) setReferredBy(ref);
+  }, []);
 
   const handleGoogleLogin = () => signInWithPopup(auth, new GoogleAuthProvider());
   
@@ -361,11 +388,40 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
           category: 'General',
           points: 0,
           isOnline: true,
-          notificationsEnabled: true, // Auto-subscribe
+          notificationsEnabled: true,
           lastSeen: serverTimestamp(),
           status: "Hey there! I am using Heart Connect.",
+          affiliateCode: generateAffiliateCode(userCredential.user.uid),
+          referredBy: referredBy || null,
+          referralCount: 0,
         };
         await setDoc(userDocRef, userData);
+
+        if (referredBy) {
+          // Increment referral count for the referrer
+          const q = query(collection(db, 'users'), where('affiliateCode', '==', referredBy));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            const referrer = snap.docs[0];
+            const bonusPoints = settings?.pointsPerInvitation || 50;
+            const { increment } = await import('firebase/firestore');
+            await updateDoc(referrer.ref, { 
+              referralCount: increment(1),
+              points: increment(bonusPoints)
+            });
+            // Notify referrer
+            await addDoc(collection(db, 'notifications'), {
+              userId: referrer.id,
+              fromId: 'system',
+              fromName: 'Affiliate Program',
+              type: 'broadcast',
+              text: `Congratulations! ${userData.displayName} joined using your link. You earned ${bonusPoints} points!`,
+              title: 'Referral Bonus!',
+              read: false,
+              timestamp: serverTimestamp()
+            });
+          }
+        }
         
         // Request notification permission on browser if available
         if ('Notification' in window && Notification.permission === 'default') {
@@ -378,14 +434,14 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f0f2f5] flex items-center justify-center p-4">
-      <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full text-center">
+    <div className="min-h-screen bg-[#f0f2f5] dark:bg-[#0b141a] flex items-center justify-center p-4">
+      <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white dark:bg-[#111b21] p-8 rounded-3xl shadow-xl max-w-md w-full text-center border border-gray-100 dark:border-gray-800">
         <Logo size={48} className="mx-auto mb-4" url={settings?.logoUrl} />
-        <h2 className="text-2xl font-black mb-1 text-[#111b21] tracking-tighter">{settings?.siteName || "Heart Connect"}</h2>
-        <p className="text-xs text-gray-500 mb-5 font-medium">Connecting Hearts, One Chat at a Time</p>
+        <h2 className="text-2xl font-black mb-1 text-[#111b21] dark:text-[#e9edef] tracking-tighter">{settings?.siteName || "Heart Connect"}</h2>
+        <p className="text-xs text-gray-500 dark:text-[#8696a0] mb-5 font-medium">Connecting Hearts, One Chat at a Time</p>
         
         <div className="mb-6 p-1">
-          <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Featured Singles Nearby</h3>
+          <h3 className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase tracking-widest mb-3">Featured Singles Nearby</h3>
           <div className="flex justify-center gap-5">
             {[
               { city: 'Bulawayo', age: 25, seed: 'woman1', img: 'https://picsum.photos/seed/zim1/200' },
@@ -400,7 +456,7 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
                   referrerPolicy="no-referrer"
                 />
                 <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
-                <div className="text-[9px] font-bold text-gray-500 mt-1">{s.city}</div>
+                <div className="text-[9px] font-bold text-gray-500 dark:text-[#8696a0] mt-1">{s.city}</div>
               </div>
             ))}
           </div>
@@ -409,22 +465,22 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
         <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
           {!isLogin && (
             <div className="grid grid-cols-2 gap-4">
-              <input 
-                type="text" 
-                placeholder="Name" 
-                value={firstName}
-                onChange={(e) => setFirstName(capitalizeName(e.target.value))}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-[#00a884]/20"
-                required
-              />
-              <input 
-                type="text" 
-                placeholder="Surname" 
-                value={lastName}
-                onChange={(e) => setLastName(capitalizeName(e.target.value))}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-[#00a884]/20"
-                required
-              />
+                <input 
+                  type="text" 
+                  placeholder="Name" 
+                  value={firstName}
+                  onChange={(e) => setFirstName(capitalizeName(e.target.value))}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 outline-none focus:ring-2 focus:ring-[#00a884]/20 bg-transparent dark:text-[#e9edef]"
+                  required
+                />
+                <input 
+                  type="text" 
+                  placeholder="Surname" 
+                  value={lastName}
+                  onChange={(e) => setLastName(capitalizeName(e.target.value))}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 outline-none focus:ring-2 focus:ring-[#00a884]/20 bg-transparent dark:text-[#e9edef]"
+                  required
+                />
             </div>
           )}
           <input 
@@ -432,7 +488,7 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
             placeholder="Email" 
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-[#00a884]/20"
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 outline-none focus:ring-2 focus:ring-[#00a884]/20 bg-transparent dark:text-[#e9edef]"
             required
           />
           <input 
@@ -440,7 +496,7 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
             placeholder="Password" 
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-[#00a884]/20"
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 outline-none focus:ring-2 focus:ring-[#00a884]/20 bg-transparent dark:text-[#e9edef]"
             required
           />
 
@@ -468,12 +524,12 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
         </form>
 
         <div className="flex items-center gap-2 mb-6">
-          <div className="flex-1 h-[1px] bg-gray-200"></div>
-          <span className="text-xs text-gray-400 uppercase font-bold">OR</span>
-          <div className="flex-1 h-[1px] bg-gray-200"></div>
+          <div className="flex-1 h-[1px] bg-gray-200 dark:bg-gray-800"></div>
+          <span className="text-xs text-gray-400 dark:text-gray-500 uppercase font-bold">OR</span>
+          <div className="flex-1 h-[1px] bg-gray-200 dark:bg-gray-800"></div>
         </div>
 
-        <button onClick={handleGoogleLogin} className="w-full bg-white border border-gray-300 text-gray-700 font-bold py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-3 mb-4 hover:bg-gray-50">
+        <button onClick={handleGoogleLogin} className="w-full bg-white dark:bg-[#202c33] border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-3 mb-4 hover:bg-gray-50 dark:hover:bg-gray-800">
           <img src="https://www.google.com/favicon.ico" className="w-5 h-5 bg-white rounded-full p-0.5" alt="Google" referrerPolicy="no-referrer" />
           Continue with Google
         </button>
@@ -520,7 +576,9 @@ export default function App() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [backPressCount, setBackPressCount] = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showAffiliate, setShowAffiliate] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
+  const [applyingJob, setApplyingJob] = useState<Job | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
 
@@ -745,6 +803,14 @@ export default function App() {
             };
             try { await setDoc(userDocRef, userData, { merge: true }); } catch (e) { handleFirestoreError(e, OperationType.WRITE, `users/${firebaseUser.uid}`); }
           }
+
+          // Force generate affiliate code if missing
+          if (!userData.affiliateCode) {
+            const code = generateAffiliateCode(userData.uid);
+            await updateDoc(userDocRef, { affiliateCode: code });
+            userData.affiliateCode = code;
+          }
+
           setUser(userData);
         } else { setUser(null); }
       } catch (err) {
@@ -877,6 +943,7 @@ export default function App() {
         setShowProfile(false);
         setShowAdmin(false);
         setViewingUser(null);
+        setShowAffiliate(false);
         setShowNotifications(false);
         setShowUpgrade(false);
         setShowLeaderboard(false);
@@ -900,7 +967,7 @@ export default function App() {
     window.history.pushState(null, '', window.location.pathname);
     window.addEventListener('popstate', handleBack);
     return () => window.removeEventListener('popstate', handleBack);
-  }, [selectedChat, showProfile, showAdmin, viewingUser, showNotifications, showUpgrade, showLeaderboard, showCreateAd, showCreateJob, selectedJob]);
+  }, [selectedChat, showProfile, showAdmin, viewingUser, showAffiliate, showNotifications, showUpgrade, showLeaderboard, showCreateAd, showCreateJob, selectedJob]);
 
   const handleFollowEmployer = async (employerId: string) => {
     if (!user) return;
@@ -923,12 +990,16 @@ export default function App() {
     }
   };
 
-  const handleApplyJob = async (job: Job) => {
+  const handleApplyJob = (job: Job) => {
+    if (!user) return;
+    const existing = applications.find(a => a.jobId === job.id && a.seekerId === user.uid);
+    if (existing) return alert("You already applied!");
+    setApplyingJob(job);
+  };
+
+  const finalizeJobApplication = async (job: Job, qualifications: JobApplication['qualifications']) => {
     if (!user) return;
     try {
-      const existing = applications.find(a => a.jobId === job.id && a.seekerId === user.uid);
-      if (existing) return alert("You already applied!");
-
       await addDoc(collection(db, 'applications'), {
         jobId: job.id,
         employerId: job.employerId,
@@ -936,6 +1007,7 @@ export default function App() {
         seekerName: user.displayName,
         seekerPhoto: user.photoURL || '',
         status: 'applied',
+        qualifications,
         timestamp: serverTimestamp()
       });
 
@@ -1023,6 +1095,28 @@ export default function App() {
     };
     fetchSettings();
   }, []);
+
+  useEffect(() => {
+    if (user && user.uid && !user.hasSeenAffiliateWelcome) {
+      const sendAffiliateWelcome = async () => {
+        const promoMsg = `Welcome to Heart Connect! 💖 Share the love and earn points. Your affiliate code is: ${user.affiliateCode || 'N/A'}. Go to Profile > Affiliate Program to see your referral link and points!`;
+        
+        await addDoc(collection(db, 'notifications'), {
+          userId: user.uid,
+          fromId: 'system',
+          fromName: 'Heart Connect',
+          type: 'broadcast',
+          text: promoMsg,
+          read: false,
+          timestamp: serverTimestamp()
+        });
+
+        await updateDoc(doc(db, 'users', user.uid), { hasSeenAffiliateWelcome: true });
+        setUser((prev: any) => prev ? { ...prev, hasSeenAffiliateWelcome: true } : null);
+      };
+      sendAffiliateWelcome();
+    }
+  }, [user?.uid, user?.hasSeenAffiliateWelcome]);
 
   const [targetPostId, setTargetPostId] = useState<string | null>(null);
 
@@ -1187,10 +1281,10 @@ export default function App() {
   if (!user) return <AuthScreen settings={appSettings} />;
 
   if (user.suspended) return (
-    <div className="h-screen flex flex-col items-center justify-center bg-white p-8 text-center">
+    <div className="h-screen flex flex-col items-center justify-center bg-white dark:bg-[#0b141a] p-8 text-center">
       <ShieldAlert className="w-16 h-16 text-red-500 mb-6" />
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Account Suspended</h1>
-      <p className="text-gray-500 mb-8">Your account has been suspended for violating our terms of service. If you believe this is a mistake, please contact support.</p>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-[#e9edef] mb-2">Account Suspended</h1>
+      <p className="text-gray-500 dark:text-[#8696a0] mb-8">Your account has been suspended for violating our terms of service. If you believe this is a mistake, please contact support.</p>
       <button onClick={() => auth.signOut()} className="bg-[#00a884] text-white px-8 py-3 rounded-full font-bold shadow-lg">Sign Out</button>
     </div>
   );
@@ -1217,15 +1311,19 @@ export default function App() {
       return;
     }
     
-    // Scramble phone numbers
-    const scrambledText = text.replace(/\d{8,}/g, (match) => {
+    // Scramble phone numbers and censor words
+    let processedText = text.replace(/\d{8,}/g, (match) => {
       return match.split('').sort(() => Math.random() - 0.5).join('');
     });
+    
+    if (appSettings.sensoredWords?.length) {
+      processedText = censorText(processedText, appSettings.sensoredWords);
+    }
 
     const msgData = { 
       chatId: selectedChat.id, 
       senderId: user.uid, 
-      text: scrambledText, 
+      text: processedText, 
       type, 
       timestamp: serverTimestamp(), 
       status: 'sent' 
@@ -1236,7 +1334,7 @@ export default function App() {
     
     const chatUpdatePromise = updateDoc(doc(db, 'chats', selectedChat.id), { 
       lastMessage: { 
-        text: type === 'text' ? scrambledText : `Sent an ${type}`, 
+        text: type === 'text' ? processedText : `Sent an ${type}`, 
         senderId: user.uid, 
         timestamp: serverTimestamp(),
         status: 'sent'
@@ -1258,14 +1356,14 @@ export default function App() {
         fromId: user.uid,
         fromName: user.displayName,
         type: 'message',
-        text: `sent you a message: ${scrambledText.substring(0, 30)}${scrambledText.length > 30 ? '...' : ''}`,
+        text: `sent you a message: ${processedText.substring(0, 30)}${processedText.length > 30 ? '...' : ''}`,
         read: false,
         timestamp: serverTimestamp(),
         relatedId: selectedChat.id
       });
       
-      // If phone number was detected, send warning notification
-      if (text !== scrambledText) {
+      // If phone number or sensitive word was detected, send warning notification
+      if (text !== processedText) {
         addDoc(collection(db, 'notifications'), {
           userId: user.uid,
           fromId: 'system',
@@ -1286,7 +1384,7 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen bg-white flex flex-col overflow-hidden max-w-md mx-auto shadow-2xl border-x border-gray-200 relative">
+    <div className="h-screen bg-white dark:bg-[#111b21] flex flex-col overflow-hidden max-w-md mx-auto shadow-2xl border-x border-gray-200 dark:border-gray-800 relative transition-colors duration-300">
       {uploading && (
         <div className="fixed top-0 left-0 right-0 z-[1000] h-1 bg-gray-100 dark:bg-gray-800">
           <motion.div 
@@ -1297,7 +1395,7 @@ export default function App() {
         </div>
       )}
       {selectedChat ? (
-        <div className="absolute inset-0 z-50 bg-[#efeae2] flex flex-col">
+        <div className="absolute inset-0 z-50 bg-[#efeae2] dark:bg-[#0b141a] flex flex-col">
           <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} onUserClick={(u: any) => { setViewingUser(u); setSelectedChat(null); }} />
         </div>
       ) : showProfile ? (
@@ -1311,12 +1409,18 @@ export default function App() {
           />
         </div>
       ) : showAdmin ? (
-        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col h-screen overflow-hidden">
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col h-screen overflow-hidden">
           <AdminDashboard user={user} onBack={() => setShowAdmin(false)} />
         </div>
       ) : viewingUser ? (
-        <div className="absolute inset-0 z-50 bg-[#f0f2f5] flex flex-col">
-          <UserProfileView user={user} targetUser={viewingUser} onBack={() => setViewingUser(null)} onStartChat={(chat) => { setViewingUser(null); setSelectedChat(chat); }} />
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
+          <UserProfileView 
+            user={user} 
+            targetUser={viewingUser} 
+            onBack={() => setViewingUser(null)} 
+            onStartChat={(chat) => { setViewingUser(null); setSelectedChat(chat); }}
+            onOpenAffiliate={() => { setViewingUser(null); setShowAffiliate(true); }}
+          />
         </div>
       ) : showNotifications ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
@@ -1369,6 +1473,10 @@ export default function App() {
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
           <PointsLeaderboard onBack={() => setShowLeaderboard(false)} />
         </div>
+      ) : showAffiliate ? (
+        <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
+          <AffiliateDashboard user={user} onBack={() => setShowAffiliate(false)} />
+        </div>
       ) : (
         <div className="flex-1 flex flex-col overflow-hidden relative">
           <ProfileReminder user={user} onClick={() => setShowProfile(true)} />
@@ -1380,7 +1488,9 @@ export default function App() {
                 onClick={() => window.location.reload()}
               >
                 <Logo size={32} className="shadow-none group-hover:scale-110 transition-transform" url={appSettings?.logoUrl} />
-                <h1 className="text-xl font-black tracking-tighter group-hover:opacity-80 transition-opacity">{appSettings?.siteName || "Heart Connect"}</h1>
+                <h1 className="text-xl font-black tracking-tighter group-hover:opacity-80 transition-opacity flex items-center gap-2">
+                  {appSettings?.siteName || "Heart Connect"}
+                </h1>
               </div>
               <div className="flex gap-5 items-center">
                 <Camera className="w-6 h-6 cursor-pointer" onClick={() => setActiveTab('status')} />
@@ -1399,6 +1509,9 @@ export default function App() {
                     <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[#202c33] rounded-lg shadow-xl py-2 z-50 border border-gray-100 dark:border-gray-800">
                       <button onClick={() => { setShowProfile(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
                         <UserIcon className="w-4 h-4" /> Profile
+                      </button>
+                      <button onClick={() => { setShowAffiliate(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
+                        <Users className="w-4 h-4 text-[#00a884]" /> Affiliate Program
                       </button>
                       <button onClick={() => { setShowLeaderboard(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
                         <Trophy className="w-4 h-4 text-yellow-600" /> Leaderboard
@@ -1662,6 +1775,13 @@ export default function App() {
           </motion.div>
         </div>
       )}
+      {applyingJob && (
+        <JobQualificationModal 
+          job={applyingJob} 
+          onApply={finalizeJobApplication} 
+          onCancel={() => setApplyingJob(null)} 
+        />
+      )}
     </div>
   );
 }
@@ -1881,7 +2001,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
               ) : msg.type === 'video' ? (
                 <video src={msg.text} controls className="rounded-lg max-w-full h-auto mb-1" />
               ) : (
-                <p className="text-[15px] text-[#111b21] dark:text-[#e9edef] pr-12 leading-relaxed">{msg.text}</p>
+                <p className="text-[16px] font-medium text-[#111b21] dark:text-[#e9edef] pr-12 leading-relaxed">{msg.text}</p>
               )}
               
               {msg.reactions && Object.keys(msg.reactions).length > 0 && (
@@ -2108,10 +2228,15 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
     
     const hashtags = newPost.match(/#\w+/g) || [];
     const isReel = postMediaType === 'video';
+    
+    let censoredContent = newPost;
+    if (appSettings.sensoredWords?.length) {
+      censoredContent = censorText(newPost, appSettings.sensoredWords);
+    }
 
     await addDoc(collection(db, 'posts'), { 
       userId: user.uid, 
-      content: newPost, 
+      content: censoredContent, 
       media: postMedia ? [postMedia] : [],
       mediaType: postMediaType,
       likes: [], 
@@ -2410,8 +2535,8 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                           key={d}
                           onClick={() => setStatusDuration(d)}
                           className={cn(
-                            "flex-1 py-2 rounded-xl text-sm font-bold transition-all border-2",
-                            statusDuration === d ? "bg-[#00a884] border-[#00a884] text-white shadow-md" : "bg-white border-gray-100 text-gray-500 hover:border-gray-200"
+                            "flex-1 py-1 rounded-full text-[10px] font-bold transition-all border",
+                            statusDuration === d ? "bg-[#00a884] border-[#00a884] text-white shadow-md" : "bg-white dark:bg-[#2a3942] border-gray-100 dark:border-gray-700 text-gray-500 dark:text-[#8696a0] hover:border-gray-200 dark:hover:border-gray-600"
                           )}
                         >
                           {d === '24h' ? '24 Hours' : d === '1w' ? '1 Week' : '1 Month'}
@@ -2424,7 +2549,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                     <input type="file" ref={fileInputRef} onChange={handleStatusFileUpload} className="hidden" accept="image/*,video/*" />
                     <button 
                       onClick={() => fileInputRef.current?.click()}
-                      className="flex-1 bg-gray-100 text-gray-700 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors"
+                      className="flex-1 bg-gray-100 dark:bg-[#2a3942] text-gray-700 dark:text-[#e9edef] py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                     >
                       <ImageIcon className="w-5 h-5" /> Photo/Video
                     </button>
@@ -2457,9 +2582,9 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
             <div className="bg-white dark:bg-[#111b21] p-5 rounded-3xl shadow-md border border-gray-100 dark:border-gray-800 transition-all hover:shadow-lg">
             <div className="flex items-center gap-3 mb-4">
             <Avatar src={user.photoURL} name={user.displayName} size={40} />
-            <div className="flex-1 bg-gray-50 dark:bg-[#2a3942] rounded-full px-4 py-2 text-gray-400 text-sm cursor-pointer border border-gray-100 dark:border-gray-800" onClick={() => setShowPostModal(true)}>
-              What's on your mind?
-            </div>
+                <div className="flex-1 bg-gray-50 dark:bg-[#2a3942] rounded-full px-4 py-2 text-gray-400 dark:text-gray-500 text-sm font-medium cursor-pointer border border-gray-100 dark:border-gray-800" onClick={() => setShowPostModal(true)}>
+                  What's on your mind?
+                </div>
           </div>
           <div className="flex justify-around border-t border-gray-50 dark:border-gray-800 pt-3">
             <button onClick={() => setShowPostModal(true)} className="flex items-center gap-2 text-gray-500 dark:text-[#8696a0] text-xs font-bold hover:text-[#00a884] transition-colors">
@@ -2503,7 +2628,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                       value={newPost}
                       onChange={(e) => setNewPost(e.target.value)}
                       placeholder="Share what's happening..."
-                      className="w-full bg-transparent border-none outline-none text-lg dark:text-[#e9edef] resize-none h-40 focus:ring-0"
+                      className="w-full bg-transparent border-none outline-none text-lg font-medium dark:text-[#e9edef] resize-none h-40 focus:ring-0"
                     />
 
                     {postMedia && (
@@ -2590,7 +2715,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                     </div>
                   )}
                 </div>
-                <div className="px-4 pb-4 text-[15px] text-[#111b21] dark:text-[#e9edef] leading-relaxed">
+                <div className="px-4 pb-4 text-[16px] font-medium text-[#111b21] dark:text-[#e9edef] leading-relaxed">
                   <div className="whitespace-pre-wrap">
                     {post.content.split(/(\s+)/).map((word: string, i: number) => {
                       if (word.startsWith('#')) {
@@ -2781,29 +2906,29 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
 
       {showComments && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl h-[80vh] flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-              <h3 className="font-bold text-lg">Comments</h3>
-              <button onClick={() => setShowComments(null)} className="p-2 bg-gray-100 rounded-full"><X className="w-5 h-5" /></button>
+          <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} className="bg-white dark:bg-[#111b21] w-full max-w-lg rounded-t-3xl sm:rounded-3xl h-[80vh] flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+              <h3 className="font-bold text-lg dark:text-[#e9edef]">Comments</h3>
+              <button onClick={() => setShowComments(null)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full"><X className="w-5 h-5 dark:text-gray-400" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
               {comments.map(c => (
                 <div key={c.id} className="flex gap-3">
                   <Avatar src={c.userPhoto} name={c.userName} size={32} />
-                  <div className="flex-1 bg-gray-50 p-3 rounded-2xl">
-                    <h4 className="font-bold text-xs mb-1">{c.userName}</h4>
-                    <p className="text-sm text-gray-700">{c.text}</p>
+                  <div className="flex-1 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-2xl">
+                    <h4 className="font-bold text-xs mb-1 dark:text-[#e9edef]">{c.userName}</h4>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">{c.text}</p>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="p-4 bg-white border-t border-gray-100 flex gap-2">
+            <div className="p-4 bg-white dark:bg-[#111b21] border-t border-gray-100 dark:border-gray-800 flex gap-2">
               <input 
                 type="text" 
                 value={commentInput} 
                 onChange={(e) => setCommentInput(e.target.value)} 
                 placeholder="Write a comment..." 
-                className="flex-1 bg-gray-50 px-4 py-2 rounded-full outline-none focus:ring-2 focus:ring-[#00a884]/20"
+                className="flex-1 bg-gray-50 dark:bg-gray-800 px-4 py-2 rounded-full outline-none focus:ring-2 focus:ring-[#00a884]/20 dark:text-[#e9edef]"
                 onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
               />
               <button onClick={handleAddComment} className="w-10 h-10 bg-[#00a884] rounded-full flex items-center justify-center text-white"><Send className="w-5 h-5" /></button>
@@ -2814,16 +2939,16 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
 
       {editingPost && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-lg rounded-3xl overflow-hidden">
-            <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-              <h3 className="font-bold text-lg">Edit Post</h3>
-              <button onClick={() => setEditingPost(null)} className="p-2 bg-gray-100 rounded-full"><X className="w-5 h-5" /></button>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-[#111b21] w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
+            <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+              <h3 className="font-bold text-lg dark:text-[#e9edef]">Edit Post</h3>
+              <button onClick={() => setEditingPost(null)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full"><X className="w-5 h-5 dark:text-gray-400" /></button>
             </div>
             <div className="p-4">
               <textarea 
                 value={editContent} 
                 onChange={(e) => setEditContent(e.target.value)} 
-                className="w-full bg-gray-50 border-none outline-none p-4 rounded-2xl text-[15px] resize-none h-40 mb-4"
+                className="w-full bg-gray-50 dark:bg-gray-800 border-none outline-none p-4 rounded-2xl text-[16px] leading-relaxed resize-none h-40 mb-4 dark:text-[#e9edef]"
                 placeholder="What's on your mind?"
               />
               <button 
@@ -2842,11 +2967,15 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
 
 const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, onOpenProfile, setUser }: any) => {
   const [discoverUsers, setDiscoverUsers] = useState<User[]>([]);
+  const [featuredSingles, setFeaturedSingles] = useState<User[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
 
   const hasGender = user.datingProfile?.gender && user.datingProfile.gender !== '';
+  const limits = { General: 1, Bronze: 3, Silver: 10, Gold: Infinity, Platinum: Infinity };
+  const currentLimit = limits[user.category as keyof typeof limits] || limits.General;
+  const matchCount = user.matchCount || 0;
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -2855,21 +2984,21 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
         const q = query(
           collection(db, 'users'),
           where('role', '==', 'user'),
-          limit(50)
+          limit(100)
         );
         const snapshot = await getDocs(q);
-        const users = snapshot.docs
+        const allUsers = snapshot.docs
           .map(doc => ({ uid: doc.id, ...doc.data() } as User))
           .filter(u => u.uid !== user.uid && u.datingProfile && u.photoURL);
         
-        // Apply filters locally for better flexibility
-        const filtered = users.filter(u => {
+        setFeaturedSingles(allUsers.filter(u => u.isFeaturedSingle));
+        
+        const filtered = allUsers.filter(u => {
           const profile = u.datingProfile!;
           const ageMatch = profile.age >= filters.minAge && profile.age <= filters.maxAge;
           const genderMatch = filters.gender === 'all' || profile.gender === filters.gender;
           const searchMatch = !searchQuery || u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || profile.bio.toLowerCase().includes(searchQuery.toLowerCase());
           
-          // Basic distance calculation if both have location
           let distanceMatch = true;
           if (user.datingProfile?.location && profile.location) {
             const dist = calculateDistance(
@@ -2896,13 +3025,10 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
   }, [user.uid, filters, searchQuery]);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371; // km
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
   };
@@ -2917,24 +3043,27 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
 
   const handleLike = async () => {
     if (!user) return;
+    const currentDiscoverUser = discoverUsers[currentIndex];
     
-    const limits = {
-      General: 1,
-      Bronze: 3,
-      Silver: 10,
-      Gold: Infinity,
-      Platinum: Infinity
-    };
-    const currentLimit = limits[user.category as keyof typeof limits] || limits.General;
-    if ((user.matchCount || 0) >= currentLimit) {
-      alert(`You have reached your match limit for ${user.category} tier. Please upgrade to match with more people!`);
+    if (matchCount >= currentLimit) {
+      alert(`Match limit reached (${matchCount}/${currentLimit}). Upgrade to unlock more swipes!`);
       return;
     }
 
-    const userDocRef = doc(db, 'users', user.uid);
     const { increment } = await import('firebase/firestore');
-    await updateDoc(userDocRef, { matchCount: increment(1) });
-    setUser(prev => prev ? { ...prev, matchCount: (prev.matchCount || 0) + 1 } : null);
+    await updateDoc(doc(db, 'users', user.uid), { matchCount: increment(1) });
+    setUser((prev: any) => prev ? { ...prev, matchCount: (prev.matchCount || 0) + 1 } : null);
+    
+    await addDoc(collection(db, 'notifications'), {
+      userId: currentDiscoverUser.uid,
+      fromId: user.uid,
+      fromName: user.displayName,
+      type: 'like',
+      text: 'liked you in dating!',
+      read: false,
+      timestamp: serverTimestamp()
+    });
+
     handleNext();
   };
 
@@ -2943,16 +3072,43 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
   const currentUser = discoverUsers[currentIndex];
 
   return (
-    <div className="flex-1 flex flex-col p-4 bg-[#f0f2f5] dark:bg-[#0b141a] relative">
+    <div className="flex-1 flex flex-col p-4 bg-[#f0f2f5] dark:bg-[#0b141a] relative overflow-hidden">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-bold text-[#111b21] dark:text-[#e9edef]">Discover</h2>
+        <div>
+          <h2 className="text-xl font-black text-[#111b21] dark:text-[#e9edef] tracking-tighter">Discover</h2>
+          <div className="flex items-center gap-1.5 mt-1 bg-white/50 dark:bg-black/20 px-2 py-0.5 rounded-full w-fit border border-gray-100/50 dark:border-white/5">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-pulse" />
+            <span className="text-[10px] font-black text-[#00a884] uppercase tracking-wider">
+              Swipes Used: {matchCount} / {currentLimit === Infinity ? 'Unlimited' : currentLimit}
+            </span>
+          </div>
+        </div>
         <button 
           onClick={() => setShowFilters(!showFilters)}
-          className="p-2 bg-white dark:bg-[#202c33] rounded-full shadow-sm text-[#00a884]"
+          className="p-2.5 bg-white dark:bg-[#2a3942] rounded-2xl shadow-sm text-[#00a884] hover:scale-105 transition-transform"
         >
           <Search className="w-5 h-5" />
         </button>
       </div>
+
+      {featuredSingles.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] mb-3 px-1">Featured Singles</h3>
+          <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar px-1">
+            {featuredSingles.map(single => (
+              <div key={single.uid} onClick={() => onUserClick(single)} className="flex-shrink-0 w-24 space-y-2 cursor-pointer group">
+                <div className="relative w-24 h-24 rounded-3xl overflow-hidden border-2 border-[#00a884]/20 group-hover:border-[#00a884] transition-all">
+                  <img src={single.photoURL} className="w-full h-full object-cover" alt={single.displayName} referrerPolicy="no-referrer" />
+                  <div className="absolute top-1 right-1">
+                    <Star className="w-4 h-4 text-yellow-400 fill-current drop-shadow-md" />
+                  </div>
+                </div>
+                <p className="text-[10px] font-bold dark:text-[#e9edef] text-center truncate px-1">{single.displayName.split(' ')[0]}, {single.datingProfile?.age}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <AnimatePresence>
         {showFilters && (
@@ -2965,52 +3121,22 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-bold text-gray-500 block mb-1">Min Age</label>
-                <input 
-                  type="number" 
-                  value={filters.minAge} 
-                  onChange={(e) => onUpdateFilters({...filters, minAge: Number(e.target.value)})}
-                  className="w-full border-b border-gray-200 dark:border-gray-800 py-1 outline-none dark:bg-transparent dark:text-[#e9edef]"
-                />
+                <input type="number" value={filters.minAge} onChange={(e) => onUpdateFilters({...filters, minAge: Number(e.target.value)})} className="w-full border-b border-gray-200 dark:border-gray-800 py-1 outline-none dark:bg-transparent dark:text-[#e9edef]" />
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-500 block mb-1">Max Age</label>
-                <input 
-                  type="number" 
-                  value={filters.maxAge} 
-                  onChange={(e) => onUpdateFilters({...filters, maxAge: Number(e.target.value)})}
-                  className="w-full border-b border-gray-200 dark:border-gray-800 py-1 outline-none dark:bg-transparent dark:text-[#e9edef]"
-                />
+                <input type="number" value={filters.maxAge} onChange={(e) => onUpdateFilters({...filters, maxAge: Number(e.target.value)})} className="w-full border-b border-gray-200 dark:border-gray-800 py-1 outline-none dark:bg-transparent dark:text-[#e9edef]" />
               </div>
             </div>
             <div>
               <label className="text-xs font-bold text-gray-500 block mb-1">Gender Preference</label>
-              <select 
-                value={filters.gender} 
-                onChange={(e) => onUpdateFilters({...filters, gender: e.target.value})}
-                className="w-full border-b border-gray-200 dark:border-gray-800 py-1 outline-none bg-transparent dark:text-[#e9edef]"
-              >
+              <select value={filters.gender} onChange={(e) => onUpdateFilters({...filters, gender: e.target.value})} className="w-full border-b border-gray-200 dark:border-gray-800 py-1 outline-none bg-transparent dark:text-[#e9edef]">
                 <option value="all">All</option>
                 <option value="male">Male</option>
                 <option value="female">Female</option>
               </select>
             </div>
-            <div>
-              <label className="text-xs font-bold text-gray-500 block mb-1">Max Distance ({filters.maxDistance}km)</label>
-              <input 
-                type="range" 
-                min="1" 
-                max="500" 
-                value={filters.maxDistance} 
-                onChange={(e) => onUpdateFilters({...filters, maxDistance: Number(e.target.value)})}
-                className="w-full accent-[#00a884]"
-              />
-            </div>
-            <button 
-              onClick={() => setShowFilters(false)}
-              className="w-full bg-[#00a884] text-white py-2 rounded-xl font-bold"
-            >
-              Apply Filters
-            </button>
+            <button onClick={() => setShowFilters(false)} className="w-full bg-[#00a884] text-white py-2 rounded-xl font-bold">Apply Filters</button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -3029,57 +3155,78 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
       {discoverUsers.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
           <Heart className="w-16 h-16 text-gray-200 dark:text-gray-800 mb-4" />
-          <p className="text-gray-500 dark:text-[#8696a0]">No matches found with current filters. Try expanding your search!</p>
+          <p className="text-gray-500 dark:text-[#8696a0]">No matches found. Try expanding your search!</p>
         </div>
       ) : (
-        <div className="max-w-sm w-full mx-auto bg-white dark:bg-[#202c33] rounded-[40px] shadow-2xl overflow-hidden h-[480px] flex flex-col relative border-4 border-white dark:border-[#202c33]">
-          <div className="flex-1 bg-gray-200 dark:bg-gray-800 relative">
-            <img 
-              src={currentUser.photoURL || `https://picsum.photos/seed/${currentUser.uid}/400/600`} 
-              className="w-full h-full object-cover" 
-              alt={currentUser.displayName} 
-              referrerPolicy="no-referrer"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
-            <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-2xl font-bold flex items-center gap-1">
-                  {currentUser.displayName}, {currentUser.datingProfile?.age}
-                  <TierBadge tier={currentUser.category} size={20} />
-                  {currentUser.isVerified && <VerifiedBadge size={20} />}
-                </h3>
-                {currentUser.isOnline && (
-                  <div className="w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white shadow-sm animate-pulse"></div>
-                )}
+        <div className="flex-1 relative flex flex-col items-center justify-center">
+          <AnimatePresence mode='popLayout'>
+            <motion.div 
+              key={currentUser.uid}
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              onDragEnd={(_e, info) => {
+                if (info.offset.x > 100) handleLike();
+                else if (info.offset.x < -100) handleNext();
+              }}
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ 
+                opacity: 0, 
+                scale: 0.8,
+                transition: { duration: 0.1 }
+              }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="absolute inset-x-0 mx-auto max-w-sm w-full bg-white dark:bg-[#202c33] rounded-[40px] shadow-2xl overflow-hidden h-[500px] flex flex-col border-4 border-white dark:border-[#202c33] cursor-grab active:cursor-grabbing z-10"
+            >
+              <div className="flex-1 bg-gray-200 dark:bg-gray-800 relative select-none pointer-events-none">
+                <img 
+                  src={currentUser.photoURL || `https://picsum.photos/seed/${currentUser.uid}/400/600`} 
+                  className="w-full h-full object-cover" 
+                  alt={currentUser.displayName} 
+                  referrerPolicy="no-referrer"
+                  onError={handleImageError}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent pointer-events-none" />
+                <div className="absolute bottom-0 left-0 right-0 p-6 text-white text-left pointer-events-none">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-2xl font-bold flex items-center gap-1">
+                      {currentUser.displayName}, {currentUser.datingProfile?.age}
+                      <TierBadge tier={currentUser.category} size={20} />
+                      {currentUser.isVerified && <VerifiedBadge size={20} />}
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-3 text-sm opacity-80 mb-2 font-medium">
+                    <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {currentUser.datingProfile?.city || 'Nearby'}</span>
+                    <span className="flex items-center gap-1"><ShieldCheck className="w-4 h-4" /> {currentUser.isVerified ? 'Verified' : 'Unverified'}</span>
+                  </div>
+                  <p className="text-sm opacity-90 line-clamp-2 italic tracking-tight">"{currentUser.datingProfile?.bio}"</p>
+                </div>
               </div>
-              <p className="text-xs opacity-90 leading-relaxed line-clamp-2">{currentUser.datingProfile?.bio}</p>
-              <div className="flex gap-2 mt-3 flex-wrap">
-                {currentUser.datingProfile?.city && (
-                  <span className="bg-white/20 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wider">
-                    {currentUser.datingProfile.city}
-                  </span>
-                )}
-                {currentUser.datingProfile?.interests?.slice(0, 2).map(tag => (
-                  <span key={tag} className="bg-white/20 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wider">
-                    {tag}
-                  </span>
-                ))}
+              <div className="p-6 flex justify-center gap-6 items-center">
+                <button onClick={handleNext} className="w-16 h-16 rounded-full border-2 border-red-100 dark:border-red-900/30 flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 active:scale-95 transition-all shadow-sm">
+                  <X className="w-8 h-8" />
+                </button>
+                <button onClick={() => onUserClick(currentUser)} className="w-12 h-12 rounded-full border border-gray-100 dark:border-gray-800 flex items-center justify-center text-[#00a884] hover:bg-gray-50 active:scale-95 transition-all">
+                  <UserIcon className="w-5 h-5" />
+                </button>
+                <button onClick={handleLike} className="w-16 h-16 rounded-full bg-[#00a884] flex items-center justify-center text-white hover:bg-[#008069] active:scale-95 transition-all shadow-xl">
+                  <Heart className="w-8 h-8 fill-current" />
+                </button>
               </div>
-            </div>
-          </div>
-          <div className="p-6 flex justify-center gap-10 bg-white dark:bg-[#202c33] border-t border-gray-50 dark:border-gray-800">
-            <button onClick={handleNext} className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center text-red-500 hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white dark:border-[#202c33]"><X className="w-8 h-8" /></button>
-            <button onClick={() => onUserClick(currentUser)} className="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-500 hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white dark:border-[#202c33]"><UserIcon className="w-8 h-8" /></button>
-            <button onClick={handleLike} className="w-16 h-16 rounded-full bg-green-50 dark:bg-green-900/20 flex items-center justify-center text-[#00a884] hover:scale-110 active:scale-95 transition-all shadow-xl border-4 border-white dark:border-[#202c33]"><Heart className="w-8 h-8 fill-current" /></button>
-          </div>
+            </motion.div>
+          </AnimatePresence>
+          {discoverUsers.length > 1 && (
+            <div className="absolute inset-x-4 h-[500px] top-6 scale-95 opacity-40 -z-10 bg-white dark:bg-[#111b21] rounded-[40px] shadow-lg border border-gray-100 dark:border-gray-800 mx-auto max-w-sm" />
+          )}
         </div>
       )}
     </div>
   );
 };
 
-const UserProfileView = ({ user, targetUser, onBack, onStartChat }: any) => {
+const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliate }: any) => {
   const [fullUser, setFullUser] = useState<User | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [requestStatus, setRequestStatus] = useState<'none' | 'pending' | 'accepted'>('none');
 
   useEffect(() => {
@@ -3204,6 +3351,90 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat }: any) => {
               <span className="font-bold dark:text-[#e9edef]">{fullUser.datingProfile?.city || 'N/A'}</span>
             </div>
           </div>
+
+          {fullUser.uid === user.uid && (
+            <button 
+              onClick={onOpenAffiliate}
+              className="w-full flex items-center justify-between p-4 bg-[#00a884]/5 rounded-2xl border border-[#00a884]/20 group transition-all hover:bg-[#00a884]/10"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-[#00a884] rounded-lg text-white">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div className="text-left">
+                  <h5 className="text-sm font-bold dark:text-white">Affiliate Program</h5>
+                  <p className="text-[10px] text-gray-500">Earn points by inviting friends</p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-[#00a884] group-hover:translate-x-1 transition-transform" />
+            </button>
+          )}
+
+          {user.isAdmin && (
+            <div className="space-y-4 pt-4 border-t dark:border-gray-800">
+              <h4 className="text-xs font-bold text-red-500 uppercase tracking-widest">Admin Controls</h4>
+              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#1b2831] rounded-2xl">
+                <div>
+                  <h5 className="text-sm font-bold dark:text-white">Featured Single</h5>
+                  <p className="text-[10px] text-gray-400">Display on home and dating tab</p>
+                </div>
+                <button 
+                  onClick={async () => {
+                    await updateDoc(doc(db, 'users', fullUser.uid), { isFeaturedSingle: !fullUser.isFeaturedSingle });
+                    alert("User featured status updated!");
+                  }}
+                  className={cn(
+                    "w-12 h-6 rounded-full transition-all relative",
+                    fullUser.isFeaturedSingle ? "bg-[#00a884]" : "bg-gray-300"
+                  )}
+                >
+                  <div className={cn("w-4 h-4 bg-white rounded-full absolute top-1 transition-all", fullUser.isFeaturedSingle ? "right-1" : "left-1")} />
+                </button>
+              </div>
+
+              <div>
+                <h5 className="text-sm font-bold dark:text-white mb-2">Featured Photos</h5>
+                <div className="grid grid-cols-3 gap-2">
+                  {fullUser.featuredPhotos?.map((photo, i) => (
+                    <div key={i} className="relative aspect-square rounded-xl overflow-hidden group">
+                      <img src={photo} className="w-full h-full object-cover" alt={`Featured ${i}`} referrerPolicy="no-referrer" />
+                      <button 
+                        onClick={async () => {
+                          const newPhotos = fullUser.featuredPhotos?.filter((_, idx) => idx !== i);
+                          await updateDoc(doc(db, 'users', fullUser.uid), { featuredPhotos: newPhotos });
+                        }}
+                        className="absolute top-1 right-1 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="aspect-square bg-gray-100 dark:bg-[#2a3942] rounded-xl flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">
+                    <Plus className="w-6 h-6 text-gray-400" />
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      accept="image/*" 
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploading(true);
+                        try {
+                          const compressedFile = await compressImage(file);
+                          const url = await uploadFileToServer(compressedFile);
+                          await updateDoc(doc(db, 'users', fullUser.uid), {
+                            featuredPhotos: arrayUnion(url)
+                          });
+                          alert("Featured photo added!");
+                        } catch (err) { alert("Failed to upload"); }
+                        finally { setUploading(false); }
+                      }} 
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -3946,6 +4177,22 @@ const AdminDashboard = ({ user, onBack }: any) => {
                         {u.suspended ? "Unsuspend" : "Suspend"}
                       </button>
                       <button 
+                        onClick={() => toggleUserVerification(u)}
+                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.isVerified ? "bg-blue-50 dark:bg-blue-900/20 text-blue-500" : "bg-gray-50 dark:bg-gray-800 text-gray-400")}
+                      >
+                        {u.isVerified ? "Verified" : "Verify"}
+                      </button>
+                      <button 
+                        onClick={async () => {
+                          const newFeatured = !u.isFeaturedSingle;
+                          await updateDoc(doc(db, 'users', u.uid), { isFeaturedSingle: newFeatured });
+                          setUsers(users.map(user => user.uid === u.uid ? { ...user, isFeaturedSingle: newFeatured } : user));
+                        }}
+                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.isFeaturedSingle ? "bg-orange-50 dark:bg-orange-900/20 text-orange-600" : "bg-gray-50 dark:bg-gray-800 text-gray-400")}
+                      >
+                        {u.isFeaturedSingle ? "Featured" : "Feature"}
+                      </button>
+                      <button 
                          onClick={() => deleteUser(u)}
                          className="p-1 px-3 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full hover:bg-red-100 transition-colors text-[10px] font-bold uppercase tracking-widest"
                       >
@@ -4039,6 +4286,27 @@ const AdminDashboard = ({ user, onBack }: any) => {
               <div>
                 <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Min Ad Duration (Days)</label>
                 <input type="number" value={settings.minAdDuration} onChange={(e) => setSettings({...settings, minAdDuration: Number(e.target.value)})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
+              </div>
+            </div>
+
+            <h3 className="font-bold text-gray-700 dark:text-[#e9edef] border-b dark:border-gray-800 pb-2 pt-4">Affiliate System</h3>
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Points awarded per Invitation</label>
+                <input type="number" value={settings.pointsPerInvitation || 0} onChange={(e) => setSettings({...settings, pointsPerInvitation: Number(e.target.value)})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
+              </div>
+            </div>
+
+            <h3 className="font-bold text-gray-700 dark:text-[#e9edef] border-b dark:border-gray-800 pb-2 pt-4">Word Censorship</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Sensored Words (comma separated)</label>
+                <textarea 
+                  value={settings.sensoredWords?.join(', ') || ''} 
+                  onChange={(e) => setSettings({...settings, sensoredWords: e.target.value.split(',').map(s => s.trim()).filter(s => s)})} 
+                  placeholder="badword1, badword2..."
+                  className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef] h-24 font-mono text-xs" 
+                />
               </div>
             </div>
 
@@ -5123,6 +5391,157 @@ const JobDetails = ({ job, user, applications, onBack, onApply, onFollow }: any)
           </button>
         </div>
       )}
+    </div>
+  );
+};
+
+const AffiliateDashboard = ({ user, onBack }: any) => {
+  const [referrals, setReferrals] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchReferrals = async () => {
+      const q = query(collection(db, 'users'), where('referredBy', '==', user.uid));
+      const snap = await getDocs(q);
+      setReferrals(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
+      setLoading(false);
+    };
+    fetchReferrals();
+  }, [user.uid]);
+
+  const affiliateLink = `${window.location.origin}?ref=${user.affiliateCode}`;
+
+  return (
+    <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a]">
+      <div className="bg-[#008069] text-white p-4 flex items-center gap-6 shadow-md">
+        <button onClick={onBack} className="p-1 transition-colors hover:bg-white/10 rounded-full"><ChevronLeft className="w-6 h-6" /></button>
+        <h2 className="text-xl font-medium">Affiliate Program</h2>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar pb-10">
+        <div className="bg-white dark:bg-[#111b21] rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 text-center">
+          <div className="w-20 h-20 bg-green-50 dark:bg-green-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Users className="w-10 h-10 text-[#00a884]" />
+          </div>
+          <h3 className="text-xl font-bold dark:text-[#e9edef]">Invite and Earn</h3>
+          <p className="text-sm text-gray-500 mt-2">Earn points for every new user you invite who joins Heart Connect!</p>
+          
+          <div className="mt-8 p-4 bg-gray-50 dark:bg-[#202c33] rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700">
+            <p className="text-xs font-bold text-gray-400 uppercase mb-2">Your Unique Link</p>
+            <p className="text-[10px] break-all font-mono dark:text-gray-300">{affiliateLink}</p>
+            <button 
+              onClick={() => {
+                navigator.clipboard.writeText(affiliateLink);
+                alert("Affiliate link copied!");
+              }}
+              className="mt-4 w-full bg-[#00a884] text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2"
+            >
+              <Copy className="w-4 h-4" /> Copy Link
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-white dark:bg-[#111b21] p-6 rounded-3xl shadow-sm space-y-1 text-center border border-gray-100 dark:border-gray-800">
+            <span className="text-3xl font-black text-[#00a884]">{user.referralCount || 0}</span>
+            <p className="text-[10px] font-bold text-gray-400 uppercase">Referrals</p>
+          </div>
+          <div className="bg-white dark:bg-[#111b21] p-6 rounded-3xl shadow-sm space-y-1 text-center border border-gray-100 dark:border-gray-800">
+            <span className="text-3xl font-black text-blue-500">{user.points || 0}</span>
+            <p className="text-[10px] font-bold text-gray-400 uppercase">My Points</p>
+          </div>
+        </div>
+
+        <div>
+          <h4 className="text-sm font-bold dark:text-[#e9edef] mb-3 px-2 text-left">Referral History</h4>
+          {loading ? (
+            <div className="flex justify-center p-8"><CircleDashed className="w-6 h-6 animate-spin text-[#00a884]" /></div>
+          ) : referrals.length === 0 ? (
+            <div className="bg-white dark:bg-[#111b21] rounded-2xl p-8 text-center text-gray-500">No referrals yet. Share your link to get started!</div>
+          ) : (
+            <div className="bg-white dark:bg-[#111b21] rounded-2xl overflow-hidden divide-y divide-gray-50 dark:divide-gray-800">
+              {referrals.map(r => (
+                <div key={r.uid} className="p-4 flex items-center gap-3">
+                  <Avatar src={r.photoURL} name={r.displayName} size={40} />
+                  <div className="flex-1 text-left">
+                    <h5 className="text-sm font-bold dark:text-[#e9edef]">{r.displayName}</h5>
+                    <p className="text-[10px] text-gray-400">Joined via your link</p>
+                  </div>
+                  <div className="text-xs font-bold text-green-500">+Bonus</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const JobQualificationModal = ({ job, onApply, onCancel }: any) => {
+  const [qualifications, setQualifications] = useState({
+    oLevel: '',
+    aLevel: '',
+    tertiary: ''
+  });
+
+  return (
+    <div className="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="bg-white dark:bg-[#202c33] w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
+      >
+        <div className="p-6">
+          <h3 className="text-xl font-bold dark:text-[#e9edef] mb-2">Qualifications</h3>
+          <p className="text-xs text-gray-500 mb-6">Optional: Add your educational background to stand out.</p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">O Level Qualifications</label>
+              <textarea 
+                value={qualifications.oLevel} 
+                onChange={(e) => setQualifications({...qualifications, oLevel: e.target.value})}
+                placeholder="List your subjects and grades..."
+                className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl dark:text-[#e9edef] text-sm h-20 outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">A Level Qualifications</label>
+              <textarea 
+                value={qualifications.aLevel} 
+                onChange={(e) => setQualifications({...qualifications, aLevel: e.target.value})}
+                placeholder="List your subjects and grades..."
+                className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl dark:text-[#e9edef] text-sm h-20 outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Tertiary Education</label>
+              <textarea 
+                value={qualifications.tertiary} 
+                onChange={(e) => setQualifications({...qualifications, tertiary: e.target.value})}
+                placeholder="Degree, Diploma, Institution..."
+                className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl dark:text-[#e9edef] text-sm h-20 outline-none"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <button 
+                onClick={onCancel}
+                className="flex-1 py-3 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => onApply(job, qualifications)}
+                className="flex-[2] py-3 text-sm font-bold text-white bg-[#00a884] rounded-xl shadow-lg"
+              >
+                Submit Application
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 };

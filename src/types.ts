@@ -31,6 +31,12 @@ export interface User {
   friends?: string[];
   jobRole?: 'employer' | 'seeker';
   followingEmployers?: string[];
+  affiliateCode?: string;
+  referredBy?: string;
+  referralCount?: number;
+  isFeaturedSingle?: boolean;
+  hasSeenAffiliateWelcome?: boolean;
+  featuredPhotos?: string[];
 }
 
 export interface Job {
@@ -60,6 +66,11 @@ export interface JobApplication {
   status: 'applied' | 'reviewed' | 'accepted' | 'rejected';
   timestamp: any;
   coverLetter?: string;
+  qualifications?: {
+    oLevel?: string;
+    aLevel?: string;
+    tertiary?: string;
+  };
 }
 
 export interface Notification {
@@ -156,6 +167,8 @@ export interface AppSettings {
   siteName?: string;
   logoUrl?: string;
   faviconUrl?: string;
+  pointsPerInvitation?: number;
+  sensoredWords?: string[];
 }
 
 export interface PaymentProof {

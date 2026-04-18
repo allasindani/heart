@@ -108,6 +108,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
     // ===============================================================
     // Helper Functions
@@ -140,12 +144,18 @@ service cloud.firestore {
              data.category in ['General', 'Bronze', 'Silver', 'Gold', 'Platinum'] &&
              data.points is number &&
              (!('photoURL' in data) || data.photoURL == null || data.photoURL is string) &&
+             (!('firstName' in data) || data.firstName is string) &&
+             (!('lastName' in data) || data.lastName is string) &&
              (!('status' in data) || data.status == null || data.status is string) &&
+             (!('notificationsEnabled' in data) || data.notificationsEnabled is bool) &&
              (!('isOnline' in data) || data.isOnline == null || data.isOnline is bool) &&
              (!('lastSeen' in data) || data.lastSeen == null || data.lastSeen is timestamp) &&
              (!('suspended' in data) || data.suspended == null || data.suspended is bool) &&
              (!('datingProfile' in data) || data.datingProfile == null || data.datingProfile is map) &&
              (!('jobRole' in data) || data.jobRole in ['employer', 'seeker']) &&
+             (!('affiliateCode' in data) || data.affiliateCode is string) &&
+             (!('referredBy' in data) || data.referredBy == null || data.referredBy is string) &&
+             (!('referralCount' in data) || data.referralCount is number) &&
              (!('isVerified' in data) || data.isVerified is bool);
     }
 
@@ -158,11 +168,15 @@ service cloud.firestore {
     }
 
     function isValidPost(data) {
-      return data.keys().hasAll(['userId', 'content', 'createdAt', 'isAd', 'likes', 'commentCount']) &&
-             data.userId == request.auth.uid &&
+      return data.userId == request.auth.uid &&
              data.content is string && data.content.size() < 5000 &&
              data.likes is list &&
-             data.commentCount is number &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidStatus(data) {
+      return data.userId == request.auth.uid &&
+             data.type is string &&
              data.createdAt is timestamp;
     }
 
@@ -229,19 +243,20 @@ service cloud.firestore {
 
     match /statuses/{statusId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views']);
+      allow create: if isAuthenticated() && isValidStatus(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (resource.data.userId == request.auth.uid) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])) ||
+        isAdmin()
+      );
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /posts/{postId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (
-        (isValidPost(request.resource.data) && request.resource.data.isAd == false) ||
-        (isAdmin() && request.resource.data.isAd == true)
-      );
+      allow create: if isAuthenticated() && isValidPost(request.resource.data);
       allow update: if isAuthenticated() && (
-        (resource.data.userId == request.auth.uid && isValidPost(request.resource.data)) ||
+        (resource.data.userId == request.auth.uid) ||
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount'])) ||
         isAdmin()
       );
