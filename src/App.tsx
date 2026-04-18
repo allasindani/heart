@@ -4106,11 +4106,11 @@ const AdminDashboard = ({ user, onBack }: any) => {
         ))}
       </div>
 
-      <div className={cn("flex-1 p-4 space-y-6 pb-40 scroll-smooth custom-scrollbar", activeTab === 'users' ? "flex flex-col h-full overflow-hidden" : "overflow-y-auto")}>
+      <div className="flex-1 p-4 space-y-6 pb-40 scroll-smooth overflow-y-auto custom-scrollbar">
         {activeTab === 'users' ? (
-          <div className="flex-1 flex flex-col overflow-hidden gap-6 h-full pb-20">
-            {/* Scrollable Stats Section */}
-            <div className="flex-shrink-0 space-y-4 max-h-[40%] overflow-y-auto p-1 custom-scrollbar pr-2 mb-2">
+          <>
+            {/* Stats Section */}
+            <div className="space-y-4 p-1">
               <div className="flex justify-between items-center mb-1">
                 <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Dashboard Overview</h3>
                 <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_5px_rgba(34,197,94,0.5)]" />
@@ -4130,8 +4130,8 @@ const AdminDashboard = ({ user, onBack }: any) => {
               </div>
             </div>
 
-            {/* Scrollable User Management Section */}
-            <div className="flex-1 bg-white dark:bg-[#111b21] rounded-3xl shadow-lg border border-gray-100 dark:border-gray-800 overflow-hidden flex flex-col min-h-0">
+            {/* User Management Section */}
+            <div className="bg-white dark:bg-[#111b21] rounded-3xl shadow-lg border border-gray-100 dark:border-gray-800 flex flex-col">
               <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/30 dark:bg-gray-800/20">
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-[#00a884]" />
@@ -4139,7 +4139,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
                 </div>
                 <div className="text-[10px] font-black text-[#00a884] bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-full uppercase tracking-widest">{users.length} Records</div>
               </div>
-              <div className="flex-1 overflow-y-auto divide-y divide-gray-50 dark:divide-gray-800 custom-scrollbar">
+              <div className="divide-y divide-gray-50 dark:divide-gray-800">
                 {users.map(u => (
                   <div key={u.uid} className="p-4 space-y-3 hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
                     <div className="flex items-center gap-3">
@@ -4203,11 +4203,10 @@ const AdminDashboard = ({ user, onBack }: any) => {
                 ))}
               </div>
             </div>
-          </div>
+          </>
         ) : (
-          <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-40 scroll-smooth custom-scrollbar">
-
-        {activeTab === 'ads' && (
+          <>
+            {activeTab === 'ads' && (
           <div className="space-y-4">
             <h3 className="font-bold text-gray-700 dark:text-[#e9edef]">Active Advertisements</h3>
             {ads.length === 0 ? (
@@ -4507,7 +4506,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
             )}
           </div>
         )}
-      </div>
+      </>
     )}
   </div>
 </div>
