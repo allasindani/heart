@@ -4103,13 +4103,13 @@ const AdminDashboard = ({ user, onBack }: any) => {
   if (editingUser) return <ProfileSettings user={editingUser} onBack={() => setEditingUser(null)} onUpdate={handleUpdateUser} />;
 
   return (
-    <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a]">
-      <div className="bg-[#111b21] text-white p-4 flex items-center gap-6 shadow-md">
+    <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a] h-full max-h-full overflow-hidden">
+      <div className="bg-[#111b21] text-white p-4 flex items-center gap-6 shadow-md flex-shrink-0 z-10">
         <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
         <h2 className="text-xl font-medium flex items-center gap-2"><Shield className="w-5 h-5 text-[#00a884]" /> Admin Dashboard</h2>
       </div>
       
-      <div className="flex bg-white dark:bg-[#111b21] border-b border-gray-100 dark:border-gray-800 overflow-x-auto">
+      <div className="flex bg-white dark:bg-[#111b21] border-b border-gray-100 dark:border-gray-800 overflow-x-auto flex-shrink-0">
         {['users', 'ads', 'config', 'branding', 'payments', 'vaccancies', 'notifications'].map((t) => (
           <button 
             key={t}
@@ -4121,7 +4121,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
         ))}
       </div>
 
-      <div className="flex-1 p-4 space-y-6 pb-40 scroll-smooth overflow-y-auto custom-scrollbar">
+      <div className="flex-1 p-4 space-y-6 pb-32 scroll-smooth overflow-y-auto custom-scrollbar min-h-0">
         {activeTab === 'users' ? (
           <>
             {/* Stats Section */}
