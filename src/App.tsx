@@ -19,6 +19,7 @@ import {
   Plus,
   Image as ImageIcon,
   Video as VideoIcon,
+  CreditCard,
   ThumbsUp,
   MessageSquare,
   Share2,
@@ -372,6 +373,22 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
   const [error, setError] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [referredBy, setReferredBy] = useState<string | null>(null);
+  const [featuredSingles, setFeaturedSingles] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchFeatured = async () => {
+      try {
+        const q = query(collection(db, 'users'), where('isFeaturedSingle', '==', true), limit(5));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          setFeaturedSingles(snap.docs.map(doc => ({ uid: doc.id, ...doc.data() })));
+        }
+      } catch (e) {
+        console.error("Error fetching featured singles:", e);
+      }
+    };
+    fetchFeatured();
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -466,24 +483,44 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
         <h2 className="text-2xl font-black mb-1 text-[#111b21] dark:text-[#e9edef] tracking-tighter">{settings?.siteName || "Heart Connect"}</h2>
         <p className="text-xs text-gray-500 dark:text-[#8696a0] mb-5 font-medium">Connecting Hearts, One Chat at a Time</p>
         
-        <div className="mb-6 p-1">
-          <h3 className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase tracking-widest mb-3">Featured Singles Nearby</h3>
-          <div className="flex justify-center gap-5">
-            {[
-              { city: 'Bulawayo', age: 25, seed: 'woman1', img: 'https://picsum.photos/seed/zim1/200' },
-              { city: 'Harare', age: 30, seed: 'woman2', img: 'https://picsum.photos/seed/zim2/200' },
-              { city: 'Gweru', age: 35, seed: 'woman3', img: 'https://picsum.photos/seed/zim3/200' }
-            ].map((s) => (
-              <div key={s.seed} className="relative group cursor-pointer" onClick={() => alert(`${s.city} member online!`)}>
-                <img 
-                  src={s.img} 
-                  className="w-14 h-14 rounded-full border-2 border-[#00a884]/20 shadow-sm object-cover group-hover:scale-110 transition-transform" 
-                  alt={s.city} 
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
-                <div className="text-[9px] font-bold text-gray-500 dark:text-[#8696a0] mt-1">{s.city}</div>
-              </div>
+        <div className="mb-8 mt-2 overflow-hidden">
+          <div className="flex items-center justify-between px-1 mb-4">
+            <h3 className="text-[11px] font-black text-gray-400 dark:text-[#8696a0] uppercase tracking-[0.2em]">Featured Singles</h3>
+            <div className="flex gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-pulse"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00a884]/40"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00a884]/20"></span>
+            </div>
+          </div>
+          <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar -mx-4 px-4 snap-x">
+            {(featuredSingles.length > 0 ? featuredSingles : [
+              { displayName: 'Sarah', datingProfile: { city: 'Bulawayo', age: 25 }, photoURL: 'https://picsum.photos/seed/sarah1/400' },
+              { displayName: 'Grace', datingProfile: { city: 'Harare', age: 24 }, photoURL: 'https://picsum.photos/seed/grace2/400' },
+              { displayName: 'Zoe', datingProfile: { city: 'Victoria Falls', age: 27 }, photoURL: 'https://picsum.photos/seed/zoe3/400' },
+              { displayName: 'Tari', datingProfile: { city: 'Mutare', age: 26 }, photoURL: 'https://picsum.photos/seed/tari4/400' }
+            ]).map((s, idx) => (
+              <motion.div 
+                key={s.uid || idx} 
+                whileHover={{ y: -5 }}
+                className="relative flex-shrink-0 w-32 snap-center group cursor-pointer" 
+                onClick={() => alert("Sign up to chat with local singles!")}
+              >
+                <div className="relative aspect-[3/4] rounded-2xl overflow-hidden shadow-md group-hover:shadow-xl transition-all border border-black/5 dark:border-white/5">
+                  <img 
+                    src={s.photoURL} 
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                    alt={s.displayName} 
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity"></div>
+                  <div className="absolute bottom-2 left-2 right-2 text-left">
+                    <p className="text-[10px] font-black text-white truncate">{s.displayName.split(' ')[0]}, {s.datingProfile?.age || '20+'}</p>
+                    <p className="text-[7px] font-bold text-white/70 truncate flex items-center gap-0.5">
+                      <MapPin className="w-2 h-2" /> {s.datingProfile?.city || 'Nearby'}
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
             ))}
           </div>
         </div>
@@ -544,8 +581,8 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
           )}
 
           {error && <p className="text-red-500 text-xs font-bold">{error}</p>}
-          <button type="submit" className="w-full bg-[#00a884] text-white font-bold py-4 rounded-xl shadow-lg shadow-[#00a884]/20 active:scale-95 transition-all">
-            {isLogin ? 'Log In' : 'Sign Up'}
+          <button type="submit" className="w-full bg-[#00a884] text-white font-black py-4 rounded-xl shadow-xl shadow-[#00a884]/30 active:scale-[0.98] transition-all text-lg uppercase tracking-wider">
+            {isLogin ? 'Explore Hearts' : 'Join Heart Connect'}
           </button>
         </form>
 
@@ -1214,6 +1251,42 @@ export default function App() {
   }, [user?.uid]);
 
   useEffect(() => {
+    if (!selectedChat || !user) return;
+    
+    const resetUnread = async () => {
+      try {
+        const unreadKey = `unreadCount.${user.uid}`;
+        // Reset count
+        await updateDoc(doc(db, 'chats', selectedChat.id), {
+          [unreadKey]: 0,
+          'lastMessage.status': selectedChat.lastMessage?.senderId !== user.uid ? 'seen' : selectedChat.lastMessage.status
+        });
+        
+        // Mark all messages as seen
+        const q = query(
+          collection(db, `chats/${selectedChat.id}/messages`), 
+          where('status', '!=', 'seen'),
+          limit(20)
+        );
+        const snap = await getDocs(q);
+        const batch = writeBatch(db);
+        let hasUpdates = false;
+        snap.forEach(d => {
+          if (d.data().senderId !== user.uid) {
+            batch.update(d.ref, { status: 'seen' });
+            hasUpdates = true;
+          }
+        });
+        if (hasUpdates) await batch.commit();
+      } catch (e) {
+        console.error("Error resetting unread count:", e);
+      }
+    };
+    
+    resetUnread();
+  }, [selectedChat?.id, user?.uid]);
+
+  useEffect(() => {
     if (!selectedChat) return;
     const q = query(collection(db, `chats/${selectedChat.id}/messages`), orderBy('timestamp', 'asc'), limit(100));
     return onSnapshot(q, (snapshot) => setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message))), (e) => handleFirestoreError(e, OperationType.LIST, 'messages'));
@@ -1232,6 +1305,31 @@ export default function App() {
 
     return () => { unsubPosts(); unsubStatus(); unsubNotif(); };
   }, [user, activeTab]);
+
+  // Browser Push Notifications
+  useEffect(() => {
+    if (!user || notifications.length === 0) return;
+    
+    // Get the most recent unread notification
+    const latest = notifications[0];
+    if (!latest.read) {
+      // Check if we've already notified for this ID to avoid duplication
+      const lastNotifiedId = sessionStorage.getItem('lastNotifiedId');
+      if (lastNotifiedId !== latest.id) {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          const n = new Notification(latest.title || `New from ${latest.fromName}`, {
+            body: latest.text,
+            icon: appSettings.logoUrl || '/favicon.ico'
+          });
+          n.onclick = () => {
+            window.focus();
+            setShowNotifications(true);
+          };
+          sessionStorage.setItem('lastNotifiedId', latest.id);
+        }
+      }
+    }
+  }, [notifications, user?.uid, appSettings.logoUrl]);
 
   useEffect(() => {
     if (!user) return;
@@ -1385,6 +1483,14 @@ export default function App() {
     const otherId = selectedChat.participants.find(p => p !== user.uid);
     let notificationPromise: Promise<any> = Promise.resolve();
     if (otherId) {
+      // Increment unread count for recipient
+      const { increment } = await import('firebase/firestore');
+      const unreadKey = `unreadCount.${otherId}`;
+      
+      const unreadUpdatePromise = updateDoc(doc(db, 'chats', selectedChat.id), {
+        [unreadKey]: increment(1)
+      });
+      
       notificationPromise = addDoc(collection(db, 'notifications'), {
         userId: otherId,
         fromId: user.uid,
@@ -1725,9 +1831,18 @@ export default function App() {
                               <TierBadge tier={otherUser?.category} size={14} />
                               {otherUser?.isVerified && <VerifiedBadge size={14} />}
                             </h3>
-                            <span className="text-xs text-[#667781] dark:text-[#8696a0]">{chat.updatedAt?.toDate ? formatWhatsAppTime(chat.updatedAt.toDate()) : ''}</span>
+                            <div className="text-right flex flex-col items-end gap-1">
+                              <span className={cn("text-[10px] font-bold", (chat.unreadCount?.[user.uid] || 0) > 0 ? "text-[#00a884]" : "text-[#667781] dark:text-[#8696a0]")}>
+                                {chat.updatedAt?.toDate ? formatWhatsAppTime(chat.updatedAt.toDate()) : ''}
+                              </span>
+                              {(chat.unreadCount?.[user.uid] || 0) > 0 && (
+                                <div className="bg-[#00a884] text-white text-[10px] h-4 min-w-[20px] rounded-full px-1 flex items-center justify-center font-bold">
+                                  {chat.unreadCount![user.uid]}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-[14px] text-[#667781] dark:text-[#8696a0] truncate flex items-center gap-1">
+                          <div className={cn("text-[14px] truncate flex items-center gap-1", (chat.unreadCount?.[user.uid] || 0) > 0 ? "text-[#111b21] dark:text-[#e9edef] font-bold" : "text-[#667781] dark:text-[#8696a0]")}>
                             {isTyping ? (
                               <span className="text-[#00a884] font-bold animate-pulse text-[13px] tracking-tight flex items-center gap-1">
                                 <CircleDashed className="w-3 h-3 animate-spin" /> Typing...
@@ -3017,13 +3132,13 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
     </div>
   );
 };
-
 const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, onOpenProfile, setUser }: any) => {
   const [discoverUsers, setDiscoverUsers] = useState<User[]>([]);
   const [featuredSingles, setFeaturedSingles] = useState<User[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
+  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
 
   const hasGender = user.datingProfile?.gender && user.datingProfile.gender !== '';
   const limits = { General: 1, Bronze: 3, Silver: 10, Gold: Infinity, Platinum: Infinity };
@@ -3050,7 +3165,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
           const profile = u.datingProfile!;
           const ageMatch = profile.age >= filters.minAge && profile.age <= filters.maxAge;
           const genderMatch = filters.gender === 'all' || profile.gender === filters.gender;
-          const searchMatch = !searchQuery || u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || profile.bio.toLowerCase().includes(searchQuery.toLowerCase());
+          const searchMatch = !searchQuery || u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || profile.bio?.toLowerCase().includes(searchQuery.toLowerCase());
           
           let distanceMatch = true;
           if (user.datingProfile?.location && profile.location) {
@@ -3066,7 +3181,8 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
           return ageMatch && genderMatch && distanceMatch && searchMatch;
         });
 
-        setDiscoverUsers(filtered);
+        // Randomize order for fresh feel
+        setDiscoverUsers(filtered.sort(() => Math.random() - 0.5));
       } catch (error) {
         console.error("Error fetching dating users:", error);
       } finally {
@@ -3087,6 +3203,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
   };
 
   const handleNext = () => {
+    setSwipeDirection(null);
     if (currentIndex < discoverUsers.length - 1) {
       setCurrentIndex(prev => prev + 1);
     } else {
@@ -3095,182 +3212,306 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
   };
 
   const handleLike = async () => {
-    if (!user) return;
+    if (!user || discoverUsers.length === 0) return;
     const currentDiscoverUser = discoverUsers[currentIndex];
     
     if (matchCount >= currentLimit) {
-      alert(`Match limit reached (${matchCount}/${currentLimit}). Upgrade to unlock more swipes!`);
+      alert(`Daily swipe limit reached (${matchCount}/${currentLimit}). Upgrade to unlock more hearts!`);
       return;
     }
 
-    const { increment } = await import('firebase/firestore');
-    await updateDoc(doc(db, 'users', user.uid), { matchCount: increment(1) });
-    setUser((prev: any) => prev ? { ...prev, matchCount: (prev.matchCount || 0) + 1 } : null);
-    
-    await addDoc(collection(db, 'notifications'), {
-      userId: currentDiscoverUser.uid,
-      fromId: user.uid,
-      fromName: user.displayName,
-      type: 'like',
-      text: 'liked you in dating!',
-      read: false,
-      timestamp: serverTimestamp()
-    });
-
-    handleNext();
+    setSwipeDirection('right');
+    setTimeout(async () => {
+      try {
+        const { increment } = await import('firebase/firestore');
+        await updateDoc(doc(db, 'users', user.uid), { matchCount: increment(1) });
+        setUser((prev: any) => prev ? { ...prev, matchCount: (prev.matchCount || 0) + 1 } : null);
+        
+        await addDoc(collection(db, 'notifications'), {
+          userId: currentDiscoverUser.uid,
+          fromId: user.uid,
+          fromName: user.displayName,
+          type: 'like',
+          text: 'liked you in dating!',
+          read: false,
+          timestamp: serverTimestamp()
+        });
+      } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'users'); }
+      handleNext();
+    }, 300);
   };
 
-  if (loading) return <div className="flex-1 flex items-center justify-center"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>;
+  const handlePass = () => {
+    setSwipeDirection('left');
+    setTimeout(() => handleNext(), 300);
+  };
+
+  if (loading) return <div className="flex-1 flex items-center justify-center font-bold text-gray-400 dark:text-gray-600 animate-pulse">Finding your match...</div>;
 
   const currentUser = discoverUsers[currentIndex];
 
   return (
-    <div className="flex-1 flex flex-col p-4 bg-[#f0f2f5] dark:bg-[#0b141a] relative overflow-hidden">
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          <h2 className="text-xl font-black text-[#111b21] dark:text-[#e9edef] tracking-tighter">Discover</h2>
-          <div className="flex items-center gap-1.5 mt-1 bg-white/50 dark:bg-black/20 px-2 py-0.5 rounded-full w-fit border border-gray-100/50 dark:border-white/5">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-pulse" />
-            <span className="text-[10px] font-black text-[#00a884] uppercase tracking-wider">
-              Swipes Used: {matchCount} / {currentLimit === Infinity ? 'Unlimited' : currentLimit}
-            </span>
+    <div className="flex-1 flex flex-col p-4 bg-[#f0f2f5] dark:bg-[#0b141a] relative overflow-hidden h-full">
+      {/* Subtle Background Glows */}
+      <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+        <div className="absolute top-10 left-10 w-64 h-64 bg-[#00a884] rounded-full blur-[100px]" />
+        <div className="absolute bottom-10 right-10 w-64 h-64 bg-pink-500 rounded-full blur-[100px]" />
+      </div>
+
+      <div className="flex justify-between items-center mb-6 z-10">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-tr from-[#00a884] to-[#008069] rounded-2xl flex items-center justify-center shadow-lg transform -rotate-3">
+            <Heart className="w-6 h-6 text-white fill-white" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-[#111b21] dark:text-[#e9edef] tracking-tighter leading-none mb-1">Discover</h2>
+            <div className="flex items-center gap-1.5 bg-white dark:bg-black/20 px-2.5 py-0.5 rounded-full border border-black/5 dark:border-white/5">
+              <span className="text-[9px] font-black text-[#00a884] uppercase tracking-wider">
+                Swipes: {matchCount} / {currentLimit === Infinity ? 'Unlimited' : currentLimit}
+              </span>
+            </div>
           </div>
         </div>
         <button 
           onClick={() => setShowFilters(!showFilters)}
-          className="p-2.5 bg-white dark:bg-[#2a3942] rounded-2xl shadow-sm text-[#00a884] hover:scale-105 transition-transform"
+          className="p-3 bg-white dark:bg-[#2a3942] rounded-2xl shadow-sm text-[#00a884] hover:scale-105 active:scale-95 transition-all border border-black/5 dark:border-white/10"
         >
-          <Search className="w-5 h-5" />
+          <Filter className="w-6 h-6" />
         </button>
       </div>
 
-      {featuredSingles.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] mb-3 px-1">Featured Singles</h3>
-          <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar px-1">
+      {featuredSingles.length > 0 && !showFilters && (
+        <div className="mb-8 z-10">
+          <div className="flex items-center justify-between px-1 mb-4">
+            <h3 className="text-[11px] font-black text-gray-400 dark:text-[#8696a0] uppercase tracking-[0.2em] flex items-center gap-2">
+              <Sparkles className="w-3 h-3 text-yellow-500" /> Featured Hearts
+            </h3>
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div>
+          </div>
+          <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar px-1 snap-x">
             {featuredSingles.map(single => (
-              <div key={single.uid} onClick={() => onUserClick(single)} className="flex-shrink-0 w-24 space-y-2 cursor-pointer group">
-                <div className="relative w-24 h-24 rounded-3xl overflow-hidden border-2 border-[#00a884]/20 group-hover:border-[#00a884] transition-all">
-                  <img src={single.photoURL} className="w-full h-full object-cover" alt={single.displayName} referrerPolicy="no-referrer" />
-                  <div className="absolute top-1 right-1">
-                    <Star className="w-4 h-4 text-yellow-400 fill-current drop-shadow-md" />
+              <motion.div 
+                key={single.uid} 
+                onClick={() => onUserClick(single)} 
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="flex-shrink-0 w-24 space-y-2 cursor-pointer group snap-center"
+              >
+                <div className="relative w-24 h-32 rounded-3xl overflow-hidden border-2 border-white dark:border-white/10 shadow-lg group-hover:border-[#00a884] transition-all">
+                  <img src={single.photoURL} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={single.displayName} referrerPolicy="no-referrer" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
+                  <div className="absolute bottom-2 left-2 right-2">
+                    <p className="text-[10px] font-black text-white truncate">{single.displayName.split(' ')[0]}</p>
+                    <p className="text-[7px] font-medium text-white/70 flex items-center gap-0.5">
+                      <MapPin className="w-2 h-2" /> {single.datingProfile?.city || 'Nearby'}
+                    </p>
+                  </div>
+                  <div className="absolute top-2 right-2">
+                    <div className="bg-yellow-400 p-1 rounded-lg">
+                      <Star className="w-2 h-2 text-white fill-current" />
+                    </div>
                   </div>
                 </div>
-                <p className="text-[10px] font-bold dark:text-[#e9edef] text-center truncate px-1">{single.displayName.split(' ')[0]}, {single.datingProfile?.age}</p>
-              </div>
+              </motion.div>
             ))}
           </div>
         </div>
       )}
 
+      <div className="flex-1 relative flex items-center justify-center p-2 mb-24">
+        {discoverUsers.length > 0 ? (
+          <>
+            <AnimatePresence mode="wait">
+              <motion.div 
+                key={currentUser.uid}
+                drag="x"
+                dragConstraints={{ left: 0, right: 0 }}
+                onDragEnd={(e, info) => {
+                  if (info.offset.x > 100) { setSwipeDirection('right'); handleLike(); }
+                  else if (info.offset.x < -100) { setSwipeDirection('left'); handlePass(); }
+                }}
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ 
+                  scale: 1, 
+                  opacity: 1, 
+                  y: 0,
+                  x: swipeDirection === 'right' ? 500 : swipeDirection === 'left' ? -500 : 0,
+                  rotate: swipeDirection === 'right' ? 20 : swipeDirection === 'left' ? -20 : 0
+                }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                className="absolute inset-0 max-w-sm mx-auto z-20 group"
+              >
+                <div className="relative h-full w-full rounded-[3.5rem] overflow-hidden shadow-2xl border-4 border-white dark:border-[#111b21]">
+                  <img 
+                    src={currentUser.photoURL} 
+                    className="w-full h-full object-cover" 
+                    alt={currentUser.displayName}
+                    referrerPolicy="no-referrer"
+                  />
+                  
+                  {/* Cinematic Gradient Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent pointer-events-none" />
+
+                  {/* Info Section */}
+                  <div className="absolute bottom-0 left-0 right-0 p-8 text-white pointer-events-none">
+                    <div className="flex items-center gap-2 mb-2">
+                       <h3 className="text-3xl font-black tracking-tight">{currentUser.displayName.split(' ')[0]}, {currentUser.datingProfile?.age}</h3>
+                       {currentUser.isVerified && <VerifiedBadge size={20} />}
+                    </div>
+                    
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex items-center gap-1 bg-white/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
+                        <MapPin className="w-4 h-4 text-[#00a884]" />
+                        <span className="text-xs font-bold text-white/90">{currentUser.datingProfile?.city || 'Nearby'}</span>
+                      </div>
+                      {currentUser.datingProfile?.zodiac && (
+                        <div className="flex items-center gap-1 bg-white/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
+                          <Sparkles className="w-4 h-4 text-yellow-400" />
+                          <span className="text-xs font-bold text-white/90">{currentUser.datingProfile.zodiac}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="text-sm text-gray-300 italic line-clamp-2 leading-relaxed mb-6 font-medium">
+                      "{currentUser.datingProfile?.bio || "Let's connect and see where it goes!"}"
+                    </p>
+
+                    <div className="flex gap-2 flex-wrap pb-2">
+                      {currentUser.datingProfile?.interests?.slice(0, 3).map((interest: string) => (
+                        <span key={interest} className="text-[9px] font-black uppercase tracking-widest px-3 py-1 bg-[#00a884]/30 border border-[#00a884]/40 rounded-lg backdrop-blur-sm">
+                          {interest}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Swipe Overlay Indicators */}
+                  <AnimatePresence>
+                    {swipeDirection === 'right' && (
+                      <motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} className="absolute top-12 left-10 border-4 border-green-400 rounded-2xl px-6 py-2 rotate-[-15deg] backdrop-blur-md bg-green-400/10">
+                        <span className="text-green-400 text-4xl font-black tracking-tighter">LIKE</span>
+                      </motion.div>
+                    )}
+                    {swipeDirection === 'left' && (
+                      <motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} className="absolute top-12 right-10 border-4 border-red-500 rounded-2xl px-6 py-2 rotate-[15deg] backdrop-blur-md bg-red-500/10">
+                        <span className="text-red-500 text-4xl font-black tracking-tighter">PASS</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+
+            {/* Floating Action Buttons */}
+            <div className="absolute bottom-[-10px] left-0 right-0 flex justify-center items-center gap-6 z-30">
+              <motion.button 
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={handlePass}
+                className="w-16 h-16 bg-white dark:bg-[#202c33] rounded-full flex items-center justify-center text-red-500 shadow-xl border border-black/5 dark:border-white/5 group hover:bg-red-50 transition-colors"
+              >
+                <X className="w-8 h-8 group-hover:rotate-90 transition-transform" />
+              </motion.button>
+
+              <motion.button 
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => onUserClick(currentUser)}
+                className="w-12 h-12 bg-white dark:bg-[#202c33] rounded-full flex items-center justify-center text-blue-500 shadow-xl border border-black/5 dark:border-white/5"
+              >
+                <UserIcon className="w-6 h-6" />
+              </motion.button>
+
+              <motion.button 
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={handleLike}
+                className="w-20 h-20 bg-gradient-to-br from-[#00a884] to-[#008069] rounded-full flex items-center justify-center text-white shadow-2xl shadow-[#00a884]/30 group"
+              >
+                <Heart className="w-10 h-10 group-hover:scale-125 transition-transform fill-white" />
+              </motion.button>
+            </div>
+          </>
+        ) : (
+          <div className="text-center p-8 bg-white dark:bg-[#111b21] rounded-[3rem] shadow-xl border border-black/5 dark:border-white/5 max-w-sm">
+            <div className="bg-[#f0f2f5] dark:bg-[#202c33] w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <RefreshCw className="w-10 h-10 text-[#00a884] animate-spin-slow" />
+            </div>
+            <h3 className="text-xl font-black dark:text-white mb-2 tracking-tighter">No more hearts nearby</h3>
+            <p className="text-sm text-gray-500 dark:text-[#8696a0] mb-8 font-medium">We've shown you everyone in your current range. Adjust your filters to find more connections!</p>
+            <button 
+              onClick={() => {
+                onUpdateFilters({ ...filters, maxDistance: 100 });
+                setCurrentIndex(0);
+              }}
+              className="w-full bg-[#00a884] text-white font-black py-4 rounded-2xl shadow-lg shadow-[#00a884]/20 active:scale-95 transition-all uppercase tracking-widest text-xs"
+            >
+              Expand Search Radius
+            </button>
+          </div>
+        )}
+      </div>
+
       <AnimatePresence>
         {showFilters && (
           <motion.div 
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ opacity: 0, y: 100 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="bg-white dark:bg-[#202c33] p-4 rounded-2xl shadow-lg mb-4 space-y-4 z-20"
+            exit={{ opacity: 0, y: 100 }}
+            className="fixed inset-x-0 bottom-0 bg-white dark:bg-[#111b21] p-8 rounded-t-[40px] shadow-2xl z-50 border-t border-gray-100 dark:border-white/5"
           >
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-bold text-gray-500 block mb-1">Min Age</label>
-                <input type="number" value={filters.minAge} onChange={(e) => onUpdateFilters({...filters, minAge: Number(e.target.value)})} className="w-full border-b border-gray-200 dark:border-gray-800 py-1 outline-none dark:bg-transparent dark:text-[#e9edef]" />
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="text-xl font-black dark:text-[#e9edef]">Preferences</h3>
+              <button onClick={() => setShowFilters(false)} className="p-2 bg-gray-50 dark:bg-[#202c33] rounded-full"><X className="w-5 h-5 dark:text-gray-400" /></button>
+            </div>
+            
+            <div className="space-y-8">
+              <div className="space-y-4">
+                <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-widest">
+                  <span>Age Range</span>
+                  <span className="text-[#00a884]">{filters.minAge} - {filters.maxAge}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="number" value={filters.minAge} onChange={(e) => onUpdateFilters({...filters, minAge: Number(e.target.value)})} className="bg-gray-50 dark:bg-[#202c33] p-4 rounded-2xl outline-none dark:text-white font-bold" placeholder="Min" />
+                  <input type="number" value={filters.maxAge} onChange={(e) => onUpdateFilters({...filters, maxAge: Number(e.target.value)})} className="bg-gray-50 dark:bg-[#202c33] p-4 rounded-2xl outline-none dark:text-white font-bold" placeholder="Max" />
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 block mb-1">Max Age</label>
-                <input type="number" value={filters.maxAge} onChange={(e) => onUpdateFilters({...filters, maxAge: Number(e.target.value)})} className="w-full border-b border-gray-200 dark:border-gray-800 py-1 outline-none dark:bg-transparent dark:text-[#e9edef]" />
+
+              <div className="space-y-4">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest block">I am interested in</span>
+                <div className="flex gap-2">
+                  {['all', 'male', 'female'].map(g => (
+                    <button 
+                      key={g}
+                      onClick={() => onUpdateFilters({...filters, gender: g})}
+                      className={cn(
+                        "flex-1 py-4 rounded-2xl font-bold transition-all capitalize",
+                        filters.gender === g ? "bg-[#00a884] text-white shadow-lg shadow-[#00a884]/20" : "bg-gray-50 dark:bg-[#202c33] text-gray-500 dark:text-gray-400"
+                      )}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-            <div>
-              <label className="text-xs font-bold text-gray-500 block mb-1">Gender Preference</label>
-              <select value={filters.gender} onChange={(e) => onUpdateFilters({...filters, gender: e.target.value})} className="w-full border-b border-gray-200 dark:border-gray-800 py-1 outline-none bg-transparent dark:text-[#e9edef]">
-                <option value="all">All</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-              </select>
-            </div>
-            <button onClick={() => setShowFilters(false)} className="w-full bg-[#00a884] text-white py-2 rounded-xl font-bold">Apply Filters</button>
+
+            <button onClick={() => setShowFilters(false)} className="w-full bg-[#00a884] text-white py-5 rounded-3xl font-black mt-10 shadow-xl shadow-[#00a884]/20 active:scale-95 transition-all">
+              FIND MATCHES
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
 
       {!hasGender && (
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-900/30 p-4 rounded-2xl mb-4 flex items-center gap-3">
-          <ShieldAlert className="w-5 h-5 text-yellow-600" />
+        <div className="bg-gradient-to-r from-[#00a884]/90 to-[#01c398]/90 p-4 rounded-2xl mb-4 flex items-center gap-3 text-white shadow-lg shadow-[#00a884]/20 m-2">
+          <Sparkles className="w-5 h-5 shrink-0" />
           <div className="flex-1">
-            <p className="text-xs font-bold text-yellow-800 dark:text-yellow-200">Complete Your Profile</p>
-            <p className="text-[10px] text-yellow-700 dark:text-yellow-300">Set your gender to get better matches.</p>
+            <p className="text-xs font-bold">Complete Your Profile</p>
+            <p className="text-[10px] opacity-80">Set your gender to get better matches.</p>
           </div>
-          <button onClick={onOpenProfile} className="text-xs font-bold text-yellow-800 dark:text-yellow-200 underline">Update</button>
-        </div>
-      )}
-
-      {discoverUsers.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-          <Heart className="w-16 h-16 text-gray-200 dark:text-gray-800 mb-4" />
-          <p className="text-gray-500 dark:text-[#8696a0]">No matches found. Try expanding your search!</p>
-        </div>
-      ) : (
-        <div className="flex-1 relative flex flex-col items-center justify-center">
-          <AnimatePresence mode='popLayout'>
-            <motion.div 
-              key={currentUser.uid}
-              drag="x"
-              dragConstraints={{ left: 0, right: 0 }}
-              onDragEnd={(_e, info) => {
-                if (info.offset.x > 100) handleLike();
-                else if (info.offset.x < -100) handleNext();
-              }}
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ 
-                opacity: 0, 
-                scale: 0.8,
-                transition: { duration: 0.1 }
-              }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="absolute inset-x-0 mx-auto max-w-sm w-full bg-white dark:bg-[#202c33] rounded-[40px] shadow-2xl overflow-hidden h-[500px] flex flex-col border-4 border-white dark:border-[#202c33] cursor-grab active:cursor-grabbing z-10"
-            >
-              <div className="flex-1 bg-gray-200 dark:bg-gray-800 relative select-none pointer-events-none">
-                <img 
-                  src={currentUser.photoURL || `https://picsum.photos/seed/${currentUser.uid}/400/600`} 
-                  className="w-full h-full object-cover" 
-                  alt={currentUser.displayName} 
-                  referrerPolicy="no-referrer"
-                  onError={handleImageError}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent pointer-events-none" />
-                <div className="absolute bottom-0 left-0 right-0 p-6 text-white text-left pointer-events-none">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-2xl font-bold flex items-center gap-1">
-                      {currentUser.displayName}, {currentUser.datingProfile?.age}
-                      <TierBadge tier={currentUser.category} size={20} />
-                      {currentUser.isVerified && <VerifiedBadge size={20} />}
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm opacity-80 mb-2 font-medium">
-                    <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {currentUser.datingProfile?.city || 'Nearby'}</span>
-                    <span className="flex items-center gap-1"><ShieldCheck className="w-4 h-4" /> {currentUser.isVerified ? 'Verified' : 'Unverified'}</span>
-                  </div>
-                  <p className="text-sm opacity-90 line-clamp-2 italic tracking-tight">"{currentUser.datingProfile?.bio}"</p>
-                </div>
-              </div>
-              <div className="p-6 flex justify-center gap-6 items-center">
-                <button onClick={handleNext} className="w-16 h-16 rounded-full border-2 border-red-100 dark:border-red-900/30 flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 active:scale-95 transition-all shadow-sm">
-                  <X className="w-8 h-8" />
-                </button>
-                <button onClick={() => onUserClick(currentUser)} className="w-12 h-12 rounded-full border border-gray-100 dark:border-gray-800 flex items-center justify-center text-[#00a884] hover:bg-gray-50 active:scale-95 transition-all">
-                  <UserIcon className="w-5 h-5" />
-                </button>
-                <button onClick={handleLike} className="w-16 h-16 rounded-full bg-[#00a884] flex items-center justify-center text-white hover:bg-[#008069] active:scale-95 transition-all shadow-xl">
-                  <Heart className="w-8 h-8 fill-current" />
-                </button>
-              </div>
-            </motion.div>
-          </AnimatePresence>
-          {discoverUsers.length > 1 && (
-            <div className="absolute inset-x-4 h-[500px] top-6 scale-95 opacity-40 -z-10 bg-white dark:bg-[#111b21] rounded-[40px] shadow-lg border border-gray-100 dark:border-gray-800 mx-auto max-w-sm" />
-          )}
+          <button onClick={onOpenProfile} className="text-xs font-bold underline">Update</button>
         </div>
       )}
     </div>
@@ -3351,158 +3592,170 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliat
   if (!fullUser) return <div className="flex-1 flex items-center justify-center bg-white dark:bg-[#0b141a]"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>;
 
   return (
-    <div className="flex-1 flex flex-col bg-white dark:bg-[#0b141a]">
-      <div className="relative h-72">
-        <img 
-          src={fullUser.photoURL || `https://picsum.photos/seed/${fullUser.uid}/600/800`} 
-          className="w-full h-full object-cover" 
-          alt={fullUser.displayName} 
-          referrerPolicy="no-referrer" 
-          onError={handleImageError}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-        <div className="absolute top-4 left-0 right-0 px-4 flex justify-between items-center z-10">
-          <button onClick={onBack} className="p-2 bg-black/20 backdrop-blur-md rounded-full text-white"><ChevronLeft className="w-6 h-6" /></button>
-          {fullUser.uid === user.uid && (
-            <button 
-              onClick={onEditProfile} 
-              className="px-4 py-2 bg-[#00a884] text-white rounded-full text-xs font-bold shadow-lg shadow-[#00a884]/20 flex items-center gap-2 active:scale-95 transition-all"
-            >
-              <Edit2 className="w-4 h-4" /> Edit Profile
-            </button>
-          )}
+    <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a] overflow-y-auto custom-scrollbar">
+      {/* Cover & Profile Section (WhatsApp Business Style) */}
+      <div className="relative bg-white dark:bg-[#111b21] pb-4 shadow-sm">
+        <div className="relative h-48 md:h-56 bg-gray-200 dark:bg-gray-800 overflow-hidden">
+          <img 
+            src={fullUser.coverURL || `https://picsum.photos/seed/${fullUser.uid}_cover/800/400?blur=1`} 
+            className="w-full h-full object-cover" 
+            alt="Cover" 
+            referrerPolicy="no-referrer"
+            onError={(e) => {
+              e.currentTarget.src = `https://picsum.photos/seed/${fullUser.uid}_backup/800/400?blur=5`;
+            }}
+          />
+          <div className="absolute inset-0 bg-black/10" />
+          <button onClick={onBack} className="absolute top-4 left-4 p-2 bg-black/30 backdrop-blur-md rounded-full text-white z-10 hover:bg-black/50 transition-colors">
+            <ChevronLeft className="w-6 h-6" />
+          </button>
         </div>
-        <div className="absolute bottom-6 left-6 text-white">
-          <h2 className="text-3xl font-bold flex items-center gap-2">
+
+        <div className="px-5 -mt-12 relative flex items-end justify-between">
+          <div className="relative">
+            <div className="p-1 bg-white dark:bg-[#111b21] rounded-[2rem] shadow-xl">
+              <Avatar 
+                src={fullUser.photoURL} 
+                name={fullUser.displayName} 
+                size={110} 
+                className="rounded-[1.8rem] overflow-hidden" 
+              />
+            </div>
+            {fullUser.isOnline && (
+              <div className="absolute bottom-1 right-1 w-5 h-5 bg-green-500 rounded-full border-4 border-white dark:border-[#111b21] shadow-lg z-20 animate-pulse"></div>
+            )}
+          </div>
+          
+          <div className="flex gap-2 mb-2">
+            <button onClick={handleStartChat} className="p-3 bg-gray-100 dark:bg-gray-800 rounded-full text-[#667781] dark:text-[#8696a0] hover:bg-gray-200 transition-colors">
+              <MessageSquare className="w-6 h-6" />
+            </button>
+            <button className="p-3 bg-gray-100 dark:bg-gray-800 rounded-full text-[#667781] dark:text-[#8696a0] hover:bg-gray-200 transition-colors">
+              <Phone className="w-6 h-6" />
+            </button>
+            <button className="p-3 bg-gray-100 dark:bg-gray-800 rounded-full text-[#667781] dark:text-[#8696a0] hover:bg-gray-200 transition-colors">
+              <Share2 className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-5 mt-4 space-y-1">
+          <h2 className="text-2xl font-bold text-[#111b21] dark:text-[#e9edef] flex items-center gap-2">
             {fullUser.displayName}
-            <TierBadge tier={fullUser.category} size={24} />
-            {fullUser.isVerified && <VerifiedBadge size={24} />}
+            <TierBadge tier={fullUser.category} size={20} />
+            {fullUser.isVerified && <VerifiedBadge size={20} />}
           </h2>
-          <p className="opacity-80 flex items-center gap-2">
-            {fullUser.isOnline ? <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> : null}
-            {fullUser.isOnline ? 'Online' : 'Offline'}
+          <p className="text-[#00a884] font-semibold text-sm uppercase tracking-wide">
+            {fullUser.jobRole === 'employer' ? 'Premium Business Account' : 'Verified Member'}
           </p>
         </div>
       </div>
-      <div className="p-6 space-y-6">
-        <div className="flex gap-4">
-          {requestStatus === 'none' && (
-            <button onClick={sendFriendRequest} className="flex-1 bg-[#00a884] text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2">
-              <UserPlus className="w-5 h-5" /> Add Friend
-            </button>
-          )}
-          {requestStatus === 'pending' && (
-            <button disabled className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-500 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
-              <CircleDashed className="w-5 h-5 animate-spin" /> Request Sent
-            </button>
-          )}
-          {requestStatus === 'accepted' && (
-            <button disabled className="flex-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
-              <UserCheck className="w-5 h-5" /> Friends
-            </button>
-          )}
-          <button onClick={handleStartChat} className="flex-1 border-2 border-[#00a884] text-[#00a884] py-3 rounded-xl font-bold flex items-center justify-center gap-2">
-            <MessageSquare className="w-5 h-5" /> Message
+
+      {/* Action Buttons */}
+      <div className="px-5 py-6 flex gap-3">
+        {fullUser.uid !== user.uid && requestStatus === 'none' && (
+          <button onClick={sendFriendRequest} className="flex-1 bg-[#00a884] text-white py-3.5 rounded-2xl font-bold shadow-lg shadow-[#00a884]/20 active:scale-95 transition-all text-sm uppercase tracking-wider">
+            Connect
           </button>
-        </div>
-        <div className="space-y-4">
-          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">About</h4>
-          <p className="text-gray-700 dark:text-[#e9edef] leading-relaxed">{fullUser.datingProfile?.bio || fullUser.status || "No bio available."}</p>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-gray-50 dark:bg-[#111b21] p-3 rounded-xl">
-              <span className="text-[10px] text-gray-400 uppercase font-bold block">Age</span>
-              <span className="font-bold dark:text-[#e9edef]">{fullUser.datingProfile?.age || 'N/A'}</span>
+        )}
+        {fullUser.uid !== user.uid && requestStatus === 'pending' && (
+          <button disabled className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-400 py-3.5 rounded-2xl font-bold text-sm uppercase tracking-wider">
+            Pending Request
+          </button>
+        )}
+        <button onClick={handleStartChat} className={cn("flex-1 bg-white dark:bg-[#111b21] dark:text-white border border-gray-200 dark:border-white/5 py-3.5 rounded-2xl font-bold shadow-sm active:scale-95 transition-all text-sm uppercase tracking-wider", fullUser.uid === user.uid && "hidden")}>
+          Chat Now
+        </button>
+        {fullUser.uid === user.uid && (
+          <button onClick={onEditProfile} className="flex-1 bg-[#00a884] text-white py-3.5 rounded-2xl font-bold shadow-lg shadow-[#00a884]/20 active:scale-95 transition-all text-sm uppercase tracking-wider flex items-center justify-center gap-2">
+            <Edit2 size={16} /> Edit My Profile
+          </button>
+        )}
+      </div>
+
+      {/* Business Details Section */}
+      <div className="space-y-4 px-5 pb-8">
+        {/* Info Blocks */}
+        <div className="bg-white dark:bg-[#111b21] rounded-[2rem] shadow-sm divide-y dark:divide-gray-800 overflow-hidden">
+          <div className="p-5 flex items-start gap-4">
+            <div className="p-2 bg-gray-50 dark:bg-[#202c33] rounded-xl text-[#667781] dark:text-[#8696a0]">
+              <LayoutGrid size={20} />
             </div>
-            <div className="bg-gray-50 dark:bg-[#111b21] p-3 rounded-xl">
-              <span className="text-[10px] text-gray-400 uppercase font-bold block">Location</span>
-              <span className="font-bold dark:text-[#e9edef]">{fullUser.datingProfile?.city || 'N/A'}</span>
+            <div className="flex-1">
+              <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest mb-1">About</h4>
+              <p className="text-sm text-[#111b21] dark:text-[#e9edef] leading-relaxed">
+                {fullUser.datingProfile?.bio || fullUser.status || "Hello! I am using Heart Connect."}
+              </p>
             </div>
           </div>
 
-          {fullUser.uid === user.uid && (
-            <button 
-              onClick={onOpenAffiliate}
-              className="w-full flex items-center justify-between p-4 bg-[#00a884]/5 rounded-2xl border border-[#00a884]/20 group transition-all hover:bg-[#00a884]/10"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-[#00a884] rounded-lg text-white">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div className="text-left">
-                  <h5 className="text-sm font-bold dark:text-white">Affiliate Program</h5>
-                  <p className="text-[10px] text-gray-500">Earn points by inviting friends</p>
-                </div>
-              </div>
-              <ChevronRight className="w-5 h-5 text-[#00a884] group-hover:translate-x-1 transition-transform" />
-            </button>
-          )}
+          <div className="p-5 flex items-start gap-4">
+            <div className="p-2 bg-gray-50 dark:bg-[#202c33] rounded-xl text-[#667781] dark:text-[#8696a0]">
+              <MapPin size={20} />
+            </div>
+            <div className="flex-1">
+              <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest mb-1">Location</h4>
+              <p className="text-sm text-[#111b21] dark:text-[#e9edef]">
+                {fullUser.datingProfile?.city || 'Not specified'}, {fullUser.datingProfile?.country || 'Zimbabwe'}
+              </p>
+            </div>
+          </div>
 
-          {user.isAdmin && (
-            <div className="space-y-4 pt-4 border-t dark:border-gray-800">
-              <h4 className="text-xs font-bold text-red-500 uppercase tracking-widest">Admin Controls</h4>
-              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#1b2831] rounded-2xl">
-                <div>
-                  <h5 className="text-sm font-bold dark:text-white">Featured Single</h5>
-                  <p className="text-[10px] text-gray-400">Display on home and dating tab</p>
-                </div>
-                <button 
-                  onClick={async () => {
-                    await updateDoc(doc(db, 'users', fullUser.uid), { isFeaturedSingle: !fullUser.isFeaturedSingle });
-                    alert("User featured status updated!");
-                  }}
-                  className={cn(
-                    "w-12 h-6 rounded-full transition-all relative",
-                    fullUser.isFeaturedSingle ? "bg-[#00a884]" : "bg-gray-300"
-                  )}
-                >
-                  <div className={cn("w-4 h-4 bg-white rounded-full absolute top-1 transition-all", fullUser.isFeaturedSingle ? "right-1" : "left-1")} />
-                </button>
-              </div>
+          <div className="p-5 flex items-start gap-4">
+            <div className="p-2 bg-gray-50 dark:bg-[#202c33] rounded-xl text-[#111b21] dark:text-[#e9edef]">
+              <span className="text-lg font-bold">18+</span>
+            </div>
+            <div className="flex-1">
+              <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest mb-1">Age & Status</h4>
+              <p className="text-sm text-[#111b21] dark:text-[#e9edef]">
+                {fullUser.datingProfile?.age || '20+'} years old • {fullUser.category} Membership
+              </p>
+            </div>
+          </div>
+        </div>
 
-              <div>
-                <h5 className="text-sm font-bold dark:text-white mb-2">Featured Photos</h5>
-                <div className="grid grid-cols-3 gap-2">
-                  {fullUser.featuredPhotos?.map((photo, i) => (
-                    <div key={i} className="relative aspect-square rounded-xl overflow-hidden group">
-                      <img src={photo} className="w-full h-full object-cover" alt={`Featured ${i}`} referrerPolicy="no-referrer" />
-                      <button 
-                        onClick={async () => {
-                          const newPhotos = fullUser.featuredPhotos?.filter((_, idx) => idx !== i);
-                          await updateDoc(doc(db, 'users', fullUser.uid), { featuredPhotos: newPhotos });
-                        }}
-                        className="absolute top-1 right-1 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                  <label className="aspect-square bg-gray-100 dark:bg-[#2a3942] rounded-xl flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">
-                    <Plus className="w-6 h-6 text-gray-400" />
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      accept="image/*" 
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        setUploading(true);
-                        try {
-                          const compressedFile = await compressImage(file);
-                          const url = await uploadFileToServer(compressedFile);
-                          await updateDoc(doc(db, 'users', fullUser.uid), {
-                            featuredPhotos: arrayUnion(url)
-                          });
-                          alert("Featured photo added!");
-                        } catch (err) { alert("Failed to upload"); }
-                        finally { setUploading(false); }
-                      }} 
-                    />
-                  </label>
-                </div>
+        {/* Catalog Section (Featured Photos) */}
+        <div className="bg-white dark:bg-[#111b21] rounded-[2rem] shadow-sm p-6 space-y-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-bold text-[#111b21] dark:text-[#e9edef] flex items-center gap-2">
+              <Sparkles size={18} className="text-[#00a884]" /> Member Gallery
+            </h3>
+            <span className="text-[10px] font-black text-[#00a884] bg-[#00a884]/10 px-2 py-1 rounded-full uppercase">
+              {fullUser.featuredPhotos?.length || 0} Photos
+            </span>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-3">
+            {fullUser.featuredPhotos?.length ? fullUser.featuredPhotos.map((photo, i) => (
+              <div key={i} className="relative aspect-square rounded-[1.5rem] overflow-hidden group shadow-md">
+                <img src={photo} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Gallery" referrerPolicy="no-referrer" />
+                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            )) : (
+              <div className="col-span-2 py-10 bg-gray-50 dark:bg-[#202c33] rounded-[1.5rem] border-2 border-dashed border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center text-gray-400 italic text-xs">
+                No featured moments yet.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {fullUser.uid === user.uid && (
+          <button 
+            onClick={onOpenAffiliate}
+            className="w-full flex items-center justify-between p-5 bg-[#00a884]/5 rounded-[2rem] border border-[#00a884]/20 group transition-all hover:bg-[#00a884]/10 shadow-sm"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-[#00a884] rounded-2xl text-white shadow-lg">
+                <Users className="w-6 h-6" />
+              </div>
+              <div className="text-left">
+                <h5 className="text-sm font-bold text-[#111b21] dark:text-[#e9edef]">Loyalty Program</h5>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Earn points for inviting hearts</p>
               </div>
             </div>
-          )}
-        </div>
+            <ChevronRight className="w-5 h-5 text-[#00a884] group-hover:translate-x-1 transition-transform" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -3784,6 +4037,32 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
     },
   ];
 
+  const handleUpgradeStripe = async (tier: any) => {
+    if (tier.price === 'Free') return;
+    setUploading(true);
+    try {
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tier: tier.name,
+          price: parseInt(tier.price.replace('$', '')),
+          userId: user.uid
+        })
+      });
+      const session = await response.json();
+      if (session.url) {
+        window.location.href = session.url;
+      } else {
+        throw new Error(session.error || 'Failed to create payment session');
+      }
+    } catch (error: any) {
+      alert("Payment error: " + error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleNotifyPayment = async (tier: any) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -3853,14 +4132,24 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
               </ul>
 
               {user.category !== tier.name && tier.name !== 'General' && (
-                <button 
-                  onClick={() => handleNotifyPayment(tier)}
-                  disabled={uploading}
-                  className="w-full bg-[#00a884] text-white py-4 rounded-2xl font-bold shadow-lg shadow-[#00a884]/20 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {uploading ? <CircleDashed className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
-                  Upgrade Now
-                </button>
+                <div className="space-y-2">
+                  <button 
+                    onClick={() => handleUpgradeStripe(tier)}
+                    disabled={uploading}
+                    className="w-full bg-[#00a884] text-white py-3 rounded-2xl font-bold shadow-lg shadow-[#00a884]/20 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {uploading ? <CircleDashed className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
+                    Pay with Card/Stripe
+                  </button>
+                  <button 
+                    onClick={() => handleNotifyPayment(tier)}
+                    disabled={uploading}
+                    className="w-full bg-white dark:bg-[#202c33] border border-gray-200 dark:border-white/5 text-[#667781] dark:text-[#8696a0] py-3 rounded-2xl font-bold shadow-sm active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {uploading ? <CircleDashed className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
+                    Manual Payment Proof
+                  </button>
+                </div>
               )}
             </div>
           ))}
@@ -4275,6 +4564,37 @@ const AdminDashboard = ({ user, onBack }: any) => {
                         {u.isFeaturedSingle ? "Featured" : "Feature"}
                       </button>
                       <button 
+                        onClick={() => {
+                          const input = document.createElement('input');
+                          input.type = 'file';
+                          input.accept = 'image/*';
+                          input.onchange = async (e: any) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setLoading(true);
+                            try {
+                              const compressed = await compressImage(file);
+                              const url = await uploadFileToServer(compressed);
+                              await updateDoc(doc(db, 'users', u.uid), { photoURL: url });
+                              // Sync with posts for consistency
+                              const qP = query(collection(db, 'posts'), where('userId', '==', u.uid));
+                              const sP = await getDocs(qP);
+                              const batch = writeBatch(db);
+                              sP.docs.forEach(d => batch.update(d.ref, { 'user.photoURL': url }));
+                              await batch.commit();
+                              
+                              setUsers(users.map(user => user.uid === u.uid ? { ...user, photoURL: url } : user));
+                              alert("User photo updated!");
+                            } catch (err: any) { alert("Update failed"); }
+                            finally { setLoading(false); }
+                          };
+                          input.click();
+                        }}
+                        className="p-1 px-3 bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-full hover:bg-blue-100 transition-colors text-[10px] font-bold uppercase tracking-widest"
+                      >
+                        Change Photo
+                      </button>
+                      <button 
                          onClick={() => deleteUser(u)}
                          className="p-1 px-3 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full hover:bg-red-100 transition-colors text-[10px] font-bold uppercase tracking-widest"
                       >
@@ -4610,24 +4930,27 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
   const [country, setCountry] = useState(user.datingProfile?.country || '');
   const [city, setCity] = useState(user.datingProfile?.city || '');
   const [photoURL, setPhotoURL] = useState(user.photoURL || '');
+  const [coverURL, setCoverURL] = useState(user.coverURL || '');
   const [jobRole, setJobRole] = useState(user.jobRole || 'seeker');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  const compressAndUpload = async (file: File) => {
+  const compressAndUpload = async (file: File, type: 'photo' | 'cover' = 'photo') => {
     setUploading(true);
     try {
-      console.log("Starting profile photo upload:", file.name, "Size:", file.size);
+      console.log(`Starting ${type} upload:`, file.name, "Size:", file.size);
       const compressedFile = await compressImage(file);
       console.log("Compressed size:", compressedFile.size);
       
       const url = await uploadFileToServer(compressedFile);
-      console.log("Profile upload complete, URL:", url);
+      console.log(`${type} upload complete, URL:`, url);
       
-      setPhotoURL(url);
-      alert("Photo uploaded successfully! Click Save to persist changes.");
+      if (type === 'photo') setPhotoURL(url);
+      else setCoverURL(url);
+      
+      alert(`${type === 'photo' ? 'Photo' : 'Cover'} uploaded successfully! Click Save to persist changes.`);
     } catch (error: any) {
-      console.error("Profile upload error details:", error);
+      console.error(`${type} upload error details:`, error);
       alert("Upload failed: " + (error.message || "Unknown error"));
     } finally {
       setUploading(false);
@@ -4650,6 +4973,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
         firstName: capFirstName,
         lastName: capLastName,
         photoURL,
+        coverURL,
         status,
         jobRole,
         datingProfile: {
@@ -4696,21 +5020,18 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        <div className="flex flex-col items-center py-8 bg-white dark:bg-[#111b21] mb-6">
-          <div className="relative group">
-            <Avatar src={photoURL} name={user.displayName} size={160} className={cn("shadow-lg", !photoURL && "grayscale")} />
-            {!photoURL && (
-              <motion.div 
-                initial={{ scale: 0 }} 
-                animate={{ scale: 1 }} 
-                className="absolute -top-2 -right-2 bg-red-500 text-white p-2 rounded-full shadow-lg z-10"
-                title="Profile photo missing"
-              >
-                <ShieldAlert className="w-5 h-5" />
-              </motion.div>
-            )}
-            <label className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-              <Camera className="text-white w-8 h-8" />
+        <div className="relative bg-white dark:bg-[#111b21] mb-6">
+          {/* Cover Photo Upload */}
+          <div className="relative h-48 md:h-56 bg-gray-200 dark:bg-gray-800 overflow-hidden group/cover">
+            <img 
+              src={coverURL || `https://picsum.photos/seed/${user.uid}_cover/800/400?blur=1`} 
+              className="w-full h-full object-cover" 
+              alt="Cover" 
+              referrerPolicy="no-referrer"
+            />
+            <label className="absolute inset-0 bg-black/20 opacity-0 group-hover/cover:opacity-100 transition-opacity cursor-pointer flex flex-col items-center justify-center text-white gap-2">
+              <Camera className="w-8 h-8" />
+              <span className="text-xs font-bold uppercase">Change Cover</span>
               <input 
                 type="file" 
                 className="hidden" 
@@ -4718,24 +5039,57 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    compressAndUpload(file);
-                    e.target.value = ''; // Clear input
+                    compressAndUpload(file, 'cover');
+                    e.target.value = '';
                   }
                 }} 
               />
             </label>
-            {uploading && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 rounded-full flex items-center justify-center"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>}
           </div>
-          <h3 className="mt-4 text-xl font-bold dark:text-[#e9edef] flex items-center gap-2">
-            {firstName} {lastName}
-            <TierBadge tier={user.category} size={20} />
-            {user.isVerified && <VerifiedBadge size={20} />}
-          </h3>
-          {!photoURL && (
-            <p className="text-red-500 text-[10px] font-bold mt-1 animate-pulse">
-              ⚠️ Upload photo to unlock full messaging features (Max 3 msgs allowed)
-            </p>
-          )}
+
+          <div className="flex flex-col items-center -mt-20 relative z-10">
+            <div className="relative group">
+              <div className="p-1 bg-white dark:bg-[#111b21] rounded-full shadow-2xl">
+                <Avatar src={photoURL} name={user.displayName} size={140} className={cn("shadow-lg", !photoURL && "grayscale")} />
+              </div>
+              {!photoURL && (
+                <motion.div 
+                  initial={{ scale: 0 }} 
+                  animate={{ scale: 1 }} 
+                  className="absolute -top-2 -right-2 bg-red-500 text-white p-2 rounded-full shadow-lg z-10"
+                  title="Profile photo missing"
+                >
+                  <ShieldAlert className="w-5 h-5" />
+                </motion.div>
+              )}
+              <label className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                <Camera className="text-white w-8 h-8" />
+                <input 
+                  type="file" 
+                  className="hidden" 
+                  accept="image/*" 
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      compressAndUpload(file, 'photo');
+                      e.target.value = ''; // Clear input
+                    }
+                  }} 
+                />
+              </label>
+              {uploading && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 rounded-full flex items-center justify-center"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>}
+            </div>
+            <h3 className="mt-4 text-xl font-bold dark:text-[#e9edef] flex items-center gap-2">
+              {firstName} {lastName}
+              <TierBadge tier={user.category} size={20} />
+              {user.isVerified && <VerifiedBadge size={20} />}
+            </h3>
+            {!photoURL && (
+              <p className="text-red-500 text-[10px] font-bold mt-1 animate-pulse">
+                ⚠️ Upload photo to unlock full messaging features (Max 3 msgs allowed)
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="space-y-6 px-4 pb-8">

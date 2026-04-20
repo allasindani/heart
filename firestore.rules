@@ -212,7 +212,7 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() || (resource != null && resource.data.isFeaturedSingle == true);
       allow create: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data) && 
                     (request.resource.data.role == 'user' || isAdmin());
       allow update: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data) && 
@@ -221,7 +221,7 @@ service cloud.firestore {
     }
 
     match /settings/{settingId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdmin();
     }
 

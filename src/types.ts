@@ -4,6 +4,7 @@ export interface User {
   firstName?: string;
   lastName?: string;
   photoURL?: string;
+  coverURL?: string;
   status?: string;
   lastSeen?: any;
   isOnline?: boolean;
@@ -27,6 +28,7 @@ export interface User {
       lat: number;
       lng: number;
     };
+    zodiac?: string;
   };
   friends?: string[];
   jobRole?: 'employer' | 'seeker';
@@ -104,6 +106,7 @@ export interface Chat {
     timestamp: any;
     status: 'sent' | 'delivered' | 'seen';
   };
+  unreadCount?: Record<string, number>;
   updatedAt: any;
   groupName?: string;
   groupPhoto?: string;
