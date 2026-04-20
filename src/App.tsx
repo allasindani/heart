@@ -1850,11 +1850,11 @@ export default function App() {
                             ) : (
                               <>
                                 {chat.lastMessage?.senderId === user.uid && (
-                                  chat.lastMessage.status === 'sent' ? (
-                                    <Check className="w-4 h-4 text-[#8696a0]" />
-                                  ) : (
-                                    <CheckCheck className={cn("w-4 h-4", chat.lastMessage.status === 'seen' ? "text-[#53bdeb]" : "text-[#8696a0]")} />
-                                  )
+                                  <div className="shrink-0">
+                                    {chat.lastMessage.status === 'sent' && <Check className="w-4 h-4 text-[#8696a0]" />}
+                                    {chat.lastMessage.status === 'delivered' && <CheckCheck className="w-4 h-4 text-[#8696a0]" />}
+                                    {chat.lastMessage.status === 'seen' && <CheckCheck className="w-4 h-4 text-[#53bdeb]" />}
+                                  </div>
                                 )}
                                 <span className="truncate">{chat.lastMessage?.text || "Start a conversation"}</span>
                               </>
@@ -2161,15 +2161,15 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
               {msg.type === 'image' ? (
                 <img 
                   src={msg.text} 
-                  className="rounded-lg max-w-full h-auto mb-1" 
+                  className="rounded-lg max-w-full h-auto mb-5" 
                   alt="Sent" 
                   referrerPolicy="no-referrer" 
                   onError={handleImageError}
                 />
               ) : msg.type === 'video' ? (
-                <video src={msg.text} controls className="rounded-lg max-w-full h-auto mb-1" />
+                <video src={msg.text} controls className="rounded-lg max-w-full h-auto mb-5" />
               ) : (
-                <p className="text-[16px] font-medium text-[#111b21] dark:text-[#e9edef] pr-12 leading-relaxed">{msg.text}</p>
+                <p className="text-[16px] font-medium text-[#111b21] dark:text-[#e9edef] pr-12 leading-relaxed break-words">{msg.text}</p>
               )}
               
               {msg.reactions && Object.keys(msg.reactions).length > 0 && (
@@ -2180,14 +2180,14 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
                 </div>
               )}
 
-              <div className="absolute bottom-1 right-1.5 flex items-center gap-1">
-                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] uppercase">{msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}</span>
+              <div className="absolute bottom-1 right-1.5 flex items-center gap-1 select-none">
+                <span className="text-[11px] text-[#667781] dark:text-[#8696a0] opacity-90">{msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}</span>
                 {msg.senderId === user.uid && (
-                  msg.status === 'sent' ? (
-                    <Check className="w-3.5 h-3.5 text-[#8696a0]" />
-                  ) : (
-                    <CheckCheck className={cn("w-3.5 h-3.5", msg.status === 'seen' ? "text-[#53bdeb]" : "text-[#8696a0]")} />
-                  )
+                  <div className="flex items-center">
+                    {msg.status === 'sent' && <Check className="w-3.5 h-3.5 text-[#8696a0]" strokeWidth={2.5} />}
+                    {msg.status === 'delivered' && <CheckCheck className="w-3.5 h-3.5 text-[#8696a0]" strokeWidth={2.5} />}
+                    {msg.status === 'seen' && <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb]" strokeWidth={2.5} />}
+                  </div>
                 )}
               </div>
             </div>
@@ -3139,6 +3139,10 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
+  const [viewMode, setViewMode] = useState<'swipe' | 'grid'>('grid');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  
+  const datingCategories = ['All', 'Soulmates', 'Friendship', 'Business', 'Casual'];
 
   const hasGender = user.datingProfile?.gender && user.datingProfile.gender !== '';
   const limits = { General: 1, Bronze: 3, Silver: 10, Gold: Infinity, Platinum: Infinity };
@@ -3161,25 +3165,26 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
         
         setFeaturedSingles(allUsers.filter(u => u.isFeaturedSingle));
         
-        const filtered = allUsers.filter(u => {
-          const profile = u.datingProfile!;
-          const ageMatch = profile.age >= filters.minAge && profile.age <= filters.maxAge;
-          const genderMatch = filters.gender === 'all' || profile.gender === filters.gender;
-          const searchMatch = !searchQuery || u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || profile.bio?.toLowerCase().includes(searchQuery.toLowerCase());
-          
-          let distanceMatch = true;
-          if (user.datingProfile?.location && profile.location) {
-            const dist = calculateDistance(
-              user.datingProfile.location.lat,
-              user.datingProfile.location.lng,
-              profile.location.lat,
-              profile.location.lng
-            );
-            distanceMatch = dist <= filters.maxDistance;
-          }
+          const filtered = allUsers.filter(u => {
+            const profile = u.datingProfile!;
+            const ageMatch = profile.age >= filters.minAge && profile.age <= filters.maxAge;
+            const genderMatch = filters.gender === 'all' || profile.gender === filters.gender;
+            const categoryMatch = selectedCategory === 'All' || profile.datingCategory === selectedCategory;
+            const searchMatch = !searchQuery || u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || profile.bio?.toLowerCase().includes(searchQuery.toLowerCase());
+            
+            let distanceMatch = true;
+            if (user.datingProfile?.location && profile.location) {
+              const dist = calculateDistance(
+                user.datingProfile.location.lat,
+                user.datingProfile.location.lng,
+                profile.location.lat,
+                profile.location.lng
+              );
+              distanceMatch = dist <= filters.maxDistance;
+            }
 
-          return ageMatch && genderMatch && distanceMatch && searchMatch;
-        });
+            return ageMatch && genderMatch && distanceMatch && searchMatch && categoryMatch;
+          });
 
         // Randomize order for fresh feel
         setDiscoverUsers(filtered.sort(() => Math.random() - 0.5));
@@ -3191,7 +3196,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
     };
 
     fetchUsers();
-  }, [user.uid, filters, searchQuery]);
+  }, [user.uid, filters, searchQuery, selectedCategory]);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371;
@@ -3251,206 +3256,215 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
   const currentUser = discoverUsers[currentIndex];
 
   return (
-    <div className="flex-1 flex flex-col p-4 bg-[#f0f2f5] dark:bg-[#0b141a] relative overflow-hidden h-full">
+    <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a] relative overflow-y-auto custom-scrollbar h-full">
       {/* Subtle Background Glows */}
-      <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+      <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none fixed">
         <div className="absolute top-10 left-10 w-64 h-64 bg-[#00a884] rounded-full blur-[100px]" />
         <div className="absolute bottom-10 right-10 w-64 h-64 bg-pink-500 rounded-full blur-[100px]" />
       </div>
 
-      <div className="flex justify-between items-center mb-6 z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-tr from-[#00a884] to-[#008069] rounded-2xl flex items-center justify-center shadow-lg transform -rotate-3">
-            <Heart className="w-6 h-6 text-white fill-white" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-black text-[#111b21] dark:text-[#e9edef] tracking-tighter leading-none mb-1">Discover</h2>
-            <div className="flex items-center gap-1.5 bg-white dark:bg-black/20 px-2.5 py-0.5 rounded-full border border-black/5 dark:border-white/5">
-              <span className="text-[9px] font-black text-[#00a884] uppercase tracking-wider">
-                Swipes: {matchCount} / {currentLimit === Infinity ? 'Unlimited' : currentLimit}
-              </span>
+      <div className="p-4 space-y-6 z-10 shrink-0">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-tr from-[#00a884] to-[#008069] rounded-2xl flex items-center justify-center shadow-lg transform -rotate-3">
+              <Heart className="w-6 h-6 text-white fill-white" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black text-[#111b21] dark:text-[#e9edef] tracking-tighter leading-none mb-1">Discover</h2>
+              <div className="flex items-center gap-1.5 bg-white dark:bg-black/20 px-2.5 py-0.5 rounded-full border border-black/5 dark:border-white/5">
+                <span className="text-[9px] font-black text-[#00a884] uppercase tracking-wider">
+                  Swipes: {matchCount} / {currentLimit === Infinity ? 'Unlimited' : currentLimit}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-        <button 
-          onClick={() => setShowFilters(!showFilters)}
-          className="p-3 bg-white dark:bg-[#2a3942] rounded-2xl shadow-sm text-[#00a884] hover:scale-105 active:scale-95 transition-all border border-black/5 dark:border-white/10"
-        >
-          <Filter className="w-6 h-6" />
-        </button>
-      </div>
-
-      {featuredSingles.length > 0 && !showFilters && (
-        <div className="mb-8 z-10">
-          <div className="flex items-center justify-between px-1 mb-4">
-            <h3 className="text-[11px] font-black text-gray-400 dark:text-[#8696a0] uppercase tracking-[0.2em] flex items-center gap-2">
-              <Sparkles className="w-3 h-3 text-yellow-500" /> Featured Hearts
-            </h3>
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div>
-          </div>
-          <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar px-1 snap-x">
-            {featuredSingles.map(single => (
-              <motion.div 
-                key={single.uid} 
-                onClick={() => onUserClick(single)} 
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="flex-shrink-0 w-24 space-y-2 cursor-pointer group snap-center"
-              >
-                <div className="relative w-24 h-32 rounded-3xl overflow-hidden border-2 border-white dark:border-white/10 shadow-lg group-hover:border-[#00a884] transition-all">
-                  <img src={single.photoURL} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={single.displayName} referrerPolicy="no-referrer" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
-                  <div className="absolute bottom-2 left-2 right-2">
-                    <p className="text-[10px] font-black text-white truncate">{single.displayName.split(' ')[0]}</p>
-                    <p className="text-[7px] font-medium text-white/70 flex items-center gap-0.5">
-                      <MapPin className="w-2 h-2" /> {single.datingProfile?.city || 'Nearby'}
-                    </p>
-                  </div>
-                  <div className="absolute top-2 right-2">
-                    <div className="bg-yellow-400 p-1 rounded-lg">
-                      <Star className="w-2 h-2 text-white fill-current" />
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="flex-1 relative flex items-center justify-center p-2 mb-24">
-        {discoverUsers.length > 0 ? (
-          <>
-            <AnimatePresence mode="wait">
-              <motion.div 
-                key={currentUser.uid}
-                drag="x"
-                dragConstraints={{ left: 0, right: 0 }}
-                onDragEnd={(e, info) => {
-                  if (info.offset.x > 100) { setSwipeDirection('right'); handleLike(); }
-                  else if (info.offset.x < -100) { setSwipeDirection('left'); handlePass(); }
-                }}
-                initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                animate={{ 
-                  scale: 1, 
-                  opacity: 1, 
-                  y: 0,
-                  x: swipeDirection === 'right' ? 500 : swipeDirection === 'left' ? -500 : 0,
-                  rotate: swipeDirection === 'right' ? 20 : swipeDirection === 'left' ? -20 : 0
-                }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                className="absolute inset-0 max-w-sm mx-auto z-20 group"
-              >
-                <div className="relative h-full w-full rounded-[3.5rem] overflow-hidden shadow-2xl border-4 border-white dark:border-[#111b21]">
-                  <img 
-                    src={currentUser.photoURL} 
-                    className="w-full h-full object-cover" 
-                    alt={currentUser.displayName}
-                    referrerPolicy="no-referrer"
-                  />
-                  
-                  {/* Cinematic Gradient Overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent pointer-events-none" />
-
-                  {/* Info Section */}
-                  <div className="absolute bottom-0 left-0 right-0 p-8 text-white pointer-events-none">
-                    <div className="flex items-center gap-2 mb-2">
-                       <h3 className="text-3xl font-black tracking-tight">{currentUser.displayName.split(' ')[0]}, {currentUser.datingProfile?.age}</h3>
-                       {currentUser.isVerified && <VerifiedBadge size={20} />}
-                    </div>
-                    
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="flex items-center gap-1 bg-white/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
-                        <MapPin className="w-4 h-4 text-[#00a884]" />
-                        <span className="text-xs font-bold text-white/90">{currentUser.datingProfile?.city || 'Nearby'}</span>
-                      </div>
-                      {currentUser.datingProfile?.zodiac && (
-                        <div className="flex items-center gap-1 bg-white/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
-                          <Sparkles className="w-4 h-4 text-yellow-400" />
-                          <span className="text-xs font-bold text-white/90">{currentUser.datingProfile.zodiac}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <p className="text-sm text-gray-300 italic line-clamp-2 leading-relaxed mb-6 font-medium">
-                      "{currentUser.datingProfile?.bio || "Let's connect and see where it goes!"}"
-                    </p>
-
-                    <div className="flex gap-2 flex-wrap pb-2">
-                      {currentUser.datingProfile?.interests?.slice(0, 3).map((interest: string) => (
-                        <span key={interest} className="text-[9px] font-black uppercase tracking-widest px-3 py-1 bg-[#00a884]/30 border border-[#00a884]/40 rounded-lg backdrop-blur-sm">
-                          {interest}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Swipe Overlay Indicators */}
-                  <AnimatePresence>
-                    {swipeDirection === 'right' && (
-                      <motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} className="absolute top-12 left-10 border-4 border-green-400 rounded-2xl px-6 py-2 rotate-[-15deg] backdrop-blur-md bg-green-400/10">
-                        <span className="text-green-400 text-4xl font-black tracking-tighter">LIKE</span>
-                      </motion.div>
-                    )}
-                    {swipeDirection === 'left' && (
-                      <motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} className="absolute top-12 right-10 border-4 border-red-500 rounded-2xl px-6 py-2 rotate-[15deg] backdrop-blur-md bg-red-500/10">
-                        <span className="text-red-500 text-4xl font-black tracking-tighter">PASS</span>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </motion.div>
-            </AnimatePresence>
-
-            {/* Floating Action Buttons */}
-            <div className="absolute bottom-[-10px] left-0 right-0 flex justify-center items-center gap-6 z-30">
-              <motion.button 
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={handlePass}
-                className="w-16 h-16 bg-white dark:bg-[#202c33] rounded-full flex items-center justify-center text-red-500 shadow-xl border border-black/5 dark:border-white/5 group hover:bg-red-50 transition-colors"
-              >
-                <X className="w-8 h-8 group-hover:rotate-90 transition-transform" />
-              </motion.button>
-
-              <motion.button 
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => onUserClick(currentUser)}
-                className="w-12 h-12 bg-white dark:bg-[#202c33] rounded-full flex items-center justify-center text-blue-500 shadow-xl border border-black/5 dark:border-white/5"
-              >
-                <UserIcon className="w-6 h-6" />
-              </motion.button>
-
-              <motion.button 
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={handleLike}
-                className="w-20 h-20 bg-gradient-to-br from-[#00a884] to-[#008069] rounded-full flex items-center justify-center text-white shadow-2xl shadow-[#00a884]/30 group"
-              >
-                <Heart className="w-10 h-10 group-hover:scale-125 transition-transform fill-white" />
-              </motion.button>
-            </div>
-          </>
-        ) : (
-          <div className="text-center p-8 bg-white dark:bg-[#111b21] rounded-[3rem] shadow-xl border border-black/5 dark:border-white/5 max-w-sm">
-            <div className="bg-[#f0f2f5] dark:bg-[#202c33] w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <RefreshCw className="w-10 h-10 text-[#00a884] animate-spin-slow" />
-            </div>
-            <h3 className="text-xl font-black dark:text-white mb-2 tracking-tighter">No more hearts nearby</h3>
-            <p className="text-sm text-gray-500 dark:text-[#8696a0] mb-8 font-medium">We've shown you everyone in your current range. Adjust your filters to find more connections!</p>
+          <div className="flex gap-2">
             <button 
-              onClick={() => {
-                onUpdateFilters({ ...filters, maxDistance: 100 });
-                setCurrentIndex(0);
-              }}
-              className="w-full bg-[#00a884] text-white font-black py-4 rounded-2xl shadow-lg shadow-[#00a884]/20 active:scale-95 transition-all uppercase tracking-widest text-xs"
+              onClick={() => setViewMode(viewMode === 'swipe' ? 'grid' : 'swipe')}
+              className="p-3 bg-white dark:bg-[#2a3942] rounded-2xl shadow-sm text-[#00a884] hover:scale-105 active:scale-95 transition-all border border-black/5 dark:border-white/10"
+              title={viewMode === 'swipe' ? "Switch to Grid View" : "Switch to Swipe View"}
             >
-              Expand Search Radius
+              {viewMode === 'swipe' ? <LayoutGrid className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
+            </button>
+            <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className="p-3 bg-white dark:bg-[#2a3942] rounded-2xl shadow-sm text-[#00a884] hover:scale-105 active:scale-95 transition-all border border-black/5 dark:border-white/10"
+            >
+              <Filter className="w-6 h-6" />
             </button>
           </div>
+        </div>
+
+        {/* Category Horizontal Selector */}
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+          {datingCategories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={cn(
+                "px-5 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap border-2",
+                selectedCategory === cat 
+                  ? "bg-[#00a884] border-[#00a884] text-white shadow-lg shadow-[#00a884]/20 scale-105" 
+                  : "bg-white dark:bg-[#2a3942] border-transparent text-gray-400 dark:text-[#8696a0] hover:border-gray-200"
+              )}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col p-4 pt-0">
+        {featuredSingles.length > 0 && !showFilters && selectedCategory === 'All' && (
+          <div className="mb-8 z-10 shrink-0">
+            <div className="flex items-center justify-between px-1 mb-4">
+              <h3 className="text-[11px] font-black text-gray-400 dark:text-[#8696a0] uppercase tracking-[0.2em] flex items-center gap-2">
+                <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" /> Featured Hearts
+              </h3>
+              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+            </div>
+            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar px-1 snap-x">
+              {featuredSingles.map(single => (
+                <motion.div 
+                  key={single.uid} 
+                  onClick={() => onUserClick(single)} 
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex-shrink-0 w-24 space-y-2 cursor-pointer group snap-center"
+                >
+                  <div className="relative w-24 h-32 rounded-3xl overflow-hidden border-2 border-white dark:border-white/10 shadow-lg group-hover:border-[#00a884] transition-all">
+                    <img src={single.photoURL} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={single.displayName} referrerPolicy="no-referrer" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
+                    <div className="absolute bottom-2 left-2 right-2 text-[10px] font-black text-white truncate">
+                      {single.displayName.split(' ')[0]}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
         )}
+
+        <div className="flex-1 relative pb-24">
+          {discoverUsers.length > 0 ? (
+            viewMode === 'swipe' ? (
+              <div className="relative h-[550px] flex items-center justify-center">
+                <AnimatePresence mode="wait">
+                  <motion.div 
+                    key={currentUser.uid}
+                    drag="x"
+                    dragConstraints={{ left: 0, right: 0 }}
+                    onDragEnd={(e, info) => {
+                      if (info.offset.x > 100) { setSwipeDirection('right'); handleLike(); }
+                      else if (info.offset.x < -100) { setSwipeDirection('left'); handlePass(); }
+                    }}
+                    initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                    animate={{ 
+                      scale: 1, 
+                      opacity: 1, 
+                      y: 0,
+                      x: swipeDirection === 'right' ? 500 : swipeDirection === 'left' ? -500 : 0,
+                      rotate: swipeDirection === 'right' ? 20 : swipeDirection === 'left' ? -20 : 0
+                    }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                    className="absolute inset-0 max-w-sm mx-auto z-20 group h-full"
+                  >
+                    <div className="relative h-full w-full rounded-[3.5rem] overflow-hidden shadow-2xl border-4 border-white dark:border-[#111b21]">
+                      <img src={currentUser.photoURL} className="w-full h-full object-cover" alt={currentUser.displayName} referrerPolicy="no-referrer" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent pointer-events-none" />
+                      
+                      <div className="absolute bottom-0 left-0 right-0 p-8 text-white pointer-events-none">
+                        <div className="flex items-center justify-between items-end mb-2">
+                           <div>
+                             <h3 className="text-3xl font-black tracking-tight">{currentUser.displayName.split(' ')[0]}, {currentUser.datingProfile?.age}</h3>
+                             <p className="text-[#00a884] text-[10px] uppercase font-black tracking-[0.2em] mt-1">{currentUser.datingProfile?.datingCategory || 'Soulmates'}</p>
+                           </div>
+                           {currentUser.isVerified && <VerifiedBadge size={20} />}
+                        </div>
+                        
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="flex items-center gap-1 bg-white/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
+                            <MapPin className="w-3 h-3 text-[#00a884]" />
+                            <span className="text-[10px] font-bold text-white/90">{currentUser.datingProfile?.city || 'Nearby'}</span>
+                          </div>
+                        </div>
+
+                        <p className="text-sm text-gray-300 italic line-clamp-2 leading-relaxed mb-6 font-medium">"{currentUser.datingProfile?.bio || "Let's connect!"}"</p>
+                        
+                        <div className="flex gap-2 flex-wrap">
+                          {currentUser.datingProfile?.interests?.slice(0, 3).map((interest: string) => (
+                            <span key={interest} className="text-[8px] font-black uppercase tracking-widest px-2.5 py-1 bg-[#00a884]/30 border border-[#00a884]/40 rounded-lg">
+                              {interest}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                </AnimatePresence>
+                
+                {/* Floating Swiping Buttons */}
+                <div className="absolute bottom-[-40px] left-0 right-0 flex justify-center items-center gap-6 z-30">
+                  <motion.button onClick={handlePass} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="w-16 h-16 bg-white dark:bg-[#202c33] rounded-full flex items-center justify-center text-red-500 shadow-xl border border-black/5 dark:border-white/5"><X className="w-8 h-8" /></motion.button>
+                  <motion.button onClick={() => onUserClick(currentUser)} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="w-12 h-12 bg-white dark:bg-[#202c33] rounded-full flex items-center justify-center text-blue-500 shadow-xl border border-black/5 dark:border-white/5"><UserIcon className="w-6 h-6" /></motion.button>
+                  <motion.button onClick={handleLike} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="w-20 h-20 bg-gradient-to-br from-[#00a884] to-[#008069] rounded-full flex items-center justify-center text-white shadow-2xl shadow-[#00a884]/30"><Heart className="w-10 h-10 fill-white" /></motion.button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {discoverUsers.map(u => (
+                  <motion.div
+                    key={u.uid}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    onClick={() => onUserClick(u)}
+                    className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md group cursor-pointer border-2 border-transparent hover:border-[#00a884] transition-all"
+                  >
+                    <img src={u.photoURL} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={u.displayName} referrerPolicy="no-referrer" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                    <div className="absolute bottom-3 left-3 right-3">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-sm font-black text-white">{u.displayName.split(' ')[0]}, {u.datingProfile?.age}</span>
+                        {u.isVerified && <VerifiedBadge size={12} />}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-white/70 font-medium truncate flex items-center gap-1">
+                          <MapPin size={10} /> {u.datingProfile?.city || 'Nearby'}
+                        </span>
+                        <div className="p-1.5 bg-[#00a884] rounded-lg text-white shadow-lg">
+                          <Heart size={10} className="fill-white" />
+                        </div>
+                      </div>
+                    </div>
+                    {u.datingProfile?.datingCategory && (
+                       <div className="absolute top-3 left-3 px-2 py-0.5 bg-black/30 backdrop-blur-md rounded-lg text-[9px] font-black text-white border border-white/10 uppercase tracking-tighter">
+                         {u.datingProfile.datingCategory}
+                       </div>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+            )
+          ) : (
+            <div className="text-center p-8 bg-white dark:bg-[#111b21] rounded-[3rem] shadow-xl border border-black/5 dark:border-white/5 max-w-sm mx-auto">
+              <div className="bg-[#f0f2f5] dark:bg-[#202c33] w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                <RefreshCw className="w-10 h-10 text-[#00a884] animate-spin-slow" />
+              </div>
+              <h3 className="text-xl font-black dark:text-white mb-2 tracking-tighter">No hearts in this category</h3>
+              <p className="text-sm text-gray-500 dark:text-[#8696a0] mb-8 font-medium">Try another category or expand your search distance.</p>
+              <button 
+                onClick={() => {
+                  onUpdateFilters({ ...filters, maxDistance: 100 });
+                  setSelectedCategory('All');
+                }}
+                className="w-full bg-[#00a884] text-white font-black py-4 rounded-2xl shadow-lg shadow-[#00a884]/20 active:scale-95 transition-all uppercase tracking-widest text-xs"
+              >
+                Reset & Expand Radius
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <AnimatePresence>
@@ -4929,6 +4943,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
   const [gender, setGender] = useState(user.datingProfile?.gender || 'other');
   const [country, setCountry] = useState(user.datingProfile?.country || '');
   const [city, setCity] = useState(user.datingProfile?.city || '');
+  const [datingCategory, setDatingCategory] = useState(user.datingProfile?.datingCategory || 'Soulmates');
   const [photoURL, setPhotoURL] = useState(user.photoURL || '');
   const [coverURL, setCoverURL] = useState(user.coverURL || '');
   const [jobRole, setJobRole] = useState(user.jobRole || 'seeker');
@@ -4982,7 +4997,8 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
           age: Number(datingAge),
           gender,
           country,
-          city
+          city,
+          datingCategory
         }
       };
       await updateDoc(userDoc, updatedData);
@@ -5176,13 +5192,28 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
                 </select>
               </div>
             </div>
-            <div>
-              <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Bio</label>
-              <textarea 
-                value={datingBio} 
-                onChange={(e) => setDatingBio(e.target.value)}
-                className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] resize-none h-20 bg-transparent dark:text-[#e9edef]"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Dating Category</label>
+                <select 
+                  value={datingCategory} 
+                  onChange={(e) => setDatingCategory(e.target.value as any)}
+                  className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
+                >
+                  <option value="Soulmates">Soulmates</option>
+                  <option value="Friendship">Friendship</option>
+                  <option value="Business">Business</option>
+                  <option value="Casual">Casual</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Bio</label>
+                <textarea 
+                  value={datingBio} 
+                  onChange={(e) => setDatingBio(e.target.value)}
+                  className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] resize-none h-10 bg-transparent dark:text-[#e9edef]"
+                />
+              </div>
             </div>
           </section>
 

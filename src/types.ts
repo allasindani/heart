@@ -24,6 +24,7 @@ export interface User {
     photos: string[];
     country?: string;
     city?: string;
+    datingCategory?: 'Soulmates' | 'Friendship' | 'Business' | 'Casual';
     location?: {
       lat: number;
       lng: number;
