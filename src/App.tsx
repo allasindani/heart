@@ -693,8 +693,8 @@ export default function App() {
     initAdMob();
 
     // Back Button Logic
-    const handleBackButton = ({ canGoBack }: { canGoBack: boolean }) => {
-      // Priority 1: Close modals/sub-views first
+    const handleBackButton = () => {
+      // Priority 1: Close main overlays/sub-views first (matches big ternary in App.tsx)
       if (selectedChat) {
         setSelectedChat(null);
         return;
@@ -721,6 +721,8 @@ export default function App() {
       }
       if (showCreateAd) {
         setShowCreateAd(false);
+        setAdContent('');
+        setAdMediaUrl('');
         return;
       }
       if (showCreateJob) {
@@ -744,6 +746,8 @@ export default function App() {
         setApplyingJob(null);
         return;
       }
+
+      // Priority 2: Floating/Local Overlays
       if (showMenu) {
         setShowMenu(false);
         return;
@@ -761,27 +765,27 @@ export default function App() {
         return;
       }
 
-      // If not on the main 'chats' tab, go back to 'chats' first
+      // Priority 3: If exit confirm is already showing, a second press exits
+      if (showExitConfirm) {
+        CapacitorApp.exitApp();
+        return;
+      }
+
+      // Priority 4: Tab Navigation (return to home tab if on another)
       if (activeTab !== 'chats') {
         setActiveTab('chats');
         return;
       }
 
-      // If on main screen (chats tab), handle double tap to exit
-      setBackPressCount(prev => {
-        const next = prev + 1;
-        if (next === 1) {
-          setShowExitConfirm(true);
-          if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
-          exitTimerRef.current = setTimeout(() => {
-            setBackPressCount(0);
-            setShowExitConfirm(false);
-          }, 2000);
-        } else if (next >= 2) {
-          CapacitorApp.exitApp();
-        }
-        return next;
-      });
+      // Priority 5: Show exit confirmation if on main screen
+      setShowExitConfirm(true);
+      setBackPressCount(1);
+      
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = setTimeout(() => {
+        setBackPressCount(0);
+        setShowExitConfirm(false);
+      }, 3000); // 3 seconds as requested
     };
 
     const backListener = CapacitorApp.addListener('backButton', handleBackButton);
@@ -794,7 +798,7 @@ export default function App() {
     selectedChat, showProfile, showAdmin, viewingUser, showNotifications,
     showUpgrade, showCreateAd, showCreateJob, selectedJob, showLeaderboard,
     showAffiliate, applyingJob, showMenu, showSearch, activeTab,
-    showStatusModal, showPostModal
+    showStatusModal, showPostModal, showExitConfirm
   ]);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
