@@ -650,6 +650,8 @@ export default function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [applyingJob, setApplyingJob] = useState<Job | null>(null);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showPostModal, setShowPostModal] = useState(false);
 
   useEffect(() => {
     // AdMob Initialization
@@ -722,8 +724,22 @@ export default function App() {
         setShowSearch(false);
         return;
       }
+      if (showStatusModal) {
+        setShowStatusModal(false);
+        return;
+      }
+      if (showPostModal) {
+        setShowPostModal(false);
+        return;
+      }
 
-      // If on main screen, handle double tap to exit
+      // If not on the main 'chats' tab, go back to 'chats' first
+      if (activeTab !== 'chats') {
+        setActiveTab('chats');
+        return;
+      }
+
+      // If on main screen (chats tab), handle double tap to exit
       setBackPressCount(prev => {
         const next = prev + 1;
         if (next === 1) {
@@ -749,7 +765,8 @@ export default function App() {
   }, [
     selectedChat, showProfile, showAdmin, viewingUser, showNotifications,
     showUpgrade, showCreateAd, showCreateJob, selectedJob, showLeaderboard,
-    showAffiliate, applyingJob, showMenu, showSearch
+    showAffiliate, applyingJob, showMenu, showSearch, activeTab,
+    showStatusModal, showPostModal
   ]);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -819,8 +836,6 @@ export default function App() {
       { type: 'Inbucks', details: '0771234567' }
     ]
   });
-  const [showStatusModal, setShowStatusModal] = useState(false);
-  const [showPostModal, setShowPostModal] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
     return saved ? JSON.parse(saved) : false;
