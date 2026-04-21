@@ -373,6 +373,7 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [gender, setGender] = useState<'male' | 'female' | 'other'>('male');
   const [error, setError] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [referredBy, setReferredBy] = useState<string | null>(null);
@@ -430,6 +431,8 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
           firstName: capFirst,
           lastName: capLast,
           photoURL: null,
+          gender: gender,
+          createdAt: serverTimestamp(),
           role: userCredential.user.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
           category: 'General',
           points: 0,
@@ -549,6 +552,30 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
                 />
             </div>
           )}
+
+          {!isLogin && (
+            <div className="space-y-2 text-left">
+              <label className="text-[10px] font-black text-gray-400 dark:text-[#8696a0] uppercase tracking-widest ml-1">Select Gender</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['male', 'female', 'other'] as const).map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setGender(g)}
+                    className={cn(
+                      "py-2.5 rounded-xl text-xs font-bold transition-all border uppercase tracking-wider",
+                      gender === g 
+                        ? "bg-[#00a884] border-[#00a884] text-white shadow-md shadow-[#00a884]/20" 
+                        : "bg-white dark:bg-[#111b21] border-gray-200 dark:border-gray-800 text-gray-500 dark:text-[#8696a0] hover:border-gray-300"
+                    )}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <input 
             type="email" 
             placeholder="Email" 
@@ -939,16 +966,25 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'users'), limit(300));
+    const q = query(collection(db, 'users'), limit(500));
     const unsubscribe = onSnapshot(q, (snap) => {
-      setUsers(snap.docs.map(d => {
+      const allUsers = snap.docs.map(d => {
         const data = d.data();
         return { 
           uid: d.id, 
           ...data,
           displayName: capitalizeName(data.displayName || '')
         } as User;
-      }));
+      });
+      
+      // Sort users by signup date (createdAt) descending
+      const sortedUsers = allUsers.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis?.() || 0;
+        const timeB = b.createdAt?.toMillis?.() || 0;
+        return timeB - timeA;
+      });
+      
+      setUsers(sortedUsers);
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
     return unsubscribe;
   }, [user?.uid]);
@@ -1376,18 +1412,25 @@ export default function App() {
     
     const resetUnread = async () => {
       try {
+        const chatDoc = doc(db, 'chats', selectedChat.id);
         const unreadKey = `unreadCount.${user.uid}`;
-        // Reset count
-        await updateDoc(doc(db, 'chats', selectedChat.id), {
-          [unreadKey]: 0,
-          'lastMessage.status': selectedChat.lastMessage?.senderId !== user.uid ? 'seen' : selectedChat.lastMessage.status
-        });
         
-        // Mark all messages as seen
+        const updates: any = {
+          [unreadKey]: 0,
+        };
+
+        // If the last message was NOT sent by us and is not seen, mark it seen
+        if (selectedChat.lastMessage?.senderId !== user.uid && selectedChat.lastMessage?.status !== 'seen') {
+          updates['lastMessage.status'] = 'seen';
+        }
+
+        await updateDoc(chatDoc, updates);
+        
+        // Mark all recent messages as seen in background
         const q = query(
           collection(db, `chats/${selectedChat.id}/messages`), 
           where('status', '!=', 'seen'),
-          limit(20)
+          limit(50)
         );
         const snap = await getDocs(q);
         const batch = writeBatch(db);
@@ -1405,7 +1448,7 @@ export default function App() {
     };
     
     resetUnread();
-  }, [selectedChat?.id, user?.uid]);
+  }, [selectedChat?.id, user?.uid, messages.length]); // Added messages.length to trigger when new messages arrive while chat is open
 
   useEffect(() => {
     if (!selectedChat) return;
@@ -3279,13 +3322,19 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
       try {
         const q = query(
           collection(db, 'users'),
-          where('role', '==', 'user'),
-          limit(100)
+          where('role', '==', 'user')
         );
         const snapshot = await getDocs(q);
-        const allUsers = snapshot.docs
-          .map(doc => ({ uid: doc.id, ...doc.data() } as User))
-          .filter(u => u.uid !== user.uid && u.datingProfile && u.photoURL);
+        const allUsersRaw = snapshot.docs
+          .map(doc => ({ uid: doc.id, ...doc.data() } as User));
+        
+        // Sorting users by createdAt if available, otherwise by uid
+        const allUsers = allUsersRaw.sort((a, b) => {
+          const tA = a.createdAt?.toMillis?.() || 0;
+          const tB = b.createdAt?.toMillis?.() || 0;
+          return tB - tA;
+        })
+        .filter(u => u.uid !== user.uid && u.datingProfile && u.photoURL);
         
         setFeaturedSingles(allUsers.filter(u => u.isFeaturedSingle));
         
@@ -3417,6 +3466,24 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
               <Filter className="w-6 h-6" />
             </button>
           </div>
+        </div>
+
+        {/* Gender Separation Toggle */}
+        <div className="flex gap-2 mb-2 p-1 bg-gray-100 dark:bg-black/20 rounded-2xl border border-black/5 dark:border-white/5">
+          {(['all', 'male', 'female'] as const).map(g => (
+            <button
+              key={g}
+              onClick={() => onUpdateFilters({ ...filters, gender: g })}
+              className={cn(
+                "flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                filters.gender === g 
+                  ? "bg-white dark:bg-[#2a3942] text-[#00a884] shadow-sm" 
+                  : "text-gray-400 dark:text-[#8696a0] hover:text-[#00a884]"
+              )}
+            >
+              {g === 'all' ? 'All' : g === 'male' ? 'Men' : 'Women'}
+            </button>
+          ))}
         </div>
 
         {/* Category Horizontal Selector */}
@@ -4420,8 +4487,15 @@ const AdminDashboard = ({ user, onBack }: any) => {
           getDocs(collection(db, 'jobs'))
         ]);
 
-        const uList = uSnap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
+        const uList = uSnap.docs
+          .map(d => ({ uid: d.id, ...d.data() } as User))
+          .sort((a, b) => {
+            const tA = a.createdAt?.toMillis?.() || 0;
+            const tB = b.createdAt?.toMillis?.() || 0;
+            return tB - tA; // Latest first
+          });
         const pList = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Post));
+
         setUsers(uList);
         setAds(pList.filter(p => p.isAd));
         setJobs(jSnap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));

@@ -13,6 +13,8 @@ export interface User {
   category: 'General' | 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
   points: number;
   isVerified?: boolean;
+  gender?: 'male' | 'female' | 'other';
+  createdAt?: any;
   uploadCount?: number;
   matchCount?: number;
   messageCount?: number;
