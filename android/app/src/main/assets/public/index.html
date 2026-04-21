@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#00a884" />
+    <link rel="manifest" href="/manifest.json" />
+    <title>Heart Connect</title>
+    <script type="module" crossorigin src="/assets/index-DFI9T7IB.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BX7Dru_K.css">
+  </head>
+  <body>
+    <div id="root">
+      <div style="height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif; background: #00a884; color: white;">
+        <div style="width: 50px; height: 50px; border: 5px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        <p style="margin-top: 20px; font-weight: bold;">Heart Connect</p>
+        <style>
+          @keyframes spin { to { transform: rotate(360deg); } }
+        </style>
+      </div>
+    </div>
+    <script>
+      document.body.insertAdjacentHTML('beforeend', '<div id="debug-boot" style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.5);color:white;font-size:10px;padding:4px 8px;border-radius:4px;z-index:9999;font-family:sans-serif;">JS Loading...</div>');
+    </script>
+  </body>
+</html>
+
