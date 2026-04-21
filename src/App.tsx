@@ -63,6 +63,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { AdMob, BannerAdSize, BannerAdPosition, BannerAdPluginEvents, AdMobBannerSize } from '@capacitor-community/admob';
 import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -1689,6 +1690,7 @@ export default function App() {
 
   return (
     <div className="h-screen bg-white dark:bg-[#111b21] flex flex-col overflow-hidden max-w-md mx-auto shadow-2xl border-x border-gray-200 dark:border-gray-800 relative transition-colors duration-300">
+      {user && <AdMobBanner />}
       {uploading && (
         <div className="fixed top-0 left-0 right-0 z-[1000] h-1 bg-gray-100 dark:bg-gray-800">
           <motion.div 
@@ -1879,7 +1881,7 @@ export default function App() {
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21] overscroll-contain scroll-smooth custom-scrollbar relative"
+            className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21] overscroll-contain scroll-smooth custom-scrollbar relative pb-[60px]"
           >
             {/* Pull to Refresh Indicator */}
             <motion.div 
@@ -2074,8 +2076,6 @@ export default function App() {
           )}
         </div>
         
-        <AdMobBanner />
-
         {/* Floating Action Button */}
           <button 
             onClick={() => {
@@ -2089,7 +2089,7 @@ export default function App() {
                 window.location.reload();
               }
             }}
-            className="absolute bottom-6 right-6 w-14 h-14 bg-[#00a884] rounded-full shadow-lg flex items-center justify-center text-white active:scale-95 transition-transform z-40"
+            className="absolute bottom-20 right-6 w-14 h-14 bg-[#00a884] rounded-full shadow-lg flex items-center justify-center text-white active:scale-95 transition-transform z-40"
           >
             <Plus className="w-6 h-6" />
           </button>
@@ -2362,7 +2362,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
         ))}
         {uploading && <div className="flex justify-center"><CircleDashed className="w-6 h-6 animate-spin text-[#00a884]" /></div>}
       </div>
-      <div className="bg-[#f0f2f5] dark:bg-[#111b21] p-2 pb-6 flex items-center gap-2">
+      <div className="bg-[#f0f2f5] dark:bg-[#111b21] p-2 pb-[65px] flex items-center gap-2">
         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*,video/*" />
         <div className="bg-white dark:bg-[#111b21] flex-1 flex items-center px-3 py-2 rounded-full shadow-sm max-w-[calc(100%-60px)]">
           <Smile className="w-6 h-6 text-gray-500 dark:text-[#8696a0] mr-2 shrink-0" />
@@ -6063,6 +6063,8 @@ const AdMobBanner = () => {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return;
+
     const showBanner = async () => {
       const options = {
         adId: 'ca-app-pub-8271489359179610/4964665647', // User's Android Banner ID
