@@ -58,8 +58,11 @@ import {
   Gift,
   Sun,
   Moon,
+  Smartphone
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { AdMob, BannerAdSize, BannerAdPosition, BannerAdPluginEvents, AdMobBannerSize } from '@capacitor-community/admob';
+import { App as CapacitorApp } from '@capacitor/app';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -303,7 +306,7 @@ const SplashScreen = ({ siteName, logoUrl, onForceLoad }: { siteName?: string, l
           </div>
         </div>
         
-        {showBypass && onForceLoad && (
+            {showBypass && onForceLoad && (
           <motion.button
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -640,8 +643,114 @@ export default function App() {
   const [backPressCount, setBackPressCount] = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showAffiliate, setShowAffiliate] = useState(false);
+  const exitTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showMenu, setShowMenu] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [applyingJob, setApplyingJob] = useState<Job | null>(null);
+
+  useEffect(() => {
+    // AdMob Initialization
+    const initAdMob = async () => {
+      try {
+        await AdMob.initialize();
+      } catch (e) {
+        console.warn("AdMob already initialized or failed:", e);
+      }
+    };
+    initAdMob();
+
+    // Back Button Logic
+    const handleBackButton = ({ canGoBack }: { canGoBack: boolean }) => {
+      // Priority 1: Close modals/sub-views first
+      if (selectedChat) {
+        setSelectedChat(null);
+        return;
+      }
+      if (showProfile) {
+        setShowProfile(false);
+        return;
+      }
+      if (showAdmin) {
+        setShowAdmin(false);
+        return;
+      }
+      if (viewingUser) {
+        setViewingUser(null);
+        return;
+      }
+      if (showNotifications) {
+        setShowNotifications(false);
+        return;
+      }
+      if (showUpgrade) {
+        setShowUpgrade(false);
+        return;
+      }
+      if (showCreateAd) {
+        setShowCreateAd(false);
+        return;
+      }
+      if (showCreateJob) {
+        setShowCreateJob(false);
+        setEditingJob(null);
+        return;
+      }
+      if (selectedJob) {
+        setSelectedJob(null);
+        return;
+      }
+      if (showLeaderboard) {
+        setShowLeaderboard(false);
+        return;
+      }
+      if (showAffiliate) {
+        setShowAffiliate(false);
+        return;
+      }
+      if (applyingJob) {
+        setApplyingJob(null);
+        return;
+      }
+      if (showMenu) {
+        setShowMenu(false);
+        return;
+      }
+      if (showSearch) {
+        setShowSearch(false);
+        return;
+      }
+
+      // If on main screen, handle double tap to exit
+      setBackPressCount(prev => {
+        const next = prev + 1;
+        if (next === 1) {
+          setShowExitConfirm(true);
+          if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+          exitTimerRef.current = setTimeout(() => {
+            setBackPressCount(0);
+            setShowExitConfirm(false);
+          }, 2000);
+        } else if (next >= 2) {
+          CapacitorApp.exitApp();
+        }
+        return next;
+      });
+    };
+
+    const backListener = CapacitorApp.addListener('backButton', handleBackButton);
+
+    return () => {
+      backListener.then(l => l.remove());
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+    };
+  }, [
+    selectedChat, showProfile, showAdmin, viewingUser, showNotifications,
+    showUpgrade, showCreateAd, showCreateJob, selectedJob, showLeaderboard,
+    showAffiliate, applyingJob, showMenu, showSearch
+  ]);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -710,11 +819,8 @@ export default function App() {
       { type: 'Inbucks', details: '0771234567' }
     ]
   });
-  const [showMenu, setShowMenu] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
     return saved ? JSON.parse(saved) : false;
@@ -1893,24 +1999,26 @@ export default function App() {
               targetPostId={targetPostId}
               isRefreshing={isRefreshing}
             />}
-            {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} setUser={setUser} />}
-            {activeTab === 'jobs' && (
-              <JobsView 
-                user={user} 
-                jobs={jobs} 
-                applications={applications} 
-                onApply={handleApplyJob} 
-                onCreateClick={() => setShowCreateJob(true)} 
-                onSelectJob={setSelectedJob} 
-                onUpdateStatus={handleUpdateApplicationStatus}
-                onDeleteJob={handleDeleteJob}
-                onEditJob={(j: Job) => { setEditingJob(j); setShowCreateJob(true); }}
-                activeTab={activeTab} 
-              />
-            )}
-          </div>
+          {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} setUser={setUser} />}
+          {activeTab === 'jobs' && (
+            <JobsView 
+              user={user} 
+              jobs={jobs} 
+              applications={applications} 
+              onApply={handleApplyJob} 
+              onCreateClick={() => setShowCreateJob(true)} 
+              onSelectJob={setSelectedJob} 
+              onUpdateStatus={handleUpdateApplicationStatus}
+              onDeleteJob={handleDeleteJob}
+              onEditJob={(j: Job) => { setEditingJob(j); setShowCreateJob(true); }}
+              activeTab={activeTab} 
+            />
+          )}
+        </div>
+        
+        <AdMobBanner />
 
-          {/* Floating Action Button */}
+        {/* Floating Action Button */}
           <button 
             onClick={() => {
               if (activeTab === 'chats') {
@@ -1929,19 +2037,6 @@ export default function App() {
           </button>
         </div>
       )}
-      {showExitConfirm && (
-        <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="glass-card p-6 rounded-3xl shadow-2xl max-w-xs w-full text-center border-white/20">
-            <LogOut className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h3 className="text-lg font-bold mb-2">Exit App?</h3>
-            <p className="text-gray-500 dark:text-[#8696a0] text-sm mb-6">Are you sure you want to exit {appSettings.siteName || 'Heart Connect'}?</p>
-            <div className="flex gap-3">
-              <button onClick={() => setShowExitConfirm(false)} className="flex-1 py-3 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold dark:text-white hover:bg-gray-200 transition-colors">Cancel</button>
-              <button onClick={() => window.close()} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-all shadow-md">Exit</button>
-            </div>
-          </motion.div>
-        </div>
-      )}
       {applyingJob && (
         <JobQualificationModal 
           job={applyingJob} 
@@ -1949,6 +2044,20 @@ export default function App() {
           onCancel={() => setApplyingJob(null)} 
         />
       )}
+
+      <AnimatePresence>
+        {showExitConfirm && (
+          <motion.div 
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[2000] bg-black/80 text-white px-6 py-3 rounded-full text-xs font-bold flex items-center gap-2 shadow-2xl border border-white/10"
+          >
+            <Smartphone className="w-4 h-4 text-[#00a884]" />
+            Press back again to exit
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -5859,6 +5968,39 @@ const JobDetails = ({ job, user, applications, onBack, onApply, onFollow }: any)
       )}
     </div>
   );
+};
+
+const AdMobBanner = () => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const showBanner = async () => {
+      const options = {
+        adId: 'ca-app-pub-8271489359179610/4964665647', // User's Android Banner ID
+        adSize: BannerAdSize.BANNER,
+        position: BannerAdPosition.BOTTOM_CENTER,
+        margin: 0,
+        isTesting: false,
+      };
+
+      try {
+        await AdMob.showBanner(options);
+        setIsVisible(true);
+      } catch (e) {
+        console.error("AdMob Banner Error:", e);
+      }
+    };
+
+    // Delay a bit to ensure UI is settled
+    const timer = setTimeout(showBanner, 2000);
+    
+    return () => {
+      clearTimeout(timer);
+      AdMob.removeBanner();
+    };
+  }, []);
+
+  return null; // The banner is native overlay
 };
 
 const AffiliateDashboard = ({ user, onBack }: any) => {
