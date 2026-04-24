@@ -22,7 +22,6 @@
     "@vitejs/plugin-react": "^5.0.4",
     "adm-zip": "^0.5.17",
     "browser-image-compression": "^2.0.2",
-    "capacitor-updater": "^3.3.12",
     "clsx": "^2.1.1",
     "compression": "^1.8.1",
     "date-fns": "^4.1.0",

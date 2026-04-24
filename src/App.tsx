@@ -683,6 +683,11 @@ export default function App() {
   const [showPostModal, setShowPostModal] = useState(false);
 
   useEffect(() => {
+    // Notify CapacitorUpdater that app is ready (Prevents rollback)
+    if (Capacitor.isNativePlatform()) {
+      CapacitorUpdater.notifyAppReady().catch(e => console.warn("notifyAppReady failed:", e));
+    }
+
     // AdMob Initialization
     const initAdMob = async () => {
       try {
@@ -692,11 +697,6 @@ export default function App() {
       }
     };
     initAdMob();
-
-    // Notify CapacitorUpdater that app is ready (Prevents rollback)
-    if (Capacitor.isNativePlatform()) {
-      CapacitorUpdater.notifyAppReady().catch(e => console.warn("notifyAppReady failed:", e));
-    }
 
     // Auto-update check for Capacitor
     const checkUpdates = async () => {
