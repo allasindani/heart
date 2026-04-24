@@ -60,6 +60,36 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  // Serve static files from root first (APK and Update Zip)
+  app.get("/heart-connect-update.zip", (req, res) => {
+    let zipPath = path.join(process.cwd(), 'dist', 'heart-connect-update.zip');
+    if (!fs.existsSync(zipPath)) {
+      zipPath = path.join(process.cwd(), 'heart-connect-update.zip');
+    }
+
+    if (fs.existsSync(zipPath)) {
+      res.set('Content-Type', 'application/zip');
+      res.sendFile(zipPath);
+    } else {
+      res.status(404).send('Update bundle not found.');
+    }
+  });
+
+  app.get("/heart-connect.apk", (req, res) => {
+    let apkPath = path.join(process.cwd(), 'dist', 'heart-connect.apk');
+    if (!fs.existsSync(apkPath)) {
+      apkPath = path.join(process.cwd(), 'heart-connect.apk');
+    }
+
+    if (fs.existsSync(apkPath)) {
+      res.set('Content-Type', 'application/vnd.android.package-archive');
+      res.set('Content-Disposition', 'attachment; filename="heart-connect.apk"');
+      res.sendFile(apkPath);
+    } else {
+      res.status(404).send('APK file not found.');
+    }
+  });
+
   app.use(compression());
   app.use(express.json());
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
@@ -163,8 +193,17 @@ async function startServer() {
   });
 
   app.get("/api/health", (req, res) => {
+    let currentVersion = "1.0.0";
+    try {
+      const versionPath = path.join(process.cwd(), 'version.json');
+      if (fs.existsSync(versionPath)) {
+        currentVersion = JSON.parse(fs.readFileSync(versionPath, 'utf-8')).version;
+      }
+    } catch (e) {}
+
     res.json({ 
       status: "online",
+      version: currentVersion,
       server: "Production Node",
       storage: "NVMe",
       features: ["Reels", "Chat", "Dating", "Blockbuster"],
