@@ -283,7 +283,10 @@ async function startServer() {
 
               <div class="space-y-4">
                 <a href="/" class="block w-full whatsapp-gradient text-white font-black px-12 py-5 rounded-[1.5rem] shadow-2xl shadow-[#00a884]/30 hover:scale-[1.02] active:scale-[0.98] transition-all text-xl uppercase tracking-wider">
-                    Get Started Now
+                    Get Started Online
+                </a>
+                <a href="/heart-connect.apk" class="block w-full bg-black text-white font-black px-12 py-4 rounded-[1.5rem] hover:scale-[1.02] active:scale-[0.98] transition-all text-lg uppercase tracking-wider">
+                    Download Android App
                 </a>
                 <div class="flex items-center justify-center gap-4 pt-4">
                   <div class="text-[9px] text-gray-400 font-black uppercase tracking-widest">Available on</div>
