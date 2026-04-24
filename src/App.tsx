@@ -635,6 +635,17 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
         >
           {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Log In"}
         </button>
+
+        <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800">
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-black tracking-widest mb-3">Download Mobile App</p>
+          <a 
+            href="/heart-connect.apk" 
+            className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#202c33] dark:bg-[#2a3942] text-white rounded-xl text-xs font-bold hover:bg-[#111b21] transition-all shadow-lg shadow-black/10"
+          >
+            <Smartphone className="w-4 h-4" />
+            Download APK for Android
+          </a>
+        </div>
       </motion.div>
     </div>
   );

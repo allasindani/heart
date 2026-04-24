@@ -72,7 +72,9 @@ async function startServer() {
 
     if (foundPath) {
       console.log(`[DOWNLOAD] Serving Update: ${foundPath}`);
-      res.download(foundPath, 'heart-connect-update.zip');
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="heart-connect-update.zip"');
+      res.sendFile(foundPath);
     } else {
       console.error(`[DOWNLOAD] Update NOT FOUND. Paths checked: ${possiblePaths.join(', ')}`);
       res.status(404).send('Update bundle not found on server.');
@@ -90,8 +92,9 @@ async function startServer() {
 
     if (foundPath) {
       console.log(`[DOWNLOAD] Serving APK: ${foundPath}`);
-      res.set('Content-Type', 'application/vnd.android.package-archive');
-      res.download(foundPath, 'heart-connect.apk');
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Disposition', 'attachment; filename="heart-connect.apk"');
+      res.sendFile(foundPath);
     } else {
       console.error(`[DOWNLOAD] APK NOT FOUND. Paths checked: ${possiblePaths.join(', ')}`);
       res.status(404).send('APK file not found on server.');
