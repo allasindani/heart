@@ -64,7 +64,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { AdMob, BannerAdSize, BannerAdPosition, BannerAdPluginEvents, AdMobBannerSize } from '@capacitor-community/admob';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { CapacitorUpdater } from 'capacitor-updater';
+import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -693,6 +693,11 @@ export default function App() {
     };
     initAdMob();
 
+    // Notify CapacitorUpdater that app is ready (Prevents rollback)
+    if (Capacitor.isNativePlatform()) {
+      CapacitorUpdater.notifyAppReady().catch(e => console.warn("notifyAppReady failed:", e));
+    }
+
     // Auto-update check for Capacitor
     const checkUpdates = async () => {
       if (Capacitor.isNativePlatform()) {
@@ -710,9 +715,9 @@ export default function App() {
             version: data.version
           });
           
-          if (update) {
+          if (update && update.id) {
             // Set the update to be applied on next restart
-            await CapacitorUpdater.set(update);
+            await CapacitorUpdater.set({ id: update.id });
             console.log('Update successful, will apply on next restart.');
           }
         } catch (e) {
@@ -721,7 +726,9 @@ export default function App() {
       }
     };
     checkUpdates();
+  }, []); // Run once on mount
 
+  useEffect(() => {
     // Back Button Logic
     const handleBackButton = () => {
       // Priority 1: Close main overlays/sub-views first (matches big ternary in App.tsx)
