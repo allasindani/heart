@@ -702,13 +702,20 @@ export default function App() {
     const checkUpdates = async () => {
       if (Capacitor.isNativePlatform()) {
         try {
-          const baseUrl = 'https://chat.opramixes.com'; // Change this to your production domain
+          const baseUrl = 'https://chat.opramixes.com';
           const response = await fetch(`${baseUrl}/api/update`);
           if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
           const data = await response.json();
           
           console.log('Checking for updates...', data.version);
           
+          // Simple check to avoid redundant downloads
+          const lastUpdateId = localStorage.getItem('last_update_id');
+          if (lastUpdateId === data.version) {
+             console.log('Already downloaded/set update for version:', data.version);
+             return;
+          }
+
           // Download and install update in background
           const update = await CapacitorUpdater.download({
             url: data.url,
@@ -718,6 +725,7 @@ export default function App() {
           if (update && update.id) {
             // Set the update to be applied on next restart
             await CapacitorUpdater.set({ id: update.id });
+            localStorage.setItem('last_update_id', data.version);
             console.log('Update successful, will apply on next restart.');
           }
         } catch (e) {
