@@ -62,30 +62,33 @@ async function startServer() {
 
   // Consolidated Download Routes
   app.get("/heart-connect-update.zip", (req, res) => {
-    const paths = [
-      path.join(process.cwd(), 'heart-connect-update.zip'),
-      path.join(process.cwd(), 'dist', 'heart-connect-update.zip')
-    ];
-    const foundPath = paths.find(p => fs.existsSync(p));
+    const rootPath = path.join(process.cwd(), 'heart-connect-update.zip');
+    const distPath = path.join(process.cwd(), 'dist', 'heart-connect-update.zip');
+    
+    let foundPath = fs.existsSync(rootPath) ? rootPath : (fs.existsSync(distPath) ? distPath : null);
+
     if (foundPath) {
-      res.set('Content-Type', 'application/zip');
-      res.sendFile(foundPath);
+      console.log(`Serving update zip from: ${foundPath}`);
+      res.download(foundPath, 'heart-connect-update.zip');
     } else {
+      console.warn(`Update bundle not found. Checked: ${rootPath}, ${distPath}`);
       res.status(404).send('Update bundle not found.');
     }
   });
 
   app.get("/heart-connect.apk", (req, res) => {
-    const paths = [
-      path.join(process.cwd(), 'heart-connect.apk'),
-      path.join(process.cwd(), 'dist', 'heart-connect.apk')
-    ];
-    const foundPath = paths.find(p => fs.existsSync(p));
+    const rootPath = path.join(process.cwd(), 'heart-connect.apk');
+    const distPath = path.join(process.cwd(), 'dist', 'heart-connect.apk');
+    
+    let foundPath = fs.existsSync(rootPath) ? rootPath : (fs.existsSync(distPath) ? distPath : null);
+
     if (foundPath) {
+      console.log(`Serving APK from: ${foundPath}`);
       res.set('Content-Type', 'application/vnd.android.package-archive');
-      res.set('Content-Disposition', 'attachment; filename="heart-connect.apk"');
-      res.sendFile(foundPath);
+      // res.download is a higher-level method for serving files as downloads
+      res.download(foundPath, 'heart-connect.apk');
     } else {
+      console.warn(`APK not found. Checked: ${rootPath}, ${distPath}`);
       res.status(404).send('APK file not found.');
     }
   });
