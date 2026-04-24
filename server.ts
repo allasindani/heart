@@ -60,52 +60,42 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Use __dirname to ensure paths are always correct
-  const distPath = path.resolve(__dirname, 'dist');
-  const publicPath = path.resolve(__dirname, 'public');
+  // Absolute paths for robustness
+  const rootDistPath = path.join(process.cwd(), 'dist');
+  const rootPublicPath = path.join(process.cwd(), 'public');
 
-  // Corrected Download Routes with fallback to /download/apk
-  const serveApk = (req: any, res: any) => {
+  // Diagnostic Log
+  console.log(`[INIT] Serving from: ${rootDistPath}`);
+  console.log(`[INIT] APK Exists in dist: ${fs.existsSync(path.join(rootDistPath, 'heart-connect.apk'))}`);
+
+  // Download Handler
+  const serveStaticFile = (fileName: string, contentType: string) => (req: any, res: any) => {
     const possiblePaths = [
-      path.join(distPath, 'heart-connect.apk'),
-      path.join(publicPath, 'heart-connect.apk'),
-      path.join(process.cwd(), 'heart-connect.apk')
+      path.join(rootDistPath, fileName),
+      path.join(rootPublicPath, fileName),
+      path.join(process.cwd(), fileName)
     ];
     
     const foundPath = possiblePaths.find(p => fs.existsSync(p));
 
     if (foundPath) {
-      console.log(`[DOWNLOAD] Serving APK from: ${foundPath}`);
-      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-      res.setHeader('Content-Disposition', 'attachment; filename="heart-connect.apk"');
+      console.log(`[DOWNLOAD] Serving ${fileName} from: ${foundPath}`);
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      // Ensure no caching for downloads to avoid stale assets
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.sendFile(foundPath);
     } else {
-      console.error(`[DOWNLOAD] APK NOT FOUND. Searched: ${possiblePaths.join(', ')}`);
-      res.status(404).send('APK file not found. Please try again in a few minutes as the build might still be processing.');
+      console.error(`[DOWNLOAD] ${fileName} NOT FOUND in any of: ${possiblePaths.join(', ')}`);
+      res.status(404).send(`${fileName} not found. Build is likely in progress.`);
     }
   };
 
-  app.get("/heart-connect.apk", serveApk);
-  app.get("/download/apk", serveApk);
-
-  app.get("/heart-connect-update.zip", (req, res) => {
-    const possiblePaths = [
-      path.join(distPath, 'heart-connect-update.zip'),
-      path.join(publicPath, 'heart-connect-update.zip'),
-      path.join(process.cwd(), 'heart-connect-update.zip')
-    ];
-    
-    const foundPath = possiblePaths.find(p => fs.existsSync(p));
-
-    if (foundPath) {
-      console.log(`[DOWNLOAD] Serving Update: ${foundPath}`);
-      res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', 'attachment; filename="heart-connect-update.zip"');
-      res.sendFile(foundPath);
-    } else {
-      res.status(404).send('Update bundle not found.');
-    }
-  });
+  // Mount routes FIRST before any other middleware
+  app.get("/heart-connect.apk", serveStaticFile('heart-connect.apk', 'application/vnd.android.package-archive'));
+  app.get("/download/apk", serveStaticFile('heart-connect.apk', 'application/vnd.android.package-archive'));
+  app.get("/heart-connect-update.zip", serveStaticFile('heart-connect-update.zip', 'application/zip'));
+  app.get("/download/update", serveStaticFile('heart-connect-update.zip', 'application/zip'));
 
   app.use(compression());
   app.use(express.json());
