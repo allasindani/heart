@@ -60,12 +60,39 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Corrected Download Routes
+  // Use __dirname to ensure paths are always correct
+  const distPath = path.resolve(__dirname, 'dist');
+  const publicPath = path.resolve(__dirname, 'public');
+
+  // Corrected Download Routes with fallback to /download/apk
+  const serveApk = (req: any, res: any) => {
+    const possiblePaths = [
+      path.join(distPath, 'heart-connect.apk'),
+      path.join(publicPath, 'heart-connect.apk'),
+      path.join(process.cwd(), 'heart-connect.apk')
+    ];
+    
+    const foundPath = possiblePaths.find(p => fs.existsSync(p));
+
+    if (foundPath) {
+      console.log(`[DOWNLOAD] Serving APK from: ${foundPath}`);
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Disposition', 'attachment; filename="heart-connect.apk"');
+      res.sendFile(foundPath);
+    } else {
+      console.error(`[DOWNLOAD] APK NOT FOUND. Searched: ${possiblePaths.join(', ')}`);
+      res.status(404).send('APK file not found. Please try again in a few minutes as the build might still be processing.');
+    }
+  };
+
+  app.get("/heart-connect.apk", serveApk);
+  app.get("/download/apk", serveApk);
+
   app.get("/heart-connect-update.zip", (req, res) => {
     const possiblePaths = [
-      path.join(process.cwd(), 'dist', 'heart-connect-update.zip'),
-      path.join(process.cwd(), 'heart-connect-update.zip'),
-      path.join(process.cwd(), 'public', 'heart-connect-update.zip')
+      path.join(distPath, 'heart-connect-update.zip'),
+      path.join(publicPath, 'heart-connect-update.zip'),
+      path.join(process.cwd(), 'heart-connect-update.zip')
     ];
     
     const foundPath = possiblePaths.find(p => fs.existsSync(p));
@@ -76,28 +103,7 @@ async function startServer() {
       res.setHeader('Content-Disposition', 'attachment; filename="heart-connect-update.zip"');
       res.sendFile(foundPath);
     } else {
-      console.error(`[DOWNLOAD] Update NOT FOUND. Paths checked: ${possiblePaths.join(', ')}`);
-      res.status(404).send('Update bundle not found on server.');
-    }
-  });
-
-  app.get("/heart-connect.apk", (req, res) => {
-    const possiblePaths = [
-      path.join(process.cwd(), 'dist', 'heart-connect.apk'),
-      path.join(process.cwd(), 'heart-connect.apk'),
-      path.join(process.cwd(), 'public', 'heart-connect.apk')
-    ];
-    
-    const foundPath = possiblePaths.find(p => fs.existsSync(p));
-
-    if (foundPath) {
-      console.log(`[DOWNLOAD] Serving APK: ${foundPath}`);
-      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-      res.setHeader('Content-Disposition', 'attachment; filename="heart-connect.apk"');
-      res.sendFile(foundPath);
-    } else {
-      console.error(`[DOWNLOAD] APK NOT FOUND. Paths checked: ${possiblePaths.join(', ')}`);
-      res.status(404).send('APK file not found on server.');
+      res.status(404).send('Update bundle not found.');
     }
   });
 
@@ -313,7 +319,7 @@ async function startServer() {
                 <a href="/" class="block w-full whatsapp-gradient text-white font-black px-12 py-5 rounded-[1.5rem] shadow-2xl shadow-[#00a884]/30 hover:scale-[1.02] active:scale-[0.98] transition-all text-xl uppercase tracking-wider">
                     Get Started Online
                 </a>
-                <a href="/heart-connect.apk" class="block w-full bg-black text-white font-black px-12 py-4 rounded-[1.5rem] hover:scale-[1.02] active:scale-[0.98] transition-all text-lg uppercase tracking-wider">
+                <a href="/download/apk" class="block w-full bg-black text-white font-black px-12 py-4 rounded-[1.5rem] hover:scale-[1.02] active:scale-[0.98] transition-all text-lg uppercase tracking-wider">
                     Download Android App
                 </a>
                 <div class="flex items-center justify-center gap-4 pt-4">
