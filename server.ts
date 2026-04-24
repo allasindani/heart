@@ -60,36 +60,41 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Consolidated Download Routes
+  // Corrected Download Routes
   app.get("/heart-connect-update.zip", (req, res) => {
-    const rootPath = path.join(process.cwd(), 'heart-connect-update.zip');
-    const distPath = path.join(process.cwd(), 'dist', 'heart-connect-update.zip');
+    const possiblePaths = [
+      path.join(process.cwd(), 'dist', 'heart-connect-update.zip'),
+      path.join(process.cwd(), 'heart-connect-update.zip'),
+      path.join(process.cwd(), 'public', 'heart-connect-update.zip')
+    ];
     
-    let foundPath = fs.existsSync(rootPath) ? rootPath : (fs.existsSync(distPath) ? distPath : null);
+    const foundPath = possiblePaths.find(p => fs.existsSync(p));
 
     if (foundPath) {
-      console.log(`Serving update zip from: ${foundPath}`);
+      console.log(`[DOWNLOAD] Serving Update: ${foundPath}`);
       res.download(foundPath, 'heart-connect-update.zip');
     } else {
-      console.warn(`Update bundle not found. Checked: ${rootPath}, ${distPath}`);
-      res.status(404).send('Update bundle not found.');
+      console.error(`[DOWNLOAD] Update NOT FOUND. Paths checked: ${possiblePaths.join(', ')}`);
+      res.status(404).send('Update bundle not found on server.');
     }
   });
 
   app.get("/heart-connect.apk", (req, res) => {
-    const rootPath = path.join(process.cwd(), 'heart-connect.apk');
-    const distPath = path.join(process.cwd(), 'dist', 'heart-connect.apk');
+    const possiblePaths = [
+      path.join(process.cwd(), 'dist', 'heart-connect.apk'),
+      path.join(process.cwd(), 'heart-connect.apk'),
+      path.join(process.cwd(), 'public', 'heart-connect.apk')
+    ];
     
-    let foundPath = fs.existsSync(rootPath) ? rootPath : (fs.existsSync(distPath) ? distPath : null);
+    const foundPath = possiblePaths.find(p => fs.existsSync(p));
 
     if (foundPath) {
-      console.log(`Serving APK from: ${foundPath}`);
+      console.log(`[DOWNLOAD] Serving APK: ${foundPath}`);
       res.set('Content-Type', 'application/vnd.android.package-archive');
-      // res.download is a higher-level method for serving files as downloads
       res.download(foundPath, 'heart-connect.apk');
     } else {
-      console.warn(`APK not found. Checked: ${rootPath}, ${distPath}`);
-      res.status(404).send('APK file not found.');
+      console.error(`[DOWNLOAD] APK NOT FOUND. Paths checked: ${possiblePaths.join(', ')}`);
+      res.status(404).send('APK file not found on server.');
     }
   });
 
