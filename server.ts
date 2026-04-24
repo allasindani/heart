@@ -60,31 +60,31 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Serve static files from root first (APK and Update Zip)
+  // Consolidated Download Routes
   app.get("/heart-connect-update.zip", (req, res) => {
-    let zipPath = path.join(process.cwd(), 'dist', 'heart-connect-update.zip');
-    if (!fs.existsSync(zipPath)) {
-      zipPath = path.join(process.cwd(), 'heart-connect-update.zip');
-    }
-
-    if (fs.existsSync(zipPath)) {
+    const paths = [
+      path.join(process.cwd(), 'heart-connect-update.zip'),
+      path.join(process.cwd(), 'dist', 'heart-connect-update.zip')
+    ];
+    const foundPath = paths.find(p => fs.existsSync(p));
+    if (foundPath) {
       res.set('Content-Type', 'application/zip');
-      res.sendFile(zipPath);
+      res.sendFile(foundPath);
     } else {
       res.status(404).send('Update bundle not found.');
     }
   });
 
   app.get("/heart-connect.apk", (req, res) => {
-    let apkPath = path.join(process.cwd(), 'dist', 'heart-connect.apk');
-    if (!fs.existsSync(apkPath)) {
-      apkPath = path.join(process.cwd(), 'heart-connect.apk');
-    }
-
-    if (fs.existsSync(apkPath)) {
+    const paths = [
+      path.join(process.cwd(), 'heart-connect.apk'),
+      path.join(process.cwd(), 'dist', 'heart-connect.apk')
+    ];
+    const foundPath = paths.find(p => fs.existsSync(p));
+    if (foundPath) {
       res.set('Content-Type', 'application/vnd.android.package-archive');
       res.set('Content-Disposition', 'attachment; filename="heart-connect.apk"');
-      res.sendFile(apkPath);
+      res.sendFile(foundPath);
     } else {
       res.status(404).send('APK file not found.');
     }
@@ -139,38 +139,6 @@ async function startServer() {
       res.json({ id: session.id, url: session.url });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
-    }
-  });
-
-  // Serve the update zip
-  app.get("/heart-connect-update.zip", (req, res) => {
-    let zipPath = path.join(process.cwd(), 'dist', 'heart-connect-update.zip');
-    if (!fs.existsSync(zipPath)) {
-      zipPath = path.join(process.cwd(), 'heart-connect-update.zip');
-    }
-
-    if (fs.existsSync(zipPath)) {
-      res.set('Content-Type', 'application/zip');
-      res.sendFile(zipPath);
-    } else {
-      res.status(404).send('Update bundle not found. Please run: npm run build && npm run bundle-update');
-    }
-  });
-
-  // Serve the APK
-  app.get("/heart-connect.apk", (req, res) => {
-    let apkPath = path.join(process.cwd(), 'dist', 'heart-connect.apk');
-    if (!fs.existsSync(apkPath)) {
-      apkPath = path.join(process.cwd(), 'heart-connect.apk');
-    }
-
-    if (fs.existsSync(apkPath)) {
-      res.set('Content-Type', 'application/vnd.android.package-archive');
-      res.set('Content-Disposition', 'attachment; filename="heart-connect.apk"');
-      res.sendFile(apkPath);
-    } else {
-      console.error("APK not found at:", apkPath);
-      res.status(404).send('APK file not found. Ensure it is built and located in dist/ or project root.');
     }
   });
 
