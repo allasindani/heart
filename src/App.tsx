@@ -64,6 +64,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { AdMob, BannerAdSize, BannerAdPosition, BannerAdPluginEvents, AdMobBannerSize } from '@capacitor-community/admob';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { CapacitorUpdater } from 'capacitor-updater';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -691,6 +692,31 @@ export default function App() {
       }
     };
     initAdMob();
+
+    // Auto-update check for Capacitor
+    const checkUpdates = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          // You can point this to your own update server
+          const response = await fetch('https://chat.opramixes.com/api/update');
+          const data = await response.json();
+          
+          // Download and install update in background
+          const update = await CapacitorUpdater.download({
+            url: data.url,
+          });
+          
+          if (update) {
+            // Set the update to be applied on next restart
+            await CapacitorUpdater.set(update);
+            console.log('Update ready for next restart');
+          }
+        } catch (e) {
+          console.warn("Auto-update check failed:", e);
+        }
+      }
+    };
+    checkUpdates();
 
     // Back Button Logic
     const handleBackButton = () => {

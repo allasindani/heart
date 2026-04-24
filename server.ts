@@ -113,6 +113,14 @@ async function startServer() {
   });
 
   // API routes
+  app.get("/api/update", (req, res) => {
+    // This endpoint will return the latest version and update zip url
+    res.json({
+      version: "1.0.1",
+      url: `https://${req.get('host')}/heart-connect-update.zip`
+    });
+  });
+
   app.get("/api/health", (req, res) => {
     res.json({ 
       status: "online",

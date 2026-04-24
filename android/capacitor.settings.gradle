@@ -7,3 +7,6 @@ project(':capacitor-community-admob').projectDir = new File('../node_modules/@ca
 
 include ':capacitor-app'
 project(':capacitor-app').projectDir = new File('../node_modules/@capacitor/app/android')
+
+include ':capacitor-updater'
+project(':capacitor-updater').projectDir = new File('../node_modules/capacitor-updater/android')
