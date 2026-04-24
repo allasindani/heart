@@ -121,6 +121,26 @@ async function startServer() {
     });
   });
 
+  // Serve the update zip if requested
+  app.get("/heart-connect-update.zip", (req, res) => {
+    const zipPath = path.join(process.cwd(), 'dist', 'heart-connect-update.zip');
+    if (fs.existsSync(zipPath)) {
+      res.set('Content-Type', 'application/zip');
+      res.sendFile(zipPath);
+    } else {
+      res.status(404).send('Update file not found. Please run npm run bundle-update first.');
+    }
+  });
+
+  // API for version check
+  app.get("/api/update", (req, res) => {
+    // In a real app, you'd pull this from package.json or a database
+    res.json({
+      version: "1.0.1",
+      url: "https://chat.opramixes.com/heart-connect-update.zip"
+    });
+  });
+
   app.get("/api/health", (req, res) => {
     res.json({ 
       status: "online",

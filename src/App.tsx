@@ -697,19 +697,23 @@ export default function App() {
     const checkUpdates = async () => {
       if (Capacitor.isNativePlatform()) {
         try {
-          // You can point this to your own update server
-          const response = await fetch('https://chat.opramixes.com/api/update');
+          const baseUrl = 'https://chat.opramixes.com'; // Change this to your production domain
+          const response = await fetch(`${baseUrl}/api/update`);
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
           const data = await response.json();
+          
+          console.log('Checking for updates...', data.version);
           
           // Download and install update in background
           const update = await CapacitorUpdater.download({
             url: data.url,
+            version: data.version
           });
           
           if (update) {
             // Set the update to be applied on next restart
             await CapacitorUpdater.set(update);
-            console.log('Update ready for next restart');
+            console.log('Update successful, will apply on next restart.');
           }
         } catch (e) {
           console.warn("Auto-update check failed:", e);
