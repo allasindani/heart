@@ -112,15 +112,6 @@ async function startServer() {
     }
   });
 
-  // API routes
-  app.get("/api/update", (req, res) => {
-    // This endpoint will return the latest version and update zip url
-    res.json({
-      version: "1.0.1",
-      url: `https://${req.get('host')}/heart-connect-update.zip`
-    });
-  });
-
   // Serve the update zip
   app.get("/heart-connect-update.zip", (req, res) => {
     const zipPath = path.join(process.cwd(), 'dist', 'heart-connect-update.zip');
@@ -145,11 +136,20 @@ async function startServer() {
 
   // API for version check
   app.get("/api/update", (req, res) => {
-    // In a real app, you'd pull this from package.json or a database
-    res.json({
-      version: "1.0.1",
-      url: "https://chat.opramixes.com/heart-connect-update.zip"
-    });
+    try {
+      const versionPath = path.join(process.cwd(), 'version.json');
+      if (fs.existsSync(versionPath)) {
+        const versionData = JSON.parse(fs.readFileSync(versionPath, 'utf-8'));
+        res.json(versionData);
+      } else {
+        res.json({
+          version: "1.0.0",
+          url: `https://${req.get('host')}/heart-connect-update.zip`
+        });
+      }
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to read version info' });
+    }
   });
 
   app.get("/api/health", (req, res) => {
