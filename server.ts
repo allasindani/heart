@@ -121,7 +121,7 @@ async function startServer() {
     });
   });
 
-  // Serve the update zip if requested
+  // Serve the update zip
   app.get("/heart-connect-update.zip", (req, res) => {
     const zipPath = path.join(process.cwd(), 'dist', 'heart-connect-update.zip');
     if (fs.existsSync(zipPath)) {
@@ -129,6 +129,17 @@ async function startServer() {
       res.sendFile(zipPath);
     } else {
       res.status(404).send('Update file not found. Please run npm run bundle-update first.');
+    }
+  });
+
+  // Serve the APK
+  app.get("/heart-connect.apk", (req, res) => {
+    const apkPath = path.join(process.cwd(), 'dist', 'heart-connect.apk');
+    if (fs.existsSync(apkPath)) {
+      res.set('Content-Type', 'application/vnd.android.package-archive');
+      res.sendFile(apkPath);
+    } else {
+      res.status(404).send('APK file not found. Please build it first.');
     }
   });
 
