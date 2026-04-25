@@ -4031,6 +4031,14 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate 
     await updateDoc(doc(db, 'notifications', id), { read: true });
   };
 
+  const deleteNotification = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'notifications', id));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, `notifications/${id}`);
+    }
+  };
+
   const handleNotificationClick = (n: any) => {
     markAsRead(n.id);
     if (n.type === 'message' && n.relatedId) {
@@ -4052,32 +4060,64 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate 
         {notifications.length === 0 ? (
           <div className="text-center py-20 text-gray-500 dark:text-[#8696a0]">No notifications yet.</div>
         ) : (
-          notifications.map(n => (
-            <div 
-              key={n.id} 
-              onClick={() => handleNotificationClick(n)}
-              className={cn("bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm flex items-center gap-4 border-l-4 transition-all cursor-pointer", n.read ? "border-transparent opacity-70" : "border-[#00a884]")}
-            >
-              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-[#00a884] shrink-0">
-                {n.type === 'like' && <ThumbsUp className="w-6 h-6" />}
-                {n.type === 'message' && <MessageSquare className="w-6 h-6" />}
-                {n.type === 'friend_request' && <UserPlus className="w-6 h-6" />}
-                {n.type === 'comment' && <MessageCircle className="w-6 h-6" />}
-                {n.type === 'broadcast' && <Megaphone className="w-6 h-6" />}
-                {n.type === 'job_update' && <Briefcase className="w-6 h-6" />}
+          <div className="space-y-3">
+            {notifications.map(n => (
+              <div 
+                key={n.id}
+                className="relative overflow-hidden rounded-2xl bg-red-500"
+              >
+                {/* Delete background action */}
+                <div className="absolute inset-0 flex items-center justify-end px-6 text-white">
+                  <div className="flex flex-col items-center gap-1">
+                    <Trash2 className="w-5 h-5" />
+                    <span className="text-[10px] font-bold uppercase">Delete</span>
+                  </div>
+                </div>
+                
+                <motion.div 
+                  drag="x"
+                  dragConstraints={{ left: -100, right: 0 }}
+                  dragElastic={0.1}
+                  onDragEnd={(_, info) => {
+                    if (info.offset.x < -70) {
+                      deleteNotification(n.id);
+                    }
+                  }}
+                  whileDrag={{ scale: 1.02 }}
+                  onClick={() => handleNotificationClick(n)}
+                  className={cn(
+                    "bg-white dark:bg-[#111b21] p-4 flex items-center gap-4 border-l-4 transition-all cursor-pointer relative z-10", 
+                    n.read ? "border-transparent opacity-70" : "border-[#00a884]"
+                  )}
+                >
+                  <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-[#00a884] shrink-0">
+                    {n.type === 'like' && <ThumbsUp className="w-6 h-6" />}
+                    {n.type === 'message' && <MessageSquare className="w-6 h-6" />}
+                    {n.type === 'friend_request' && <UserPlus className="w-6 h-6" />}
+                    {n.type === 'comment' && <MessageCircle className="w-6 h-6" />}
+                    {n.type === 'broadcast' && <Megaphone className="w-6 h-6" />}
+                    {n.type === 'job_update' && <Briefcase className="w-6 h-6" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-[#111b21] dark:text-[#e9edef]">
+                      <span className="font-bold flex items-center gap-1">
+                        {n.fromName}
+                        <TierBadge tier={usersMap[n.fromId]?.category} size={12} />
+                      </span> {n.text}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-1">{n.timestamp?.toDate ? formatWhatsAppTime(n.timestamp.toDate()) : 'Just now'}</p>
+                  </div>
+                </motion.div>
               </div>
-              <div className="flex-1">
-                <p className="text-sm text-[#111b21] dark:text-[#e9edef]">
-                  <span className="font-bold flex items-center gap-1">
-                    {n.fromName}
-                    <TierBadge tier={usersMap[n.fromId]?.category} size={12} />
-                  </span> {n.text}
-                </p>
-                <p className="text-[10px] text-gray-400 mt-1">{n.timestamp?.toDate ? formatWhatsAppTime(n.timestamp.toDate()) : 'Just now'}</p>
-              </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
+      </div>
+      
+      {/* OneSignal Invite */}
+      <div className="p-4 bg-white dark:bg-[#111b21] border-t border-gray-100 dark:border-gray-800">
+        <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-2 text-center">Stay in touch</p>
+        <div className="onesignal-customlink-container"></div>
       </div>
     </div>
   );
