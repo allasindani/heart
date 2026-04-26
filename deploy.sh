@@ -33,6 +33,13 @@ NODE_ENV=production PORT=3005 pm2 restart heart-connect --update-env || pm2 star
 echo "⏳ Waiting for server to warm up..."
 sleep 5
 
+echo "🛠️ Checking if Port 3005 is active..."
+if ! command -v netstat &> /dev/null; then
+    echo "netstat not found, skipping port check."
+else
+    netstat -tuln | grep :3005 || echo "❌ PORT 3005 IS NOT LISTENING!"
+fi
+
 echo "🔍 Running Health Check..."
 RESULT=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3005/api/health || echo "FAILED")
 

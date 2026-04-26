@@ -60,6 +60,12 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  // Debug Middleware for Production/VPS issues
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - Host: ${req.get('host')} - IP: ${req.ip}`);
+    next();
+  });
+
   // Absolute paths for robustness
   const rootDistPath = path.join(process.cwd(), 'dist');
   const rootPublicPath = path.join(process.cwd(), 'public');
@@ -328,19 +334,34 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  const isProduction = process.env.NODE_ENV === "production";
+  
+  if (!isProduction) {
+    console.log("[SERVER] Starting in DEVELOPMENT mode (Vite Middleware)");
     const vite = await createViteServer({
       server: { 
         middlewareMode: true,
+        allowedHosts: ['chat.opramixes.com', 'www.chat.opramixes.com', 'localhost'],
       },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
+    console.log("[SERVER] Starting in PRODUCTION mode (Static Files)");
     const distPath = path.join(process.cwd(), 'dist');
+    if (!fs.existsSync(distPath)) {
+      console.warn(`[WARNING] Dist path not found: ${distPath}. Falling back to dynamic welcome page.`);
+    }
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      // If it's the welcome path, we handled it above.
+      // Otherwise, serve index.html for SPA routes.
+      const indexHtml = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexHtml)) {
+        res.sendFile(indexHtml);
+      } else {
+        res.redirect('/welcome'); // Fallback if build is missing
+      }
     });
   }
 
