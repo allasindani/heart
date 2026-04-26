@@ -1,10 +1,32 @@
-# VPS Setup Guide for Heart Connect
+# VPS RESCUE GUIDE (PORT 3007 + SSL)
 
-## 1. Nginx Configuration
-Create or edit your config:
-`sudo nano /etc/nginx/conf.d/heart-connect.conf`
+## 1. KILL ALL STUCK PROCESSES
+Since you are getting "Port already in use" or "502 Bad Gateway", we must stop everything.
+```bash
+cd /home/heart
 
-Paste this (Full SSL Block):
+# Stop any running PM2 sites
+pm2 stop all || true
+pm2 delete all || true
+
+# Kill any hidden node/tsx processes
+pkill -9 node || true
+pkill -9 tsx || true
+
+# Verify port 3007 is clear (should show nothing)
+sudo lsof -i :3007
+```
+
+## 2. CONFIG CLEANUP
+Vite is confused by your manual `.js` file.
+```bash
+rm -f /home/heart/vite.config.js
+```
+
+## 3. NGINX SSL CONFIG (PASTE THIS)
+Run `sudo nano /etc/nginx/conf.d/heart-connect.conf`
+**ERASE EVERYTHING** and paste this block (using **Port 3007**):
+
 ```nginx
 server {
     listen 80;
@@ -19,8 +41,11 @@ server {
     ssl_certificate /etc/letsencrypt/live/chat.opramixes.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/chat.opramixes.com/privkey.pem;
 
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
     location / {
-        proxy_pass http://localhost:3005;
+        proxy_pass http://localhost:3007;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -35,39 +60,17 @@ server {
 }
 ```
 
-## 2. FIX: Host Blocked / Port Busy
-If the "Blocked Host" error persists, **execute these exact commands** in order:
-
+Then reload Nginx:
 ```bash
-cd /home/heart
-
-# 1. Kill everything running
-pm2 stop all || true
-pkill -f tsx || true
-pkill -f node || true
-
-# 2. Delete the manual JS config (THIS IS THE MAIN CONFLICT)
-rm -f vite.config.js
-
-# 3. Pull the latest fixes
-./update.sh
-
-# 4. Start fresh
-npm run start
-```
-*Note: The project uses `vite.config.ts`. If you manually created `vite.config.js` on the server, it blocks the correct configuration.*
-
-## 3. Apply Nginx & SSL Settings (Manual Block)
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-# Since you hit the rate limit for new certs, use 'reinstall'
-sudo certbot --nginx -d chat.opramixes.com
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
-## 3. Update the App
-Run your update script:
+## 4. START THE APP (FRESH)
 ```bash
 cd /home/heart
-./update.sh
+export PORT=3007
+export NODE_ENV=production
+
+# Start and keep running with PM2
+pm2 start --name "heart-connect" "npm run start" -- env PORT=3007 NODE_ENV=production
 ```

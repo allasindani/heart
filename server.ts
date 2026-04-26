@@ -58,7 +58,7 @@ const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SEC
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = Number(process.env.PORT) || 3007;
 
   // Debug Middleware for Production/VPS issues
   app.use((req, res, next) => {
