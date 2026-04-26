@@ -355,7 +355,7 @@ async function startServer() {
     const vite = await createViteServer({
       server: { 
         middlewareMode: true,
-        allowedHosts: ['chat.opramixes.com', 'www.chat.opramixes.com', 'localhost'],
+        allowedHosts: true,
       },
       appType: "spa",
     });

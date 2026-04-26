@@ -4,11 +4,20 @@
 Create or edit your config:
 `sudo nano /etc/nginx/conf.d/heart-connect.conf`
 
-Paste this:
+Paste this (Full SSL Block):
 ```nginx
 server {
     listen 80;
     server_name chat.opramixes.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name chat.opramixes.com;
+
+    ssl_certificate /etc/letsencrypt/live/chat.opramixes.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/chat.opramixes.com/privkey.pem;
 
     location / {
         proxy_pass http://localhost:3005;
@@ -24,6 +33,16 @@ server {
 
     client_max_body_size 50M;
 }
+```
+
+## 2. Fix Node Errors
+If you see "Port 3005 in use", run:
+```bash
+pm2 stop heart-connect
+```
+Then delete the broken js config:
+```bash
+rm /home/heart/vite.config.js
 ```
 
 ## 2. Apply & SSL
