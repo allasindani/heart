@@ -35,28 +35,29 @@ server {
 }
 ```
 
-## 2. Fix Host Blocked Error & Config Conflict
-If you see "Blocked request. This host (chat.opramixes.com) is not allowed":
+## 2. FIX: Host Blocked / Port Busy
+If the "Blocked Host" error persists, **execute these exact commands** in order:
 
-1. **Delete the manual config you created**:
-   ```bash
-   rm /home/heart/vite.config.js
-   ```
-   *The project uses `vite.config.ts`, but Vite was picking up your manually created `.js` file which had errors.*
+```bash
+cd /home/heart
 
-2. **Stop any existing stalled processes**:
-   ```bash
-   pm2 stop heart-connect
-   # or
-   killall node
-   ```
+# 1. Kill everything running
+pm2 stop all || true
+pkill -f tsx || true
+pkill -f node || true
 
-3. **Pull the latest update (which has the fix)**:
-   ```bash
-   ./update.sh
-   ```
+# 2. Delete the manual JS config (THIS IS THE MAIN CONFLICT)
+rm -f vite.config.js
 
-## 3. Apply Nginx & SSL Settings
+# 3. Pull the latest fixes
+./update.sh
+
+# 4. Start fresh
+npm run start
+```
+*Note: The project uses `vite.config.ts`. If you manually created `vite.config.js` on the server, it blocks the correct configuration.*
+
+## 3. Apply Nginx & SSL Settings (Manual Block)
 ```bash
 sudo nginx -t
 sudo systemctl reload nginx
