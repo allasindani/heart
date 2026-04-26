@@ -1,28 +1,48 @@
 #!/bin/bash
 
-# One-click deployment script for Heart Connect on VPS
-echo "🚀 Starting deployment for Heart Connect..."
+# Robust VPS deployment script for Heart Connect
+echo "🚀 [1/5] Starting Heart Connect Deployment..."
+
+# Get current script directory
+PROJECT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$PROJECT_DIR"
+
+echo "📂 Working in: $(pwd)"
 
 # 1. Pull latest code
-echo "📥 Syncing with GitHub..."
-git pull origin main
+echo "📥 [2/5] Fetching latest changes from GitHub..."
+git fetch --all
+git reset --hard origin/main
 
 # 2. Install dependencies
-echo "📦 Installing npm dependencies..."
+echo "📦 [3/5] Installing dependencies..."
 npm install
 
-# 3. Clean and Build
-echo "🏗️ Building production assets..."
-rm -rf dist
+# 3. Build & Create Bundle
+echo "🏗️ [4/5] Building production assets & APK updates..."
 npm run build
-
-# 4. Generate update bundle (for Capacitor apps)
-echo "📂 Creating update bundle..."
 npm run bundle-update
 
-# 5. Restart with PM2
-echo "♻️ Restarting app with PM2..."
-# We use port 3005 as seen in your logs
-NODE_ENV=production PORT=3005 pm2 restart heart-connect --update-env
+# 4. Restart with PM2
+echo "♻️ [5/5] Refreshing server (Port 3005)..."
+# Force kill anything on 3005 if needed (optional)
+# sudo fuser -k 3005/tcp 2>/dev/null 
 
-echo "✅ Deployment complete! Visit your site."
+NODE_ENV=production PORT=3005 pm2 restart heart-connect --update-env || pm2 start server.ts --name heart-connect --interpreter npx --interpreter-args tsx
+
+echo "⏳ Waiting for server to warm up..."
+sleep 5
+
+echo "🔍 Running Health Check..."
+RESULT=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3005/api/health || echo "FAILED")
+
+if [ "$RESULT" == "200" ]; then
+  echo "✅ Health Check passed (Status 200)!"
+  echo "✨ [DONE] Heart Connect is now LIVE!"
+  echo "🔗 Check it: https://chat.opramixes.com"
+else
+  echo "⚠️ Health Check FAILED with status: $RESULT"
+  echo "🚨 PM2 Logs for debugging:"
+  pm2 logs heart-connect --lines 20 --no-colors
+  echo "❌ Deployment might have issues. Check PM2 logs above."
+fi

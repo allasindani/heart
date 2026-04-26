@@ -268,12 +268,12 @@ async function startServer() {
                   </div>
               </div>
 
-              <h1 class="text-3xl md:text-4xl font-black text-gray-900 mb-4 tracking-tight leading-tight uppercase">
-                  ${welcomeMessage}
+              <h1 class="text-3xl md:text-5xl font-black text-gray-900 mb-4 tracking-tight leading-tight uppercase">
+                  Welcome to HEART CONNECT!
               </h1>
 
-              <p class="text-gray-500 mb-8 text-base md:text-lg font-medium max-w-md mx-auto">
-                  Zimbabwe's #1 Social & Dating Platform.
+              <p class="text-gray-500 mb-8 text-base md:text-xl font-medium max-w-xl mx-auto">
+                  Connect with friends and family easily. Experience Zimbabwe's #1 Social & Dating Platform, designed for real connections.
               </p>
 
               <!-- Users Grid -->
@@ -344,11 +344,18 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server started successfully`);
-    console.log(`Listening on port: ${PORT}`);
+  app.listen(PORT, "0.0.0.0", (err?: any) => {
+    if (err) {
+      console.error(`[CRITICAL] Failed to start server: ${err.message}`);
+      process.exit(1);
+    }
+    console.log(`\n🚀 HEART CONNECT SERVER IS LIVE`);
+    console.log(`----------------------------------`);
+    console.log(`Port:        ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`Vite Dev Mode: ${process.env.NODE_ENV !== "production"}`);
+    console.log(`Domain:      chat.opramixes.com`);
+    console.log(`Time:        ${new Date().toISOString()}`);
+    console.log(`----------------------------------\n`);
   });
 }
 

@@ -8,11 +8,20 @@
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
-      OneSignalDeferred.push(async function(OneSignal) {
-        await OneSignal.init({
-          appId: "32479931-809b-4497-a8d1-61b84bc8eb77",
+      // Only initialize OneSignal on the production domain to avoid "Domain Mismatch" errors
+      if (window.location.hostname === 'chat.opramixes.com' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        OneSignalDeferred.push(async function(OneSignal) {
+          await OneSignal.init({
+            appId: "32479931-809b-4497-a8d1-61b84bc8eb77",
+            safari_web_id: "web.onesignal.auto.17b4abec-0c0e-486a-867c-3f7c32479931",
+            notifyButton: {
+              enable: true,
+            },
+          });
         });
-      });
+      } else {
+        console.warn("OneSignal initialization skipped on this domain (" + window.location.hostname + "). It only works on https://chat.opramixes.com");
+      }
     </script>
     <title>Heart Connect</title>
   </head>
