@@ -1,31 +1,31 @@
 # VPS RESCUE GUIDE (PORT 3007 + SSL)
 
-## 1. KILL ALL STUCK PROCESSES
-Since you are getting "Port already in use" or "502 Bad Gateway", we must stop everything.
+## 1. AGGRESSIVE CLEANUP (Kill any process blocking Port 3007)
+You must stop the old version of the app to free up the port.
 ```bash
+# 1. CD to project
 cd /home/heart
 
-# Stop any running PM2 sites
+# 2. Stop PM2 completely
 pm2 stop all || true
 pm2 delete all || true
 
-# Kill any hidden node/tsx processes
-pkill -9 node || true
-pkill -9 tsx || true
+# 3. Force kill any hidden node/tsx processes
+sudo pkill -9 node || true
+sudo pkill -9 tsx || true
 
-# Verify port 3007 is clear (should show nothing)
+# 4. Final check (should return NOTHING)
 sudo lsof -i :3007
 ```
 
 ## 2. CONFIG CLEANUP
-Vite is confused by your manual `.js` file.
 ```bash
 rm -f /home/heart/vite.config.js
 ```
 
-## 3. NGINX SSL CONFIG (PASTE THIS)
+## 3. NGINX SSL CONFIG (Port 3007)
 Run `sudo nano /etc/nginx/conf.d/heart-connect.conf`
-**ERASE EVERYTHING** and paste this block (using **Port 3007**):
+**ERASE EVERYTHING** and paste this block:
 
 ```nginx
 server {
@@ -55,30 +55,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
-
-    client_max_body_size 50M;
 }
 ```
+Reload Nginx: `sudo nginx -t && sudo systemctl reload nginx`
 
-Then reload Nginx:
+## 4. START THE APP (Port 3007)
+Run this EXACT command:
 ```bash
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-## 4. START THE APP (FRESH)
-Execute these two lines:
-```bash
-pm2 delete heart-connect || true
 PORT=3007 NODE_ENV=production pm2 start "npm run start" --name "heart-connect"
 ```
 
-## 5. VERIFY IT IS ACTUALLY RUNNING
-Run this command to see the real-time logs:
+## 5. CHECK LOGS
 ```bash
 pm2 logs heart-connect
 ```
-**If you see "Listening on 3007", it is working.**
-If it says "Error: EADDRINUSE", it means you didn't kill the old process correctly. Run `pkill -9 node` and try again.
-
-**If you see 502 again:**
-Check Nginx logs: `sudo tail -f /var/log/nginx/error.log`
+**You should see:** `Listening on port: 3007`.
+If you still see 502, check Nginx errors: `sudo tail -f /var/log/nginx/error.log`

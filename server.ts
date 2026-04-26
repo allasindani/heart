@@ -121,16 +121,6 @@ async function startServer() {
   app.use(express.json());
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-  // Support for custom domains and Google Auth
-  app.use((req, res, next) => {
-    const host = req.get('host');
-    if (host === 'chat.opramixes.com' || host === 'www.chat.opramixes.com') {
-      // Logic for custom domain if needed
-    }
-    next();
-  });
-
-  // Stripe Checkout Endpoint
   app.post("/api/create-checkout-session", async (req, res) => {
     if (!stripe) {
       return res.status(500).json({ error: 'Stripe is not configured' });
@@ -169,7 +159,6 @@ async function startServer() {
     }
   });
 
-  // API for version check
   app.get("/api/update", (req, res) => {
     try {
       const versionPath = path.join(process.cwd(), 'version.json');
@@ -253,7 +242,7 @@ async function startServer() {
       <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>${siteName} - Welcome</title>
+          <title>\${siteName} - Welcome</title>
           <script src="https://cdn.tailwindcss.com"></script>
           <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap">
           <style>
@@ -306,18 +295,18 @@ async function startServer() {
                   </div>
                 </div>
                 <div class="flex gap-4 overflow-x-auto no-scrollbar pb-2">
-                  ${featuredUsers.length > 0 ? featuredUsers.map(u => `
+                  \${featuredUsers.length > 0 ? featuredUsers.map(u => `
                     <div class="flex-shrink-0 w-24 text-center group translate-y-0 hover:-translate-y-1 transition-transform">
                       <div class="relative w-24 h-24 mx-auto rounded-[1.5rem] overflow-hidden border-2 border-white shadow-xl">
-                        <img src="${u.photoURL}" class="w-full h-full object-cover" alt="${u.displayName}">
-                        ${u.isVerified ? `
+                        <img src="\${u.photoURL}" class="w-full h-full object-cover" alt="\${u.displayName}">
+                        \${u.isVerified ? `
                           <div class="absolute bottom-2 right-2 bg-[#00a884] rounded-full p-0.5 border border-white shadow-sm">
                             <svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
                           </div>
                         ` : ''}
                       </div>
-                      <p class="text-[10px] font-black mt-3 truncate text-gray-800">${u.displayName.split(' ')[0]}</p>
-                      <p class="text-[8px] font-bold text-gray-400 truncate uppercase mt-0.5">${u.city}</p>
+                      <p class="text-[10px] font-black mt-3 truncate text-gray-800">\${u.displayName.split(' ')[0]}</p>
+                      <p class="text-[8px] font-bold text-gray-400 truncate uppercase mt-0.5">\${u.city}</p>
                     </div>
                   `).join('') : `
                     <div class="w-full py-6 text-center text-gray-300 text-xs italic font-medium">Scanning for nearby hearts...</div>
@@ -364,7 +353,7 @@ async function startServer() {
     console.log("[SERVER] Starting in PRODUCTION mode (Static Files)");
     const distPath = path.join(process.cwd(), 'dist');
     if (!fs.existsSync(distPath)) {
-      console.warn(`[WARNING] Dist path not found: ${distPath}. Falling back to dynamic welcome page.`);
+      console.warn(`[WARNING] Dist path not found: \${distPath}. Falling back to dynamic welcome page.`);
     }
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
@@ -379,19 +368,24 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", (err?: any) => {
-    if (err) {
-      console.error(`[CRITICAL] Failed to start server: ${err.message}`);
-      process.exit(1);
-    }
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`\n🚀 HEART CONNECT SERVER IS LIVE`);
     console.log(`----------------------------------`);
-    console.log(`Port:        ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`Domain:      chat.opramixes.com`);
-    console.log(`Status:      READY - Zimbabwe Node Active`);
-    console.log(`Time:        ${new Date().toISOString()}`);
+    console.log(`Listening on port: \${PORT}`);
+    console.log(`Environment:       \${process.env.NODE_ENV || 'development'}`);
+    console.log(`Domain:           chat.opramixes.com`);
+    console.log(`Vite Dev Mode:    \${!isProduction}`);
     console.log(`----------------------------------\n`);
+  });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[CRITICAL] Port \${PORT} is already in use.`);
+      console.error(`Please kill the process using this port: lsof -i :\${PORT} followed by kill -9 <PID>`);
+      process.exit(1);
+    } else {
+      console.error(`[CRITICAL] Server error: \${err.message}`);
+    }
   });
 }
 
