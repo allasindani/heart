@@ -74,6 +74,20 @@ async function startServer() {
   console.log(`[INIT] Serving from: ${rootDistPath}`);
   console.log(`[INIT] APK Exists in dist: ${fs.existsSync(path.join(rootDistPath, 'heart-connect.apk'))}`);
 
+  // OneSignal Service Worker (must be served from root)
+  app.get('/OneSignalSDKWorker.js', (req, res) => {
+    const workerPath = path.join(rootPublicPath, 'OneSignalSDKWorker.js');
+    if (fs.existsSync(workerPath)) {
+      res.setHeader('Content-Type', 'application/javascript');
+      res.sendFile(workerPath);
+    } else if (fs.existsSync(path.join(rootDistPath, 'OneSignalSDKWorker.js'))) {
+      res.setHeader('Content-Type', 'application/javascript');
+      res.sendFile(path.join(rootDistPath, 'OneSignalSDKWorker.js'));
+    } else {
+      res.status(404).send('OneSignal worker not found');
+    }
+  });
+
   // Download Handler
   const serveStaticFile = (fileName: string, contentType: string) => (req: any, res: any) => {
     const possiblePaths = [

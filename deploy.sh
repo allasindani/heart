@@ -7,6 +7,9 @@ echo "🚀 [1/5] Starting Heart Connect Deployment..."
 PROJECT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$PROJECT_DIR"
 
+# Fix Git ownership issue seen in logs
+git config --global --add safe.directory "$(pwd)"
+
 echo "📂 Working in: $(pwd)"
 
 # 1. Pull latest code
