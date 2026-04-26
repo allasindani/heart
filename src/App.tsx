@@ -488,9 +488,9 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
     <div className="min-h-screen bg-[#f0f2f5] dark:bg-[#0b141a] flex items-center justify-center p-4">
       <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white dark:bg-[#111b21] p-8 rounded-3xl shadow-xl max-w-md w-full text-center border border-gray-100 dark:border-gray-800">
         <Logo size={48} className="mx-auto mb-4" url={settings?.logoUrl} />
-        <h1 className="text-2xl font-black mb-1 text-[#00a884] tracking-tighter">Welcome to HEART CONNECT!</h1>
-        <p className="text-xs text-gray-600 dark:text-[#8696a0] mb-6 font-medium leading-relaxed px-4">
-          Connect with friends and family easily. Zimbabwe's vibrant social and dating community.
+        <h1 className="text-2xl font-black mb-1 text-[#00a884] tracking-tighter uppercase">Heart Connect Zimbabwe</h1>
+        <p className="text-sm text-gray-600 dark:text-[#8696a0] mb-6 font-medium leading-relaxed px-4">
+          Zimbabwe's #1 community for real connections. Connect with friends and family across the country and diaspora.
         </p>
         
         <div className="mb-8 mt-2 overflow-hidden">

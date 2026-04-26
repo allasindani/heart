@@ -389,6 +389,7 @@ async function startServer() {
     console.log(`Port:        ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`Domain:      chat.opramixes.com`);
+    console.log(`Status:      READY - Zimbabwe Node Active`);
     console.log(`Time:        ${new Date().toISOString()}`);
     console.log(`----------------------------------\n`);
   });
