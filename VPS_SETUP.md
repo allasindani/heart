@@ -35,17 +35,28 @@ server {
 }
 ```
 
-## 2. Fix Node Errors
-If you see "Port 3005 in use", run:
-```bash
-pm2 stop heart-connect
-```
-Then delete the broken js config:
-```bash
-rm /home/heart/vite.config.js
-```
+## 2. Fix Host Blocked Error & Config Conflict
+If you see "Blocked request. This host (chat.opramixes.com) is not allowed":
 
-## 2. Apply & SSL
+1. **Delete the manual config you created**:
+   ```bash
+   rm /home/heart/vite.config.js
+   ```
+   *The project uses `vite.config.ts`, but Vite was picking up your manually created `.js` file which had errors.*
+
+2. **Stop any existing stalled processes**:
+   ```bash
+   pm2 stop heart-connect
+   # or
+   killall node
+   ```
+
+3. **Pull the latest update (which has the fix)**:
+   ```bash
+   ./update.sh
+   ```
+
+## 3. Apply Nginx & SSL Settings
 ```bash
 sudo nginx -t
 sudo systemctl reload nginx
