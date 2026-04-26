@@ -66,11 +66,19 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
 ## 4. START THE APP (FRESH)
+Execute these two lines:
 ```bash
-cd /home/heart
-export PORT=3007
-export NODE_ENV=production
-
-# Start and keep running with PM2
-pm2 start --name "heart-connect" "npm run start" -- env PORT=3007 NODE_ENV=production
+pm2 delete heart-connect || true
+PORT=3007 NODE_ENV=production pm2 start "npm run start" --name "heart-connect"
 ```
+
+## 5. VERIFY IT IS ACTUALLY RUNNING
+Run this command to see the real-time logs:
+```bash
+pm2 logs heart-connect
+```
+**If you see "Listening on 3007", it is working.**
+If it says "Error: EADDRINUSE", it means you didn't kill the old process correctly. Run `pkill -9 node` and try again.
+
+**If you see 502 again:**
+Check Nginx logs: `sudo tail -f /var/log/nginx/error.log`
