@@ -2686,7 +2686,8 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
   const handleLike = async (post: Post) => {
     if (!user) return;
     const postRef = doc(db, 'posts', post.id);
-    const isLiked = post.likes.includes(user.uid);
+    const safeLikes = post.likes || [];
+    const isLiked = safeLikes.includes(user.uid);
     const { arrayUnion, arrayRemove } = await import('firebase/firestore');
     
     await updateDoc(postRef, {
@@ -2893,15 +2894,19 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
             </Avatar>
             <span className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase tracking-tighter mt-1">My Status</span>
           </div>
-          {statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true).length === 0 ? (
-            <div className="flex flex-col items-center justify-center min-w-[100px] opacity-40">
-              <div className="w-16 h-16 rounded-full border-2 border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center">
-                <CircleDashed className="w-6 h-6" />
-              </div>
-              <span className="text-[10px] mt-1">No Updates</span>
-            </div>
-          ) : (
-            statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true).map((s: any) => {
+          {(() => {
+            const activeStatuses = (statuses || []).filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true);
+            if (activeStatuses.length === 0) {
+              return (
+                <div className="flex flex-col items-center justify-center min-w-[100px] opacity-40">
+                  <div className="w-16 h-16 rounded-full border-2 border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center">
+                    <CircleDashed className="w-6 h-6" />
+                  </div>
+                  <span className="text-[10px] mt-1">No Updates</span>
+                </div>
+              );
+            }
+            return activeStatuses.map((s: any) => {
               const statusUser = usersMap[s.userId];
               return (
                 <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => handleViewStatus(s)}>
@@ -2915,15 +2920,15 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                   </span>
                 </div>
               );
-            })
-          )}
+            });
+          })()}
         </div>
       </div>
 
       {/* Status Viewer Modal */}
       <AnimatePresence>
         {viewingStatus && (() => {
-          const activeStatuses = statuses.filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true);
+          const activeStatuses = (statuses || []).filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true);
           const currentIndex = activeStatuses.findIndex((s: any) => s.id === viewingStatus.id);
           const statusUser = usersMap[viewingStatus.userId];
 
@@ -3204,6 +3209,10 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
 
           feedPosts.forEach((post, index) => {
             const postAuthor = usersMap[post.userId];
+            const safeContent = post.content || '';
+            const safeLikes = post.likes || [];
+            const safeMedia = post.media || [];
+            
             elements.push(
               <div 
                 key={post.id} 
@@ -3222,7 +3231,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                   </div>
                   {post.userId === user.uid && (
                     <div className="ml-auto flex gap-2">
-                      <button onClick={() => { setEditingPost(post); setEditContent(post.content); }} className="p-1.5 text-gray-400 hover:text-[#00a884] transition-colors">
+                      <button onClick={() => { setEditingPost(post); setEditContent(safeContent); }} className="p-1.5 text-gray-400 hover:text-[#00a884] transition-colors">
                         <SettingsIcon className="w-4 h-4" />
                       </button>
                       <button onClick={() => handleDeletePost(post.id)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors">
@@ -3233,19 +3242,19 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                 </div>
                 <div className="px-4 pb-4 text-[16px] font-medium text-[#111b21] dark:text-[#e9edef] leading-relaxed">
                   <div className="whitespace-pre-wrap">
-                    {post.content.split(/(\s+)/).map((word: string, i: number) => {
+                    {safeContent.split(/(\s+)/).map((word: string, i: number) => {
                       if (word.startsWith('#')) {
                         return <span key={i} className="text-[#00a884] font-bold cursor-pointer hover:underline">{word}</span>;
                       }
                       return word;
                     })}
                   </div>
-                  {post.media?.[0] && (
+                  {safeMedia[0] && (
                     <div className={cn("mt-3 overflow-hidden rounded-xl bg-black", post.isReel && "aspect-[9/16] max-h-[500px] flex items-center justify-center")}>
                       {post.mediaType === 'video' ? (
-                        <video src={post.media[0]} controls className={cn("w-full h-full", post.isReel ? "object-contain" : "object-cover")} autoPlay={post.isReel} muted={post.isReel} loop={post.isReel} />
+                        <video src={safeMedia[0]} controls className={cn("w-full h-full", post.isReel ? "object-contain" : "object-cover")} autoPlay={post.isReel} muted={post.isReel} loop={post.isReel} />
                       ) : (
-                        <img src={post.media[0]} className="w-full h-full object-cover" alt="Post media" referrerPolicy="no-referrer" />
+                        <img src={safeMedia[0]} className="w-full h-full object-cover" alt="Post media" referrerPolicy="no-referrer" />
                       )}
                     </div>
                   )}
@@ -3253,11 +3262,12 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                 <div className="p-2 border-t border-gray-50 dark:border-gray-800 flex justify-around text-[#667781] dark:text-[#8696a0] text-xs font-bold uppercase tracking-wider">
                   <button 
                     onClick={() => handleLike(post)}
-                    className={cn("flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors", post.likes.includes(user.uid) && "text-[#00a884]")}
+                    className={cn("flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors", safeLikes.includes(user.uid) && "text-[#00a884]")}
                   >
-                    <ThumbsUp className={cn("w-5 h-5", post.likes.includes(user.uid) && "fill-current")} />
-                    <span>{post.likes.length || ''} Like</span>
+                    <ThumbsUp className={cn("w-5 h-5", safeLikes.includes(user.uid) && "fill-current")} />
+                    <span>{safeLikes.length || ''} Like</span>
                   </button>
+
                   <button 
                     onClick={() => setShowComments(post.id)}
                     className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
