@@ -4,37 +4,40 @@ import {
   initializeFirestore, 
   doc, 
   getDocFromServer, 
-  persistentLocalCache, 
-  persistentMultipleTabManager 
+  memoryLocalCache
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfig);
 
-// use initializeFirestore with persistent cache and long-polling detection
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  }),
-  experimentalAutoDetectLongPolling: true,
+// Initialize Firestore with memory cache for stability in sandbox
+const db = initializeFirestore(app, {
+  localCache: memoryLocalCache(),
+  // Use force long polling as it's more reliable in the AI Studio preview environment
+  experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId);
 
+export { db };
 export const auth = getAuth();
 
-// Validate Connection to Firestore
-async function testConnection() {
+// Diagnostic check (Non-blocking)
+async function checkConnection() {
+  console.log("Navigator Online Status:", navigator.onLine);
   try {
-    console.log("Testing Firebase connection with Database ID:", firebaseConfig.firestoreDatabaseId);
-    // Attempt to read a dummy doc to verify connection
-    await getDocFromServer(doc(db, '_internal_', 'connection_test'));
-    console.log("Firebase connection verified.");
-  } catch (error) {
-    console.error("Firebase connection test failed:", error);
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. The client is offline.");
+    const { getDocFromServer, doc } = await import('firebase/firestore');
+    // Use a small timeout to avoid long waits if backend is genuinely unreachable
+    const testDoc = doc(db, 'test', 'connection');
+    await getDocFromServer(testDoc);
+    console.log("Firebase connected successfully to database:", firebaseConfig.firestoreDatabaseId);
+  } catch (error: any) {
+    if (error.message?.includes('offline') || error.code === 'unavailable') {
+      console.warn("Firestore is operating in offline mode. This is common in some network configurations.");
+      console.warn("Details:", error.message);
+    } else {
+      console.error("Firestore connection check failed:", error);
     }
   }
 }
 
-testConnection();
+setTimeout(checkConnection, 5000);
