@@ -509,6 +509,27 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
             });
           }
         }
+
+        // --- NEW: Notify opposite sex users ---
+        try {
+          const oppositeGender = gender === 'male' ? 'female' : gender === 'female' ? 'male' : null;
+          if (oppositeGender) {
+            const oppQuery = query(collection(db, 'users'), where('gender', '==', oppositeGender), limit(50));
+            const oppSnap = await getDocs(oppQuery);
+            oppSnap.forEach(oppDoc => {
+              notifyUser({
+                userId: oppDoc.id,
+                fromId: userCredential.user.uid,
+                fromName: `${capFirst} ${capLast}`,
+                type: 'broadcast',
+                text: `Just joined Heart Connect! Come say hi! 👋`,
+                title: 'New Member Nearby'
+              });
+            });
+          }
+        } catch (e) {
+          console.error("Error notifying opposite sex users:", e);
+        }
         
         // Request notification permission on browser if available
         if ('Notification' in window && Notification.permission === 'default') {
@@ -1144,6 +1165,12 @@ export default function App() {
                 ...data,
                 displayName: capitalizeName(data.displayName || '')
               } as User;
+
+              // Check if user has exceeded free message limit
+              if (userData.gender === 'male' && userData.category === 'General' && (userData.messageCount || 0) >= 1) {
+                setTimeout(() => setShowUpgrade(true), 1500);
+              }
+
               // Update online status (don't await strictly)
               updateDoc(userDocRef, { isOnline: true, lastSeen: serverTimestamp() }).catch(e => console.warn("Status update failed:", e));
               userData.isOnline = true;
@@ -1788,7 +1815,13 @@ export default function App() {
 
     // Parallelize writes for better performance and reduced latency
     const messagePromise = addDoc(collection(db, `chats/${selectedChat.id}/messages`), msgData);
+    const { increment } = await import('firebase/firestore');
     
+    // Increment message count for tracking limits
+    const userUpdatePromise = updateDoc(doc(db, 'users', user.uid), {
+      messageCount: increment(1)
+    });
+
     const chatUpdatePromise = updateDoc(doc(db, 'chats', selectedChat.id), { 
       lastMessage: { 
         text: type === 'text' ? processedText : `Sent an ${type}`, 
@@ -1799,17 +1832,10 @@ export default function App() {
       updatedAt: serverTimestamp() 
     });
 
-    // Update user message count
-    const { increment } = await import('firebase/firestore');
-    const userUpdatePromise = updateDoc(doc(db, 'users', user.uid), {
-      messageCount: increment(1)
-    });
-
     const otherId = selectedChat.participants.find(p => p !== user.uid);
     let notificationPromise: Promise<any> = Promise.resolve();
     if (otherId) {
       // Increment unread count for recipient
-      const { increment } = await import('firebase/firestore');
       const unreadKey = `unreadCount.${otherId}`;
       
       const unreadUpdatePromise = updateDoc(doc(db, 'chats', selectedChat.id), {
@@ -4223,77 +4249,98 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate 
 
   return (
     <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a]">
-      <div className="bg-[#008069] dark:bg-[#202c33] text-white p-4 flex items-center gap-6 shadow-md transition-colors duration-300">
-        <button onClick={onBack} className="p-1"><ChevronLeft className="w-6 h-6" /></button>
-        <h2 className="text-xl font-medium">Notifications</h2>
+      <div className="bg-[#008069] dark:bg-[#202c33] text-white p-4 flex items-center justify-between shadow-md transition-colors duration-300">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-1 hover:bg-black/10 rounded-full transition-all"><ChevronLeft className="w-6 h-6" /></button>
+          <h2 className="text-xl font-black tracking-tight">Notifications</h2>
+        </div>
+        <div className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-black uppercase">
+          {notifications.filter((n:any) => !n.read).length} Unread
+        </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
         {notifications.length === 0 ? (
-          <div className="text-center py-20 text-gray-500 dark:text-[#8696a0]">No notifications yet.</div>
+          <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-[#8696a0] opacity-50">
+            <Bell className="w-12 h-12 mb-4" />
+            <p className="font-bold uppercase tracking-widest text-[10px]">No notifications yet</p>
+          </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {notifications.map((n: any) => (
               <div 
                 key={n.id}
-                className="relative overflow-hidden rounded-2xl bg-red-500"
+                className="relative overflow-hidden rounded-[1.25rem] bg-red-400/10 dark:bg-red-900/5"
               >
-                {/* Delete background action */}
-                <div className="absolute inset-0 flex items-center justify-end px-6 text-white">
-                  <div className="flex flex-col items-center gap-1">
-                    <Trash2 className="w-5 h-5" />
-                    <span className="text-[10px] font-bold uppercase">Delete</span>
-                  </div>
+                <div className="absolute inset-0 flex items-center justify-end px-6 text-red-500">
+                  <Trash2 className="w-5 h-5" />
                 </div>
                 
                 <motion.div 
                   drag="x"
-                  dragConstraints={{ left: -100, right: 0 }}
+                  dragConstraints={{ left: -80, right: 0 }}
                   dragElastic={0.1}
                   onDragEnd={(_, info) => {
-                    if (info.offset.x < -70) {
+                    if (info.offset.x < -60) {
                       deleteNotification(n.id);
                     }
                   }}
-                  whileDrag={{ scale: 1.02 }}
+                  whileDrag={{ scale: 0.98 }}
                   className={cn(
-                    "bg-white dark:bg-[#111b21] p-4 flex flex-col gap-3 border-l-4 transition-all cursor-pointer relative z-10", 
-                    n.read ? "border-transparent opacity-70" : "border-[#00a884]"
+                    "bg-white dark:bg-[#111b21] p-2.5 flex flex-col gap-1.5 rounded-[1.25rem] border border-gray-100 dark:border-gray-800 transition-all cursor-pointer relative z-10", 
+                    !n.read && "border-[#00a884] shadow-sm ring-1 ring-[#00a884]/5"
                   )}
+                  onClick={() => handleNotificationClick(n)}
                 >
-                  <div className="flex items-center gap-4" onClick={() => handleNotificationClick(n)}>
-                    <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-[#00a884] shrink-0">
-                      {n.type === 'like' && <ThumbsUp className="w-6 h-6" />}
-                      {n.type === 'message' && <MessageSquare className="w-6 h-6" />}
-                      {n.type === 'friend_request' && <UserPlus className="w-6 h-6" />}
-                      {n.type === 'friend_accept' && <CheckCircle2 className="w-6 h-6 text-green-500" />}
-                      {n.type === 'comment' && <MessageCircle className="w-6 h-6" />}
-                      {n.type === 'broadcast' && <Megaphone className="w-6 h-6" />}
-                      {n.type === 'job_update' && <Briefcase className="w-6 h-6" />}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-[#111b21] dark:text-[#e9edef]">
-                        <span className="font-bold flex items-center gap-1">
+                  <div className="flex items-center gap-3">
+                    <Avatar 
+                      src={usersMap[n.fromId]?.photoURL} 
+                      name={n.fromName} 
+                      size={40} 
+                    >
+                      <div className="absolute -bottom-0.5 -right-0.5 w-4.5 h-4.5 bg-white dark:bg-[#111b21] rounded-full flex items-center justify-center p-0.5 shadow-sm">
+                        <div className="w-full h-full bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center text-[#00a884]">
+                          {n.type === 'like' && <ThumbsUp className="w-2.5 h-2.5" />}
+                          {n.type === 'message' && <MessageSquare className="w-2.5 h-2.5" />}
+                          {n.type === 'friend_request' && <UserPlus className="w-2.5 h-2.5" />}
+                          {n.type === 'friend_accept' && <CheckCircle2 className="w-2.5 h-2.5 text-green-500" />}
+                          {n.type === 'comment' && <MessageCircle className="w-2.5 h-2.5" />}
+                          {n.type === 'broadcast' && <Megaphone className="w-2.5 h-2.5" />}
+                        </div>
+                      </div>
+                    </Avatar>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[13px] font-black text-[#111b21] dark:text-[#e9edef] flex items-center gap-1 truncation-fix">
                           {n.fromName}
-                          <TierBadge tier={usersMap[n.fromId]?.category} size={12} />
-                        </span> {n.text}
+                          <TierBadge tier={usersMap[n.fromId]?.category} size={11} />
+                        </span>
+                        <span className="text-[8px] font-bold text-gray-400 shrink-0 uppercase tracking-tighter">
+                          {n.timestamp?.toDate ? formatWhatsAppTime(n.timestamp.toDate()) : 'Now'}
+                        </span>
+                      </div>
+                      <p className={cn(
+                        "text-[11px] line-clamp-1", 
+                        n.read ? "text-gray-400 dark:text-[#8696a0]" : "text-gray-700 dark:text-[#d1d7db] font-medium"
+                      )}>
+                        {n.text}
                       </p>
-                      <p className="text-[10px] text-gray-400 mt-1">{n.timestamp?.toDate ? formatWhatsAppTime(n.timestamp.toDate()) : 'Just now'}</p>
                     </div>
                   </div>
 
                   {(n.type === 'like' || n.type === 'friend_request') && !n.read && (
-                    <div className="flex gap-2 mt-1">
+                    <div className="flex gap-2 pt-1 border-t border-gray-50 dark:border-gray-800/50 mt-1">
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleAcceptLike(n); }}
-                        className="flex-1 bg-[#00a884] text-white py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all"
+                        className="flex-1 bg-[#00a884] text-white py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all"
                       >
-                        Accept & Chat
+                        Accept
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleRejectNotification(n); }}
-                        className="flex-1 bg-gray-100 dark:bg-[#202c33] text-gray-500 dark:text-[#8696a0] py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider"
+                        className="flex-1 bg-gray-100 dark:bg-[#202c33] text-gray-500 dark:text-[#8696a0] py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest"
                       >
-                        Reject
+                        Ignore
                       </button>
                     </div>
                   )}
