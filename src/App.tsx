@@ -5639,6 +5639,14 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
             </div>
           </section>
 
+          <section className="bg-white dark:bg-[#111b21] rounded-xl p-4 shadow-sm space-y-4">
+            <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider block">Push Notifications</label>
+            <div className="p-2 flex flex-col items-center justify-center">
+              <div className='onesignal-customlink-container min-h-[40px]'></div>
+              <p className="text-[10px] text-gray-500 mt-2 text-center">Enable push notifications to never miss a message or match</p>
+            </div>
+          </section>
+
           {setDarkMode && (
             <section className="bg-white dark:bg-[#111b21] rounded-xl p-4 shadow-sm space-y-4">
               <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider block">Appearance</label>
