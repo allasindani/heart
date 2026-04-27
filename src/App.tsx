@@ -65,6 +65,7 @@ import { AdMob, BannerAdSize, BannerAdPosition, BannerAdPluginEvents, AdMobBanne
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
+import OneSignal from 'onesignal-cordova-plugin';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -117,6 +118,42 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 // --- Helpers ---
+const notifyUser = async (notification: Partial<AppNotification>) => {
+  try {
+    const { userId, title, text, fromId, fromName, type, relatedId } = notification;
+    if (!userId) return;
+
+    const docData = {
+      userId,
+      fromId: fromId || 'system',
+      fromName: fromName || 'Heart Connect',
+      type: type || 'broadcast',
+      text: text || '',
+      title: title || (type === 'message' ? `New message from ${fromName}` : 'New Notification'),
+      read: false,
+      timestamp: serverTimestamp(),
+      relatedId: relatedId || null
+    };
+
+    await addDoc(collection(db, 'notifications'), docData);
+
+    // Send Push Notification via Server
+    fetch('/api/send-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        title: docData.title,
+        message: docData.text,
+        data: { type: docData.type, relatedId: docData.relatedId }
+      })
+    }).catch(e => console.warn("Push sync failed:", e));
+
+  } catch (e) {
+    console.error("Error creating notification:", e);
+  }
+};
+
 const censorText = (text: string, words: string[]) => {
   if (!text || !words || words.length === 0) return text;
   let censored = text;
@@ -461,15 +498,13 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
               points: increment(bonusPoints)
             });
             // Notify referrer
-            await addDoc(collection(db, 'notifications'), {
+            await notifyUser({
               userId: referrer.id,
               fromId: 'system',
               fromName: 'Affiliate Program',
               type: 'broadcast',
               text: `Congratulations! ${userData.displayName} joined using your link. You earned ${bonusPoints} points!`,
-              title: 'Referral Bonus!',
-              read: false,
-              timestamp: serverTimestamp()
+              title: 'Referral Bonus!'
             });
           }
         }
@@ -710,6 +745,39 @@ export default function App() {
       }
     };
     initAdMob();
+
+    // OneSignal Initialization
+    const initOneSignal = async () => {
+      const appId = "32479931-809b-4497-a8d1-61b84bc8eb77";
+      if (Capacitor.isNativePlatform()) {
+        try {
+          OneSignal.initialize(appId);
+          OneSignal.Notifications.requestPermission(true).then((success) => {
+            console.log("Notification permission status:", success);
+          });
+
+          OneSignal.Notifications.addEventListener('click', (event) => {
+            console.log('OneSignal notification clicked:', event);
+            const data = (event.notification as any).additionalData;
+            if (data) {
+              if (data.type === 'message' && data.relatedId) {
+                // Find chat by ID and select it
+                setActiveTab('chats');
+                // Trigger a fetch or just set ID if we have it
+                // For simplicity, we just navigate to tab
+              } else if (data.type === 'broadcast') {
+                setActiveTab('status');
+              }
+            }
+          });
+        } catch (e) {
+          console.error("OneSignal Native Init Error:", e);
+        }
+      } else {
+        // Web initialization is in index.html, but we can ensure it's logged in later
+      }
+    };
+    initOneSignal();
 
     // Auto-update check for Capacitor
     const checkUpdates = async () => {
@@ -1054,56 +1122,84 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setLoading(true); // Ensure loading is shown during state change
       try {
         if (firebaseUser) {
+          let userData: User | null = null;
           const userDocRef = doc(db, 'users', firebaseUser.uid);
           const { getDoc } = await import('firebase/firestore');
-          const userSnap = await getDoc(userDocRef);
-          
-          let userData: User;
-          if (userSnap.exists()) {
-            const data = userSnap.data();
-            userData = { 
-              uid: firebaseUser.uid, 
-              ...data,
-              displayName: capitalizeName(data.displayName || '')
-            } as User;
-            // Update online status
-            await updateDoc(userDocRef, { isOnline: true, lastSeen: serverTimestamp() });
-            userData.isOnline = true;
+
+          try {
+            // Try to get from server first, but allow falling back to local cache or continuing
+            const userSnap = await getDoc(userDocRef).catch(err => {
+              console.warn("Firestore fetch failed, checking cache...", err);
+              return null; 
+            });
             
-            // Set default dating filters based on gender
-            if (userData.datingProfile?.gender) {
-              setDatingFilters(prev => ({
-                ...prev,
-                gender: userData.datingProfile?.gender === 'male' ? 'female' : 'male'
-              }));
+            if (userSnap && userSnap.exists()) {
+              const data = userSnap.data();
+              userData = { 
+                uid: firebaseUser.uid, 
+                ...data,
+                displayName: capitalizeName(data.displayName || '')
+              } as User;
+              // Update online status (don't await strictly)
+              updateDoc(userDocRef, { isOnline: true, lastSeen: serverTimestamp() }).catch(e => console.warn("Status update failed:", e));
+              userData.isOnline = true;
+            } else {
+              const rawName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous';
+              userData = {
+                uid: firebaseUser.uid,
+                displayName: capitalizeName(rawName),
+                photoURL: firebaseUser.photoURL || null,
+                role: firebaseUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
+                category: 'General',
+                points: 0,
+                isOnline: true,
+                lastSeen: serverTimestamp(),
+                status: "Hey there! I am using Heart Connect.",
+              };
+              try { 
+                await setDoc(userDocRef, userData, { merge: true }); 
+              } catch (e) { 
+                handleFirestoreError(e, OperationType.WRITE, `users/${firebaseUser.uid}`); 
+              }
             }
-          } else {
-            const rawName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous';
-            userData = {
+
+            // Sync with OneSignal
+            try {
+              if (Capacitor.isNativePlatform()) {
+                OneSignal.login(firebaseUser.uid);
+              } else {
+                (window as any).OneSignalDeferred?.push(async (OS: any) => {
+                  await OS.login(firebaseUser.uid);
+                });
+              }
+            } catch (e) {
+              console.warn("OneSignal login sync failed:", e);
+            }
+
+            // Force generate affiliate code if missing
+            if (!userData.affiliateCode) {
+              const code = generateAffiliateCode(userData.uid);
+              await updateDoc(userDocRef, { affiliateCode: code }).catch(e => console.warn("Failed to set affiliate code:", e));
+              userData.affiliateCode = code;
+            }
+
+            setUser(userData);
+          } catch (innerErr) {
+            console.error("Error in auth data fetching:", innerErr);
+            // Fallback: use basic auth info if firestore is totally dead
+            setUser({
               uid: firebaseUser.uid,
-              displayName: capitalizeName(rawName),
-              photoURL: firebaseUser.photoURL || null,
-              role: firebaseUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
-              category: 'General',
-              points: 0,
-              isOnline: true,
-              lastSeen: serverTimestamp(),
-              status: "Hey there! I am using Heart Connect.",
-            };
-            try { await setDoc(userDocRef, userData, { merge: true }); } catch (e) { handleFirestoreError(e, OperationType.WRITE, `users/${firebaseUser.uid}`); }
+              displayName: firebaseUser.displayName || 'User',
+              photoURL: firebaseUser.photoURL,
+              role: firebaseUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user'
+            } as User);
           }
-
-          // Force generate affiliate code if missing
-          if (!userData.affiliateCode) {
-            const code = generateAffiliateCode(userData.uid);
-            await updateDoc(userDocRef, { affiliateCode: code });
-            userData.affiliateCode = code;
-          }
-
-          setUser(userData);
-        } else { setUser(null); }
+        } else {
+          setUser(null);
+        }
       } catch (err) {
         console.error("Critical error in onAuthStateChanged:", err);
       } finally {
@@ -1303,14 +1399,12 @@ export default function App() {
       });
 
       // Notify Employer
-      await addDoc(collection(db, 'notifications'), {
+      await notifyUser({
         userId: job.employerId,
         fromId: user.uid,
         fromName: user.displayName,
         type: 'job_update',
         text: `New application for "${job.title}"`,
-        read: false,
-        timestamp: serverTimestamp(),
         relatedId: job.id
       });
 
@@ -1338,14 +1432,12 @@ export default function App() {
       
       const job = jobs.find(j => j.id === app.jobId);
       
-      await addDoc(collection(db, 'notifications'), {
+      await notifyUser({
         userId: app.seekerId,
         fromId: user?.uid || 'system',
         fromName: user?.displayName || 'Employer',
         type: 'job_update',
         text: `Application for "${job?.title || 'Job'}" updated to: ${status}`,
-        read: false,
-        timestamp: serverTimestamp(),
         relatedId: app.jobId
       });
       alert(`Status updated to ${status}`);
@@ -1392,14 +1484,12 @@ export default function App() {
       const sendAffiliateWelcome = async () => {
         const promoMsg = `Welcome to Heart Connect! 💖 Share the love and earn points. Your affiliate code is: ${user.affiliateCode || 'N/A'}. Go to Profile > Affiliate Program to see your referral link and points!`;
         
-        await addDoc(collection(db, 'notifications'), {
+        await notifyUser({
           userId: user.uid,
           fromId: 'system',
           fromName: 'Heart Connect',
           type: 'broadcast',
-          text: promoMsg,
-          read: false,
-          timestamp: serverTimestamp()
+          text: promoMsg
         });
 
         await updateDoc(doc(db, 'users', user.uid), { hasSeenAffiliateWelcome: true });
@@ -1718,27 +1808,24 @@ export default function App() {
         [unreadKey]: increment(1)
       });
       
-      notificationPromise = addDoc(collection(db, 'notifications'), {
+      notificationPromise = notifyUser({
         userId: otherId,
         fromId: user.uid,
         fromName: user.displayName,
         type: 'message',
-        text: `sent you a message: ${processedText.substring(0, 30)}${processedText.length > 30 ? '...' : ''}`,
-        read: false,
-        timestamp: serverTimestamp(),
+        text: `${processedText.substring(0, 30)}${processedText.length > 30 ? '...' : ''}`,
         relatedId: selectedChat.id
       });
       
       // If phone number or sensitive word was detected, send warning notification
       if (text !== processedText) {
-        addDoc(collection(db, 'notifications'), {
+        notifyUser({
           userId: user.uid,
           fromId: 'system',
           fromName: 'Heart Connect',
           type: 'message',
-          text: 'Please Use Heart Connect for chats. Phone numbers are scrambled for your safety.',
-          read: false,
-          timestamp: serverTimestamp()
+          title: 'Direct Contact Warning',
+          text: 'Please Use Heart Connect for chats. Phone numbers are scrambled for your safety.'
         });
       }
     }
@@ -2576,14 +2663,12 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
       awardPoints(appSettings.pointsPerLike);
       // Notify author
       if (post.userId !== user.uid) {
-        await addDoc(collection(db, 'notifications'), {
+        await notifyUser({
           userId: post.userId,
           fromId: user.uid,
           fromName: user.displayName,
           type: 'like',
-          text: 'liked your post',
-          read: false,
-          timestamp: serverTimestamp()
+          text: 'liked your post'
         });
       }
     }
@@ -3467,14 +3552,12 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
         await updateDoc(doc(db, 'users', user.uid), { matchCount: increment(1) });
         setUser((prev: any) => prev ? { ...prev, matchCount: (prev.matchCount || 0) + 1 } : null);
         
-        await addDoc(collection(db, 'notifications'), {
+        await notifyUser({
           userId: currentDiscoverUser.uid,
           fromId: user.uid,
           fromName: user.displayName,
           type: 'like',
-          text: 'liked you in dating!',
-          read: false,
-          timestamp: serverTimestamp()
+          text: 'liked you in dating!'
         });
       } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'users'); }
       handleNext();
@@ -3822,14 +3905,12 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliat
         status: 'pending',
         timestamp: serverTimestamp()
       });
-      await addDoc(collection(db, 'notifications'), {
+      await notifyUser({
         userId: fullUser.uid,
         fromId: user.uid,
         fromName: user.displayName,
         type: 'friend_request',
-        text: 'sent you a friend request',
-        read: false,
-        timestamp: serverTimestamp()
+        text: 'sent you a friend request'
       });
       setRequestStatus('pending');
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'friend_requests'); }
@@ -4732,6 +4813,17 @@ const AdminDashboard = ({ user, onBack }: any) => {
         });
       });
       await batch.commit();
+
+      // Send Push Notification via Server (OneSignal Broadcast)
+      fetch('/api/broadcast-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title,
+          message: body,
+          data: { type: 'broadcast', relatedId: postRef.id }
+        })
+      }).catch(e => console.warn("Push broadcast failed:", e));
       
       // Attempt local browser notification for admin immediately
       if ('Notification' in window && Notification.permission === 'granted') {
