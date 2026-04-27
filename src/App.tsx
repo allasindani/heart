@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Toaster, toast } from 'sonner';
 import { 
   MessageCircle, 
   CircleDashed, 
@@ -1074,7 +1075,7 @@ export default function App() {
       if (!latest.read && latest.id !== lastNotifRef.current) {
         lastNotifRef.current = latest.id;
         if ('Notification' in window && Notification.permission === 'granted') {
-          const n = new Notification(latest.title || 'Heart Connect', { 
+          const n = new Notification(latest.title || appSettings.siteName || 'Heart Connect', { 
             body: latest.text || (latest as any).content || 'You have a new message',
             icon: appSettings.faviconUrl || '/favicon.ico'
           });
@@ -1450,8 +1451,8 @@ export default function App() {
       }
       setSelectedChat(chat);
       setActiveTab('chats');
-      alert("Applied!");
-    } catch (e) { alert("Apply failed"); }
+      toast.success(appSettings.siteName || "Heart Connect", { description: "Applied!" });
+    } catch (e) { toast.error("Apply failed"); }
   };
 
   const handleUpdateApplicationStatus = async (app: JobApplication, status: JobApplication['status']) => {
@@ -1468,10 +1469,10 @@ export default function App() {
         text: `Application for "${job?.title || 'Job'}" updated to: ${status}`,
         relatedId: app.jobId
       });
-      alert(`Status updated to ${status}`);
+      toast.success(appSettings.siteName || "Heart Connect", { description: `Status updated to ${status}` });
     } catch (e) { 
       console.error(e);
-      alert("Update failed"); 
+      toast.error(appSettings.siteName || "Heart Connect", { description: "Update failed" }); 
     }
   };
 
@@ -1479,8 +1480,8 @@ export default function App() {
     if (!window.confirm("Are you sure you want to delete this job posting? This will also affect existing applications.")) return;
     try {
       await deleteDoc(doc(db, 'jobs', jobId));
-      alert("Job deleted");
-    } catch (e) { alert("Delete failed"); }
+      toast.success(appSettings?.siteName || "Heart Connect", { description: "Job deleted" });
+    } catch (e) { toast.error("Delete failed"); }
   };
 
   useEffect(() => {
@@ -1662,7 +1663,7 @@ export default function App() {
       const lastNotifiedId = sessionStorage.getItem('lastNotifiedId');
       if (lastNotifiedId !== latest.id) {
         if ('Notification' in window && Notification.permission === 'granted') {
-          const n = new Notification(latest.title || `New from ${latest.fromName}`, {
+          const n = new Notification(latest.title || (latest.fromName ? `New from ${latest.fromName}` : (appSettings.siteName || 'Heart Connect')), {
             body: latest.text,
             icon: appSettings.logoUrl || '/favicon.ico'
           });
@@ -1771,7 +1772,9 @@ export default function App() {
     
     // Constraint: Users without profile photos allowed 3 messages only
     if (!user.photoURL && (user.messageCount || 0) >= 3) {
-      alert("⚠️ Profile Photo Required! To ensure community safety, users without profile photos are limited to 3 messages. Please upload a profile photo to continue messaging.");
+      toast.error(appSettings.siteName || "Heart Connect", {
+        description: "⚠️ Profile Photo Required! To ensure community safety, users without profile photos are limited to 3 messages. Please upload a profile photo to continue messaging."
+      });
       setShowProfile(true);
       
       // Send them a formal notification as well
@@ -1790,7 +1793,9 @@ export default function App() {
 
     // Constraint: Non-pro Male users limit (1 message only)
     if (user.gender === 'male' && user.category === 'General' && (user.messageCount || 0) >= 1) {
-      alert("Upgrade required to send more messages! You are currently on the Free Tier and have used your 1 message limit. Please upgrade to Bronze, Silver, Gold or Platinum to enjoy unlimited chatting.");
+      toast.error(appSettings.siteName || "Heart Connect", {
+        description: "Upgrade required to send more messages! You are currently on the Free Tier and have used your 1 message limit. Please upgrade to Bronze, Silver, Gold or Platinum to enjoy unlimited chatting."
+      });
       setShowUpgrade(true);
       return;
     }
@@ -1873,6 +1878,7 @@ export default function App() {
 
   return (
     <div className="h-screen bg-white dark:bg-[#111b21] flex flex-col overflow-hidden max-w-md mx-auto shadow-2xl border-x border-gray-200 dark:border-gray-800 relative transition-colors duration-300">
+      <Toaster position="top-center" richColors />
       {user && <AdMobBanner />}
       {uploading && (
         <div className="fixed top-0 left-0 right-0 z-[1000] h-1 bg-gray-100 dark:bg-gray-800">
@@ -1899,7 +1905,7 @@ export default function App() {
         </div>
       ) : showAdmin ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col h-screen overflow-hidden">
-          <AdminDashboard user={user} onBack={() => setShowAdmin(false)} />
+          <AdminDashboard user={user} onBack={() => setShowAdmin(false)} appSettings={appSettings} />
         </div>
       ) : viewingUser ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
@@ -1918,6 +1924,7 @@ export default function App() {
             user={user} 
             notifications={notifications} 
             usersMap={usersMap}
+            appSettings={appSettings}
             onBack={() => setShowNotifications(false)} 
             onNavigate={(tab: string, id: string | null) => {
               setShowNotifications(false);
@@ -1953,7 +1960,7 @@ export default function App() {
         </div>
       ) : showCreateJob ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
-          <CreateJob user={user} jobToEdit={editingJob} onBack={() => { setShowCreateJob(false); setEditingJob(null); }} />
+          <CreateJob user={user} jobToEdit={editingJob} onBack={() => { setShowCreateJob(false); setEditingJob(null); }} appSettings={appSettings} />
         </div>
       ) : selectedJob ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
@@ -2242,7 +2249,7 @@ export default function App() {
               targetPostId={targetPostId}
               isRefreshing={isRefreshing}
             />}
-          {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} setUser={setUser} />}
+          {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} setUser={setUser} appSettings={appSettings} />}
           {activeTab === 'jobs' && (
             <JobsView 
               user={user} 
@@ -2653,7 +2660,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
       setPostMedia(url);
       setPostMediaType(file.type.startsWith('image/') ? 'image' : 'video' as any);
     } catch (error: any) {
-      alert("Media upload failed: " + (error.message || "Unknown error"));
+      toast.error(appSettings?.siteName || "Heart Connect", { description: "Media upload failed: " + (error.message || "Unknown error") });
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -2858,9 +2865,9 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
       const url = await uploadFileToServer(file, (p) => setUploadProgress(p));
       const type = file.type.startsWith('image/') ? 'image' : 'video';
       await handleCreateStatus(url, type);
-      alert("Status uploaded successfully!");
+      toast.success(appSettings.siteName || "Heart Connect", { description: "Status uploaded successfully!" });
     } catch (error: any) {
-      alert("Status upload failed: " + (error.message || "Unknown error"));
+      toast.error(appSettings.siteName || "Heart Connect", { description: "Status upload failed: " + (error.message || "Unknown error") });
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -3490,7 +3497,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
     </div>
   );
 };
-const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, onOpenProfile, setUser }: any) => {
+const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, onOpenProfile, setUser, appSettings }: any) => {
   const [discoverUsers, setDiscoverUsers] = useState<User[]>([]);
   const [featuredSingles, setFeaturedSingles] = useState<User[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -3585,7 +3592,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
     const currentDiscoverUser = discoverUsers[currentIndex];
     
     if (matchCount >= currentLimit) {
-      alert(`Daily swipe limit reached (${matchCount}/${currentLimit}). Upgrade to unlock more hearts!`);
+      toast.error(appSettings.siteName || "Heart Connect", { description: `Daily swipe limit reached (${matchCount}/${currentLimit}). Upgrade to unlock more hearts!` });
       return;
     }
 
@@ -4194,7 +4201,7 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliat
   );
 };
 
-const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate }: any) => {
+const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate, appSettings }: any) => {
   const markAsRead = async (id: string) => {
     await updateDoc(doc(db, 'notifications', id), { read: true });
   };
@@ -4245,7 +4252,7 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate 
         });
         onNavigate('chat', newChat.id);
       }
-      alert("Accepted! Redirecting to chat...");
+      toast.success(appSettings.siteName || "Heart Connect", { description: "Accepted! Redirecting to chat..." });
     } catch (e) {
       console.error("Error accepting like:", e);
     }
@@ -4254,6 +4261,7 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate 
   const handleRejectNotification = async (n: any) => {
     if (confirm("Are you sure you want to dismiss this?")) {
       await deleteNotification(n.id);
+      toast.success("Notification dismissed");
     }
   };
 
@@ -4797,7 +4805,7 @@ const PointsLeaderboard = ({ onBack }: any) => {
   );
 };
 
-const AdminDashboard = ({ user, onBack }: any) => {
+const AdminDashboard = ({ user, onBack, appSettings }: any) => {
   const [users, setUsers] = useState<User[]>([]);
   const usersMap = useMemo(() => {
     const map: Record<string, User> = {};
@@ -4872,7 +4880,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
       await addDoc(collection(db, 'settings'), newSettings);
     }
     setSettings(newSettings);
-    alert("Settings saved successfully!");
+    toast.success(appSettings.siteName || "Heart Connect", { description: "Settings saved successfully!" });
   };
 
   const approvePayment = async (proof: PaymentProof) => {
@@ -4892,10 +4900,10 @@ const AdminDashboard = ({ user, onBack }: any) => {
         createdAt: serverTimestamp(),
         user: { displayName: proof.userName, photoURL: users.find(u => u.uid === proof.userId)?.photoURL }
       });
-      alert("Ad approved and published!");
+      toast.success(appSettings?.siteName || "Heart Connect", { description: "Ad approved and published!" });
     } else {
       await updateDoc(doc(db, 'users', proof.userId), { category: proof.tier });
-      alert("Payment approved and user tier updated!");
+      toast.success(appSettings?.siteName || "Heart Connect", { description: "Payment approved and user tier updated!" });
     }
     
     setPaymentProofs(paymentProofs.map(p => p.id === proof.id ? { ...p, status: 'approved' } : p));
@@ -4991,13 +4999,13 @@ const AdminDashboard = ({ user, onBack }: any) => {
       
       // Attempt local browser notification for admin immediately
       if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification(title, { body });
+        new Notification(title || appSettings.siteName || 'Heart Connect', { body });
       }
       
-      alert("Broadcast and Wall Post sent successfully!");
+      toast.success(appSettings.siteName || "Heart Connect", { description: "Broadcast and Wall Post sent successfully!" });
     } catch (e) {
       console.error("Broadcast failed:", e);
-      alert("Failed to send broadcast.");
+      toast.error(appSettings.siteName || "Heart Connect", { description: "Failed to send broadcast." });
     } finally {
       setLoading(false);
     }
@@ -6192,7 +6200,7 @@ const JobsView = ({ user, jobs, applications, onApply, onCreateClick, onSelectJo
   );
 };
 
-const CreateJob = ({ user, onBack, jobToEdit }: any) => {
+const CreateJob = ({ user, onBack, jobToEdit, appSettings }: any) => {
   const [formData, setFormData] = useState({
     title: jobToEdit?.title || '',
     company: jobToEdit?.company || '',
@@ -6229,7 +6237,7 @@ const CreateJob = ({ user, onBack, jobToEdit }: any) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title || !formData.company || !formData.description) return alert("Required fields missing");
+    if (!formData.title || !formData.company || !formData.description) return toast.error("Required fields missing");
     
     setLoading(true);
     try {
@@ -6269,7 +6277,7 @@ const CreateJob = ({ user, onBack, jobToEdit }: any) => {
           await updateDoc(doc(db, 'users', user.uid), { jobRole: 'employer' });
         }
         
-        alert("Job Posted Successfully!");
+        toast.success(appSettings?.siteName || "Heart Connect", { description: "Job Posted Successfully!" });
       }
       onBack();
     } catch (e) { 
@@ -6568,7 +6576,7 @@ const AffiliateDashboard = ({ user, onBack }: any) => {
             <button 
               onClick={() => {
                 navigator.clipboard.writeText(affiliateLink);
-                alert("Affiliate link copied!");
+                toast.success("Affiliate link copied!");
               }}
               className="mt-4 w-full bg-[#00a884] text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2"
             >
