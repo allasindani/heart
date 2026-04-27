@@ -571,7 +571,7 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
                 key={s.uid || idx} 
                 whileHover={{ y: -5 }}
                 className="relative flex-shrink-0 w-32 snap-center group cursor-pointer" 
-                onClick={() => alert("Sign up to chat with local singles!")}
+                onClick={() => toast.info(appSettings.siteName || "Heart Connect", { description: "Sign up to chat with local singles!" })}
               >
                 <div className="relative aspect-[3/4] rounded-2xl overflow-hidden shadow-md group-hover:shadow-xl transition-all border border-black/5 dark:border-white/5">
                   <img 
@@ -1409,7 +1409,10 @@ export default function App() {
   const handleApplyJob = (job: Job) => {
     if (!user) return;
     const existing = applications.find(a => a.jobId === job.id && a.seekerId === user.uid);
-    if (existing) return alert("You already applied!");
+    if (existing) {
+      toast.error(appSettings.siteName || "Heart Connect", { description: "You already applied!" });
+      return;
+    }
     setApplyingJob(job);
   };
 
@@ -2794,7 +2797,9 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
     };
     const currentLimit = limits[user.category as keyof typeof limits] || limits.General;
     if ((user.uploadCount || 0) >= currentLimit) {
-      alert(`You have reached your upload limit for ${user.category} tier. Please upgrade to upload more media!`);
+      toast.error(appSettings.siteName || "Heart Connect", { 
+        description: `You have reached your upload limit for ${user.category} tier. Please upgrade to upload more media!` 
+      });
       return;
     }
 
@@ -2811,7 +2816,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
       await updateDoc(userDocRef, { uploadCount: increment(1) });
       setUser(prev => prev ? { ...prev, uploadCount: (prev.uploadCount || 0) + 1 } : null);
     } catch (error: any) {
-      alert("Upload failed: " + (error.message || "Unknown error"));
+      toast.error(appSettings.siteName || "Heart Connect", { description: "Upload failed: " + (error.message || "Unknown error") });
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -2902,7 +2907,16 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
             <span className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase tracking-tighter mt-1">My Status</span>
           </div>
           {(() => {
-            const activeStatuses = (statuses || []).filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true);
+            const activeStatuses = (statuses || []).filter((s: any) => {
+              if (!s || !s.userId) return false;
+              if (s.expiresAt?.toDate) {
+                return s.expiresAt.toDate() > new Date();
+              }
+              if (s.expiresAt instanceof Date) {
+                return s.expiresAt > new Date();
+              }
+              return true; // Default to showing if no valid expiry found
+            });
             if (activeStatuses.length === 0) {
               return (
                 <div className="flex flex-col items-center justify-center min-w-[100px] opacity-40">
@@ -2935,7 +2949,16 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
       {/* Status Viewer Modal */}
       <AnimatePresence>
         {viewingStatus && (() => {
-          const activeStatuses = (statuses || []).filter((s: any) => s.expiresAt?.toDate ? s.expiresAt.toDate() > new Date() : true);
+          const activeStatuses = (statuses || []).filter((s: any) => {
+            if (!s || !s.userId) return false;
+            if (s.expiresAt?.toDate) {
+              return s.expiresAt.toDate() > new Date();
+            }
+            if (s.expiresAt instanceof Date) {
+              return s.expiresAt > new Date();
+            }
+            return true;
+          });
           const currentIndex = activeStatuses.findIndex((s: any) => s.id === viewingStatus.id);
           const statusUser = usersMap[viewingStatus.userId];
 
@@ -3287,7 +3310,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                       if (navigator.share) {
                         navigator.share({ title: 'Heart Connect Post', text: post.content, url: window.location.href });
                       } else {
-                        alert("Sharing not supported on this browser.");
+                        toast.error(appSettings.siteName || "Heart Connect", { description: "Sharing not supported on this browser." });
                       }
                     }}
                     className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -3313,7 +3336,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                             setShowCreateAd(true);
                           } catch (err) {
                             console.error(err);
-                            alert("Failed to pick photo for boost");
+                            toast.error(appSettings.siteName || "Heart Connect", { description: "Failed to pick photo for boost" });
                           } finally {
                             setUploading(false);
                           }
@@ -4400,7 +4423,7 @@ const CreateAd = ({ user, onBack, settings, initialContent = '', initialMediaUrl
       setMediaUrl(url);
     } catch (error: any) {
       console.error("Ad media upload error details:", error);
-      alert("Upload failed: " + (error.message || "Unknown error"));
+      toast.error(appSettings.siteName || "Heart Connect", { description: "Upload failed: " + (error.message || "Unknown error") });
     } finally {
       setUploading(false);
     }
@@ -4408,7 +4431,7 @@ const CreateAd = ({ user, onBack, settings, initialContent = '', initialMediaUrl
 
   const handleSubmit = async () => {
     if (!content.trim() || !mediaUrl) {
-      alert("Please provide ad content and an image.");
+      toast.error(appSettings.siteName || "Heart Connect", { description: "Please provide ad content and an image." });
       return;
     }
     
@@ -4447,16 +4470,16 @@ const CreateAd = ({ user, onBack, settings, initialContent = '', initialMediaUrl
           timestamp: serverTimestamp()
         });
         
-        alert("Upload Complete! Ad submission and payment proof sent! Admin will review and publish your ad soon.");
+        toast.success(appSettings.siteName || "Heart Connect", { description: "Upload Complete! Ad submission and payment proof sent! Admin will review and publish your ad soon." });
         onBack();
       } catch (error: any) {
         console.error("Ad proof upload error details:", error);
-        alert("Upload failed: " + (error.message || "Unknown error"));
+        toast.error(appSettings.siteName || "Heart Connect", { description: "Upload failed: " + (error.message || "Unknown error") });
       } finally {
         setSubmitting(false);
       }
     };
-    alert("Please upload proof of payment for the ad campaign.");
+      toast.error(appSettings.siteName || "Heart Connect", { description: "Please upload proof of payment for the ad campaign." });
     input.click();
   };
 
@@ -4617,7 +4640,7 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
         throw new Error(session.error || 'Failed to create payment session');
       }
     } catch (error: any) {
-      alert("Payment error: " + error.message);
+      toast.error(appSettings.siteName || "Heart Connect", { description: "Payment error: " + error.message });
     } finally {
       setUploading(false);
     }
@@ -4645,9 +4668,9 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
           timestamp: serverTimestamp()
         });
         
-        alert("Upload Complete! Payment proof submitted. Admin will verify and update your tier soon.");
+        toast.success(appSettings.siteName || "Heart Connect", { description: "Upload Complete! Payment proof submitted. Admin will verify and update your tier soon." });
       } catch (error: any) {
-        alert("Upload failed: " + (error.message || "Unknown error"));
+        toast.error(appSettings.siteName || "Heart Connect", { description: "Upload failed: " + (error.message || "Unknown error") });
       } finally {
         setUploading(false);
       }
@@ -4800,6 +4823,126 @@ const PointsLeaderboard = ({ onBack }: any) => {
             </div>
           ))
         )}
+      </div>
+    </div>
+  );
+};
+
+const AdminUserRow = ({ u, users, setUsers, setEditingUser, setUserCategory, toggleUserRole, toggleUserSuspension, toggleUserVerification, deleteUser, setLoading, appSettings }: {
+  u: User;
+  users: User[];
+  setUsers: (u: User[]) => void;
+  setEditingUser: (u: User) => void;
+  setUserCategory: (u: User, c: string) => void;
+  toggleUserRole: (u: User) => void;
+  toggleUserSuspension: (u: User) => void;
+  toggleUserVerification: (u: User) => void;
+  deleteUser: (u: User) => void;
+  setLoading: (l: boolean) => void;
+  appSettings: AppSettings;
+}) => {
+  const isSiteCreated = u.uid.startsWith('zim_');
+  
+  return (
+    <div className="p-4 space-y-3 hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
+      <div className="flex items-center gap-3">
+        <Avatar src={u.photoURL} name={u.displayName} size={42} isOnline={u.isOnline} />
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-sm truncate dark:text-[#e9edef] flex items-center gap-1">
+            {u.displayName}
+            {u.isVerified && <VerifiedBadge size={14} />}
+            {isSiteCreated && (
+              <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter">System</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">{u.role}</span>
+            <span className="text-[10px] text-[#00a884] font-bold">{u.points || 0} pts</span>
+          </div>
+        </div>
+        <button onClick={() => setEditingUser(u)} className="p-2 text-gray-400 hover:text-[#00a884] hover:bg-white dark:hover:bg-gray-800 rounded-full transition-all shadow-sm"><SettingsIcon className="w-4 h-4" /></button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <select 
+          value={u.category} 
+          onChange={(e) => setUserCategory(u, e.target.value)}
+          className="text-[10px] font-bold bg-gray-50 dark:bg-[#2a3942] border-none rounded-full px-3 py-1 outline-none dark:text-[#e9edef] appearance-none"
+        >
+          {['General', 'Bronze', 'Silver', 'Gold', 'Platinum'].map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <button 
+          onClick={() => toggleUserRole(u)}
+          className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.role === 'admin' ? "bg-red-50 dark:bg-red-900/20 text-red-500" : "bg-green-50 dark:bg-green-900/20 text-[#00a884]")}
+        >
+          {u.role === 'admin' ? "Demote" : "Make Admin"}
+        </button>
+        <button 
+          onClick={() => toggleUserSuspension(u)}
+          className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.suspended ? "bg-green-50 dark:bg-green-900/20 text-[#00a884]" : "bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600")}
+        >
+          {u.suspended ? "Unsuspend" : "Suspend"}
+        </button>
+        <button 
+          onClick={() => toggleUserVerification(u)}
+          className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.isVerified ? "bg-blue-50 dark:bg-blue-900/20 text-blue-500" : "bg-gray-50 dark:bg-gray-800 text-gray-400")}
+        >
+          {u.isVerified ? "Verified" : "Verify"}
+        </button>
+        <button 
+          onClick={async () => {
+            const newFeatured = !u.isFeaturedSingle;
+            setLoading(true);
+            try {
+              await updateDoc(doc(db, 'users', u.uid), { isFeaturedSingle: newFeatured });
+              setUsers(users.map(user => user.uid === u.uid ? { ...user, isFeaturedSingle: newFeatured } : user));
+              toast.success(newFeatured ? "User added to featured list" : "Removed from featured list");
+            } catch (err) {
+              toast.error("Failed to update featured status");
+            } finally {
+              setLoading(false);
+            }
+          }}
+          className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.isFeaturedSingle ? "bg-orange-50 dark:bg-orange-900/20 text-orange-600" : "bg-gray-50 dark:bg-gray-800 text-gray-400")}
+        >
+          {u.isFeaturedSingle ? "Featured" : "Feature"}
+        </button>
+        <button 
+          onClick={() => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = async (e: any) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setLoading(true);
+              try {
+                const compressed = await compressImage(file);
+                const url = await uploadFileToServer(compressed);
+                await updateDoc(doc(db, 'users', u.uid), { photoURL: url });
+                // Sync with posts for consistency
+                const qP = query(collection(db, 'posts'), where('userId', '==', u.uid));
+                const sP = await getDocs(qP);
+                const batch = writeBatch(db);
+                sP.docs.forEach(d => batch.update(d.ref, { 'user.photoURL': url }));
+                await batch.commit();
+                
+                setUsers(users.map(user => user.uid === u.uid ? { ...user, photoURL: url } : user));
+                toast.success("User photo updated!");
+              } catch (err: any) { toast.error("Update failed"); }
+              finally { setLoading(false); }
+            };
+            input.click();
+          }}
+          className="p-1 px-3 bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-full hover:bg-blue-100 transition-colors text-[10px] font-bold uppercase tracking-widest"
+        >
+          Change Photo
+        </button>
+        <button 
+           onClick={() => deleteUser(u)}
+           className="p-1 px-3 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full hover:bg-red-100 transition-colors text-[10px] font-bold uppercase tracking-widest"
+        >
+          Delete
+        </button>
       </div>
     </div>
   );
@@ -5026,10 +5169,10 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
 
       setUsers(users.map(u => u.uid === updatedUser.uid ? updatedUser : u));
       setEditingUser(null);
-      alert("User updated successfully across all records!");
+      toast.success(appSettings.siteName || "Heart Connect", { description: "User updated successfully across all records!" });
     } catch (e) {
       console.error("Error updating user:", e);
-      alert("Failed to update user.");
+      toast.error(appSettings.siteName || "Heart Connect", { description: "Failed to update user." });
     }
   };
 
@@ -5044,13 +5187,13 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
       </div>
       
       <div className="flex bg-white dark:bg-[#111b21] border-b border-gray-100 dark:border-gray-800 overflow-x-auto flex-shrink-0">
-        {['users', 'featured', 'ads', 'config', 'branding', 'payments', 'vaccancies', 'notifications'].map((t) => (
+        {['users', 'featured', 'ads', 'config', 'branding', 'payments', 'vacancies', 'notifications'].map((t) => (
           <button 
             key={t}
             onClick={() => setActiveTab(t as any)}
             className={cn("flex-shrink-0 px-4 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2", activeTab === t ? "border-[#00a884] text-[#00a884]" : "border-transparent text-gray-400 dark:text-[#8696a0]")}
           >
-            {t}
+            {t === 'vacancies' ? 'Jobs' : t}
           </button>
         ))}
       </div>
@@ -5066,12 +5209,12 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
               </div>
               {/* Stats Grid */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm text-center border border-gray-100 dark:border-gray-800">
+                <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
                   <UserIcon className="w-5 h-5 text-blue-500 mx-auto mb-1" />
                   <div className="text-xl font-bold dark:text-[#e9edef]">{stats.totalUsers}</div>
                   <div className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">Users</div>
                 </div>
-                <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm text-center border border-gray-100 dark:border-gray-800">
+                <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
                   <BarChart3 className="w-5 h-5 text-green-500 mx-auto mb-1" />
                   <div className="text-xl font-bold dark:text-[#e9edef]">{stats.totalPoints}</div>
                   <div className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">Total Points</div>
@@ -5089,97 +5232,78 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
                 <div className="text-[10px] font-black text-[#00a884] bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-full uppercase tracking-widest">{users.length} Records</div>
               </div>
               <div className="divide-y divide-gray-50 dark:divide-gray-800">
-                {users.map(u => (
-                  <div key={u.uid} className="p-4 space-y-3 hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <Avatar src={u.photoURL} name={u.displayName} size={42} isOnline={u.isOnline} />
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-bold text-sm truncate dark:text-[#e9edef] flex items-center gap-1">
-                          {u.displayName}
-                          {u.isVerified && <VerifiedBadge size={14} />}
-                        </h4>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">{u.role}</span>
-                          <span className="text-[10px] text-[#00a884] font-bold">{u.points || 0} pts</span>
-                        </div>
-                      </div>
-                      <button onClick={() => setEditingUser(u)} className="p-2 text-gray-400 hover:text-[#00a884] hover:bg-white dark:hover:bg-gray-800 rounded-full transition-all shadow-sm"><SettingsIcon className="w-4 h-4" /></button>
+                {/* Section: Featured Users */}
+                {users.filter(u => u.isFeaturedSingle).length > 0 && (
+                  <div className="bg-orange-50/30 dark:bg-orange-950/10">
+                    <div className="px-4 py-2 bg-orange-100/50 dark:bg-orange-900/30 flex items-center gap-2 border-y border-orange-100 dark:border-orange-900/30">
+                      <Sparkles className="w-3 h-3 text-orange-500" />
+                      <span className="text-[10px] font-black uppercase text-orange-700 dark:text-orange-500 tracking-tighter">Featured Members</span>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <select 
-                        value={u.category} 
-                        onChange={(e) => setUserCategory(u, e.target.value)}
-                        className="text-[10px] font-bold bg-gray-50 dark:bg-[#2a3942] border-none rounded-full px-3 py-1 outline-none dark:text-[#e9edef] appearance-none"
-                      >
-                        {['General', 'Bronze', 'Silver', 'Gold', 'Platinum'].map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                      <button 
-                        onClick={() => toggleUserRole(u)}
-                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.role === 'admin' ? "bg-red-50 dark:bg-red-900/20 text-red-500" : "bg-green-50 dark:bg-green-900/20 text-[#00a884]")}
-                      >
-                        {u.role === 'admin' ? "Demote" : "Make Admin"}
-                      </button>
-                      <button 
-                        onClick={() => toggleUserSuspension(u)}
-                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.suspended ? "bg-green-50 dark:bg-green-900/20 text-[#00a884]" : "bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600")}
-                      >
-                        {u.suspended ? "Unsuspend" : "Suspend"}
-                      </button>
-                      <button 
-                        onClick={() => toggleUserVerification(u)}
-                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.isVerified ? "bg-blue-50 dark:bg-blue-900/20 text-blue-500" : "bg-gray-50 dark:bg-gray-800 text-gray-400")}
-                      >
-                        {u.isVerified ? "Verified" : "Verify"}
-                      </button>
-                      <button 
-                        onClick={async () => {
-                          const newFeatured = !u.isFeaturedSingle;
-                          await updateDoc(doc(db, 'users', u.uid), { isFeaturedSingle: newFeatured });
-                          setUsers(users.map(user => user.uid === u.uid ? { ...user, isFeaturedSingle: newFeatured } : user));
-                        }}
-                        className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors", u.isFeaturedSingle ? "bg-orange-50 dark:bg-orange-900/20 text-orange-600" : "bg-gray-50 dark:bg-gray-800 text-gray-400")}
-                      >
-                        {u.isFeaturedSingle ? "Featured" : "Feature"}
-                      </button>
-                      <button 
-                        onClick={() => {
-                          const input = document.createElement('input');
-                          input.type = 'file';
-                          input.accept = 'image/*';
-                          input.onchange = async (e: any) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            setLoading(true);
-                            try {
-                              const compressed = await compressImage(file);
-                              const url = await uploadFileToServer(compressed);
-                              await updateDoc(doc(db, 'users', u.uid), { photoURL: url });
-                              // Sync with posts for consistency
-                              const qP = query(collection(db, 'posts'), where('userId', '==', u.uid));
-                              const sP = await getDocs(qP);
-                              const batch = writeBatch(db);
-                              sP.docs.forEach(d => batch.update(d.ref, { 'user.photoURL': url }));
-                              await batch.commit();
-                              
-                              setUsers(users.map(user => user.uid === u.uid ? { ...user, photoURL: url } : user));
-                              alert("User photo updated!");
-                            } catch (err: any) { alert("Update failed"); }
-                            finally { setLoading(false); }
-                          };
-                          input.click();
-                        }}
-                        className="p-1 px-3 bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-full hover:bg-blue-100 transition-colors text-[10px] font-bold uppercase tracking-widest"
-                      >
-                        Change Photo
-                      </button>
-                      <button 
-                         onClick={() => deleteUser(u)}
-                         className="p-1 px-3 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full hover:bg-red-100 transition-colors text-[10px] font-bold uppercase tracking-widest"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    {users.filter(u => u.isFeaturedSingle).map(u => (
+                      <AdminUserRow 
+                        key={u.uid} 
+                        u={u} 
+                        users={users} 
+                        setUsers={setUsers} 
+                        setEditingUser={setEditingUser} 
+                        setUserCategory={setUserCategory} 
+                        toggleUserRole={toggleUserRole} 
+                        toggleUserSuspension={toggleUserSuspension} 
+                        toggleUserVerification={toggleUserVerification} 
+                        deleteUser={deleteUser}
+                        setLoading={setLoading}
+                        appSettings={appSettings}
+                      />
+                    ))}
                   </div>
+                )}
+
+                {/* Section: System-Created Users */}
+                {users.filter(u => u.uid.startsWith('zim_') && !u.isFeaturedSingle).length > 0 && (
+                  <div className="bg-blue-50/30 dark:bg-blue-950/10">
+                    <div className="px-4 py-2 bg-blue-100/50 dark:bg-blue-900/30 flex items-center gap-2 border-y border-blue-100 dark:border-blue-900/30">
+                      <Shield className="w-3 h-3 text-blue-500" />
+                      <span className="text-[10px] font-black uppercase text-blue-700 dark:text-blue-500 tracking-tighter">System & Zim Profiles</span>
+                    </div>
+                    {users.filter(u => u.uid.startsWith('zim_') && !u.isFeaturedSingle).map(u => (
+                      <AdminUserRow 
+                        key={u.uid} 
+                        u={u} 
+                        users={users} 
+                        setUsers={setUsers} 
+                        setEditingUser={setEditingUser} 
+                        setUserCategory={setUserCategory} 
+                        toggleUserRole={toggleUserRole} 
+                        toggleUserSuspension={toggleUserSuspension} 
+                        toggleUserVerification={toggleUserVerification} 
+                        deleteUser={deleteUser}
+                        setLoading={setLoading}
+                        appSettings={appSettings}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Section: Standard Users */}
+                <div className="px-4 py-2 bg-gray-100/50 dark:bg-gray-800/50 flex items-center gap-2 border-y border-gray-100 dark:border-gray-800">
+                  <UserIcon className="w-3 h-3 text-gray-500" />
+                  <span className="text-[10px] font-black uppercase text-gray-500 tracking-tighter">Other Users</span>
+                </div>
+                {users.filter(u => !u.isFeaturedSingle && !u.uid.startsWith('zim_')).map(u => (
+                  <AdminUserRow 
+                    key={u.uid} 
+                    u={u} 
+                    users={users} 
+                    setUsers={setUsers} 
+                    setEditingUser={setEditingUser} 
+                    setUserCategory={setUserCategory} 
+                    toggleUserRole={toggleUserRole} 
+                    toggleUserSuspension={toggleUserSuspension} 
+                    toggleUserVerification={toggleUserVerification} 
+                    deleteUser={deleteUser}
+                    setLoading={setLoading}
+                    appSettings={appSettings}
+                  />
                 ))}
               </div>
             </div>
@@ -5217,7 +5341,7 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
                       onClick={async () => {
                         await updateDoc(doc(db, 'users', u.uid), { isFeaturedSingle: false });
                         setUsers(users.map(user => user.uid === u.uid ? { ...user, isFeaturedSingle: false } : user));
-                        alert("Removed from featured list.");
+                        toast.success(appSettings.siteName || "Heart Connect", { description: "Removed from featured list." });
                       }}
                       className="flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-gray-50 dark:bg-[#202c33] text-gray-500 hover:text-red-500 transition-colors"
                     >
@@ -5598,10 +5722,14 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
       if (type === 'photo') setPhotoURL(url);
       else setCoverURL(url);
       
-      alert(`${type === 'photo' ? 'Photo' : 'Cover'} uploaded successfully! Click Save to persist changes.`);
+      toast.success(appSettings.siteName || "Heart Connect", { 
+        description: `${type === 'photo' ? 'Photo' : 'Cover'} uploaded successfully! Click Save to persist changes.` 
+      });
     } catch (error: any) {
       console.error(`${type} upload error details:`, error);
-      alert("Upload failed: " + (error.message || "Unknown error"));
+      toast.error(appSettings.siteName || "Heart Connect", { 
+        description: "Upload failed: " + (error.message || "Unknown error") 
+      });
     } finally {
       setUploading(false);
     }
@@ -5609,7 +5737,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
 
   const handleSave = async () => {
     if (!firstName.trim() || !lastName.trim()) {
-      alert("Please enter both Name and Surname");
+      toast.error(appSettings.siteName || "Heart Connect", { description: "Please enter both Name and Surname" });
       return;
     }
     setSaving(true);
@@ -5655,7 +5783,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
       onBack();
     } catch (error) {
       console.error("Error updating profile:", error);
-      alert("Failed to update profile. Please check your connection.");
+      toast.error(appSettings.siteName || "Heart Connect", { description: "Failed to update profile. Please check your connection." });
     } finally {
       setSaving(false);
     }
@@ -5867,7 +5995,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
                   if (user.isVerified) {
                     setJobRole('employer');
                   } else {
-                    alert("Verification Required: Only verified users can register as employers and post jobs.");
+                    toast.warning(appSettings.siteName || "Heart Connect", { description: "Verification Required: Only verified users can register as employers and post jobs." });
                   }
                 }}
                 className={cn(
@@ -6263,7 +6391,7 @@ const CreateJob = ({ user, onBack, jobToEdit, appSettings }: any) => {
           ...jobData,
           updatedAt: serverTimestamp()
         });
-        alert("Job Updated Successfully!");
+        toast.success(appSettings.siteName || "Heart Connect", { description: "Job Updated Successfully!" });
       } else {
         await addDoc(collection(db, 'jobs'), {
           ...jobData,
@@ -6282,8 +6410,7 @@ const CreateJob = ({ user, onBack, jobToEdit, appSettings }: any) => {
       onBack();
     } catch (e) { 
       console.error("Action failed", e);
-      alert("Action failed"); 
-    }
+      toast.error(appSettings.siteName || "Heart Connect", { description: "Action failed" });    }
     finally { setLoading(false); }
   };
 
