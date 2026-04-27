@@ -48,6 +48,7 @@ import {
   GraduationCap,
   Filter,
   Edit2,
+  CheckCircle2,
   Sparkles,
   Download,
   RefreshCw,
@@ -1757,6 +1758,13 @@ export default function App() {
         read: false,
         timestamp: serverTimestamp()
       });
+      return;
+    }
+
+    // Constraint: Non-pro Male users limit (1 message only)
+    if (user.gender === 'male' && user.category === 'General' && (user.messageCount || 0) >= 1) {
+      alert("Upgrade required to send more messages! You are currently on the Free Tier and have used your 1 message limit. Please upgrade to Bronze, Silver, Gold or Platinum to enjoy unlimited chatting.");
+      setShowUpgrade(true);
       return;
     }
     
@@ -3546,6 +3554,8 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
     }
 
     setSwipeDirection('right');
+    const senderName = user.displayName;
+    
     setTimeout(async () => {
       try {
         const { increment } = await import('firebase/firestore');
@@ -3559,6 +3569,45 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
           type: 'like',
           text: 'liked you in dating!'
         });
+
+        // Automated Message from men
+        if (user.gender === 'male') {
+          // Check for existing chat
+          const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
+          const snap = await getDocs(q);
+          let existingChat = snap.docs.find(d => (d.data() as any).participants.includes(currentDiscoverUser.uid));
+          
+          let chatId = existingChat?.id;
+          if (!existingChat) {
+            const newChat = await addDoc(collection(db, 'chats'), {
+              participants: [user.uid, currentDiscoverUser.uid],
+              type: 'private',
+              updatedAt: serverTimestamp()
+            });
+            chatId = newChat.id;
+          }
+
+          if (chatId) {
+            await addDoc(collection(db, `chats/${chatId}/messages`), {
+              chatId,
+              senderId: user.uid,
+              text: `Hi Am ${senderName} - i love You`,
+              type: 'text',
+              timestamp: serverTimestamp(),
+              status: 'sent'
+            });
+            
+            await updateDoc(doc(db, 'chats', chatId), {
+              lastMessage: {
+                text: `Hi Am ${senderName} - i love You`,
+                senderId: user.uid,
+                timestamp: serverTimestamp(),
+                status: 'sent'
+              },
+              updatedAt: serverTimestamp()
+            });
+          }
+        }
       } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'users'); }
       handleNext();
     }, 300);
@@ -4133,6 +4182,45 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate 
     }
   };
 
+  const handleAcceptLike = async (n: any) => {
+    try {
+      // Notify sender that it was accepted
+      await notifyUser({
+        userId: n.fromId,
+        fromId: user.uid,
+        fromName: user.displayName,
+        type: 'friend_accept',
+        text: 'accepted to chat with you!'
+      });
+      markAsRead(n.id);
+      
+      // Try to find chat
+      const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
+      const snap = await getDocs(q);
+      const existingChat = snap.docs.find(d => (d.data() as any).participants.includes(n.fromId));
+      
+      if (existingChat) {
+        onNavigate('chat', existingChat.id);
+      } else {
+        const newChat = await addDoc(collection(db, 'chats'), {
+          participants: [user.uid, n.fromId],
+          type: 'private',
+          updatedAt: serverTimestamp()
+        });
+        onNavigate('chat', newChat.id);
+      }
+      alert("Accepted! Redirecting to chat...");
+    } catch (e) {
+      console.error("Error accepting like:", e);
+    }
+  };
+
+  const handleRejectNotification = async (n: any) => {
+    if (confirm("Are you sure you want to dismiss this?")) {
+      await deleteNotification(n.id);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a]">
       <div className="bg-[#008069] dark:bg-[#202c33] text-white p-4 flex items-center gap-6 shadow-md transition-colors duration-300">
@@ -4144,7 +4232,7 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate 
           <div className="text-center py-20 text-gray-500 dark:text-[#8696a0]">No notifications yet.</div>
         ) : (
           <div className="space-y-3">
-            {notifications.map(n => (
+            {notifications.map((n: any) => (
               <div 
                 key={n.id}
                 className="relative overflow-hidden rounded-2xl bg-red-500"
@@ -4167,29 +4255,48 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate 
                     }
                   }}
                   whileDrag={{ scale: 1.02 }}
-                  onClick={() => handleNotificationClick(n)}
                   className={cn(
-                    "bg-white dark:bg-[#111b21] p-4 flex items-center gap-4 border-l-4 transition-all cursor-pointer relative z-10", 
+                    "bg-white dark:bg-[#111b21] p-4 flex flex-col gap-3 border-l-4 transition-all cursor-pointer relative z-10", 
                     n.read ? "border-transparent opacity-70" : "border-[#00a884]"
                   )}
                 >
-                  <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-[#00a884] shrink-0">
-                    {n.type === 'like' && <ThumbsUp className="w-6 h-6" />}
-                    {n.type === 'message' && <MessageSquare className="w-6 h-6" />}
-                    {n.type === 'friend_request' && <UserPlus className="w-6 h-6" />}
-                    {n.type === 'comment' && <MessageCircle className="w-6 h-6" />}
-                    {n.type === 'broadcast' && <Megaphone className="w-6 h-6" />}
-                    {n.type === 'job_update' && <Briefcase className="w-6 h-6" />}
+                  <div className="flex items-center gap-4" onClick={() => handleNotificationClick(n)}>
+                    <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-[#00a884] shrink-0">
+                      {n.type === 'like' && <ThumbsUp className="w-6 h-6" />}
+                      {n.type === 'message' && <MessageSquare className="w-6 h-6" />}
+                      {n.type === 'friend_request' && <UserPlus className="w-6 h-6" />}
+                      {n.type === 'friend_accept' && <CheckCircle2 className="w-6 h-6 text-green-500" />}
+                      {n.type === 'comment' && <MessageCircle className="w-6 h-6" />}
+                      {n.type === 'broadcast' && <Megaphone className="w-6 h-6" />}
+                      {n.type === 'job_update' && <Briefcase className="w-6 h-6" />}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-[#111b21] dark:text-[#e9edef]">
+                        <span className="font-bold flex items-center gap-1">
+                          {n.fromName}
+                          <TierBadge tier={usersMap[n.fromId]?.category} size={12} />
+                        </span> {n.text}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-1">{n.timestamp?.toDate ? formatWhatsAppTime(n.timestamp.toDate()) : 'Just now'}</p>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-[#111b21] dark:text-[#e9edef]">
-                      <span className="font-bold flex items-center gap-1">
-                        {n.fromName}
-                        <TierBadge tier={usersMap[n.fromId]?.category} size={12} />
-                      </span> {n.text}
-                    </p>
-                    <p className="text-[10px] text-gray-400 mt-1">{n.timestamp?.toDate ? formatWhatsAppTime(n.timestamp.toDate()) : 'Just now'}</p>
-                  </div>
+
+                  {(n.type === 'like' || n.type === 'friend_request') && !n.read && (
+                    <div className="flex gap-2 mt-1">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleAcceptLike(n); }}
+                        className="flex-1 bg-[#00a884] text-white py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all"
+                      >
+                        Accept & Chat
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleRejectNotification(n); }}
+                        className="flex-1 bg-gray-100 dark:bg-[#202c33] text-gray-500 dark:text-[#8696a0] py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               </div>
             ))}
@@ -4643,7 +4750,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
   const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, activeAds: 0, totalPoints: 0 });
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'ads' | 'config' | 'branding' | 'payments' | 'vaccancies' | 'notifications'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'featured' | 'ads' | 'config' | 'branding' | 'payments' | 'vaccancies' | 'notifications'>('users');
   const [ads, setAds] = useState<Post[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -4872,7 +4979,7 @@ const AdminDashboard = ({ user, onBack }: any) => {
       </div>
       
       <div className="flex bg-white dark:bg-[#111b21] border-b border-gray-100 dark:border-gray-800 overflow-x-auto flex-shrink-0">
-        {['users', 'ads', 'config', 'branding', 'payments', 'vaccancies', 'notifications'].map((t) => (
+        {['users', 'featured', 'ads', 'config', 'branding', 'payments', 'vaccancies', 'notifications'].map((t) => (
           <button 
             key={t}
             onClick={() => setActiveTab(t as any)}
@@ -5012,6 +5119,77 @@ const AdminDashboard = ({ user, onBack }: any) => {
               </div>
             </div>
           </>
+        ) : activeTab === 'featured' ? (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-800 dark:text-[#e9edef] flex items-center gap-2 tracking-tight uppercase text-sm">
+                <Sparkles className="w-5 h-5 text-orange-500" /> Featured Singles
+              </h3>
+              <div className="text-[10px] font-black text-orange-500 bg-orange-50 dark:bg-orange-900/20 px-2 py-1 rounded-full uppercase tracking-widest">
+                {users.filter(u => u.isFeaturedSingle).length} Members
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {users.filter(u => u.isFeaturedSingle).map(u => (
+                <div key={u.uid} className="bg-white dark:bg-[#111b21] rounded-[2rem] p-5 shadow-sm border border-gray-100 dark:border-gray-800 space-y-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-4">
+                    <Avatar src={u.photoURL} name={u.displayName} size={56} />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-base truncate dark:text-[#e9edef]">{u.displayName}</h4>
+                      <p className="text-[10px] text-gray-400 dark:text-[#8696a0] font-bold uppercase tracking-widest">{u.datingProfile?.city || 'Location Hidden'}</p>
+                    </div>
+                    <button 
+                      onClick={() => setEditingUser(u)}
+                      className="p-3 bg-gray-50 dark:bg-[#202c33] text-[#00a884] rounded-2xl hover:bg-[#00a884] hover:text-white transition-all shadow-sm"
+                    >
+                      <Edit2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={async () => {
+                        await updateDoc(doc(db, 'users', u.uid), { isFeaturedSingle: false });
+                        setUsers(users.map(user => user.uid === u.uid ? { ...user, isFeaturedSingle: false } : user));
+                        alert("Removed from featured list.");
+                      }}
+                      className="flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-gray-50 dark:bg-[#202c33] text-gray-500 hover:text-red-500 transition-colors"
+                    >
+                      Unfeature
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const newName = prompt("Enter new Display Name:", u.displayName);
+                        if (newName) handleUpdateUser({ ...u, displayName: newName });
+                      }}
+                      className="flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-[#00a884]/10 text-[#00a884]"
+                    >
+                      Quick Rename
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {users.filter(u => u.isFeaturedSingle).length === 0 && (
+                <div className="col-span-full py-20 bg-gray-50 dark:bg-[#111b21]/50 rounded-[2rem] border-2 border-dashed border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center text-gray-400 italic">
+                  <Sparkles className="w-12 h-12 mb-4 opacity-20" />
+                  No users currently featured.
+                </div>
+              )}
+            </div>
+
+            <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-3xl border border-blue-100 dark:border-blue-800 flex items-start gap-4">
+              <div className="p-2 bg-blue-500 rounded-xl text-white shadow-lg">
+                <Shield size={18} />
+              </div>
+              <p className="text-xs text-blue-700 dark:text-blue-300 font-medium leading-relaxed">
+                <span className="font-bold block mb-0.5">Admin Note:</span>
+                Featured users appear at the top of searching results and in the welcome gallery. 
+                Regularly update their profiles to keep the engagement high.
+              </p>
+            </div>
+          </div>
         ) : (
           <>
             {activeTab === 'ads' && (
