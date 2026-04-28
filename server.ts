@@ -17,35 +17,8 @@ if (!fs.existsSync(uploadsBaseDir)) {
 }
 
 // Configure multer
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const now = new Date();
-    const year = now.getFullYear().toString();
-    const month = (now.getMonth() + 1).toString().padStart(2, '0');
-    const day = now.getDate().toString().padStart(2, '0');
-    const relativePath = path.join('uploads', year, month, day);
-    const absolutePath = path.join(process.cwd(), relativePath);
-    
-    try {
-      if (!fs.existsSync(absolutePath)) {
-        fs.mkdirSync(absolutePath, { recursive: true });
-      }
-      cb(null, absolutePath);
-    } catch (err: any) {
-      console.error("[MULTER DESTINATION ERROR]", err);
-      cb(err, absolutePath);
-    }
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname).toLowerCase();
-    const name = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9]/g, '_');
-    cb(null, `${uniqueSuffix}-${name}${ext}`);
-  }
-});
-
 const upload = multer({ 
-  dest: 'uploads/',
+  dest: uploadsBaseDir,
   limits: {
     fileSize: 50 * 1024 * 1024 // 50MB limit
   }
@@ -142,25 +115,33 @@ async function startServer() {
 
   app.use(compression());
 
-  app.post("/api/media-upload", upload.single('file'), (req, res) => {
-    console.log(`[UPLOAD DEBUG] Request received: ${req.method} ${req.url}`);
-    
-    if (!req.file) {
-      console.warn("[UPLOAD DEBUG] No file in request");
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-    
-    try {
-      // Ensure the file URL points to the static /uploads/ folder
-      const fileName = path.basename(req.file.path);
-      const fileUrl = `/uploads/${fileName}`;
+  app.post("/api/media-upload", (req, res) => {
+    upload.single('file')(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        console.error("[MULTER ERROR]", err);
+        return res.status(400).json({ error: `Upload error: ${err.message}` });
+      } else if (err) {
+        console.error("[UPLOAD UNKNOWN ERROR]", err);
+        return res.status(500).json({ error: "Unknown server error during upload" });
+      }
+
+      if (!req.file) {
+        console.warn("[UPLOAD DEBUG] No file in request");
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
       
-      console.log(`[UPLOAD SUCCESS] -> URL: ${fileUrl}, Original: ${req.file.originalname}`);
-      res.json({ url: fileUrl });
-    } catch (err: any) {
-      console.error("[UPLOAD CRITICAL ERROR]", err);
-      res.status(500).json({ error: `Server error during upload: ${err.message}` });
-    }
+      try {
+        // Ensure the file URL points to the static /uploads/ folder
+        const fileName = path.basename(req.file.path);
+        const fileUrl = `/uploads/${fileName}`;
+        
+        console.log(`[UPLOAD SUCCESS] -> URL: ${fileUrl}, Original: ${req.file.originalname}`);
+        res.json({ url: fileUrl });
+      } catch (innerErr: any) {
+        console.error("[UPLOAD CRITICAL ERROR]", innerErr);
+        res.status(500).json({ error: `Server error during upload: ${innerErr.message}` });
+      }
+    });
   });
 
   app.post("/api/upload", (req, res) => {
