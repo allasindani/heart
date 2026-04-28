@@ -19,16 +19,20 @@ if (!fs.existsSync(uploadsBaseDir)) {
 // Configure multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Reverting to flat uploads for now to debug crash, but ensuring we use absolute path
-    const uploadsDir = path.join(process.cwd(), 'uploads');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    const now = new Date();
+    const year = now.getFullYear().toString();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const relativePath = path.join('uploads', year, month, day);
+    const absolutePath = path.join(process.cwd(), relativePath);
+    
+    if (!fs.existsSync(absolutePath)) {
+      fs.mkdirSync(absolutePath, { recursive: true });
     }
-    cb(null, uploadsDir);
+    cb(null, absolutePath);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    // Sanitize and keep extension
     const ext = path.extname(file.originalname).toLowerCase();
     const name = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9]/g, '_');
     cb(null, `${uniqueSuffix}-${name}${ext}`);
@@ -289,8 +293,9 @@ async function startServer() {
         return res.status(400).json({ error: 'No file uploaded' });
       }
       
-      // Since it's flat now, url is simply /uploads/filename
-      const fileUrl = `/uploads/${req.file.filename}`;
+      // Convert absolute path to relative URL
+      const relativePath = req.file.path.replace(process.cwd(), '').replace(/\\/g, '/');
+      const fileUrl = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
       console.log(`[UPLOAD SUCCESS] -> URL: ${fileUrl}`);
       res.json({ url: fileUrl });
     });

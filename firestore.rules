@@ -206,9 +206,15 @@ service cloud.firestore {
 
     function isValidApplication(data) {
       return data.keys().hasAll(['jobId', 'seekerId', 'employerId', 'status', 'timestamp', 'seekerName']) &&
+             data.keys().size() <= 8 && // Allow for optional seekerPhoto and qualifications
+             data.jobId is string && data.jobId.size() > 0 && data.jobId.size() < 128 &&
              data.seekerId == request.auth.uid &&
+             data.employerId is string && data.employerId.size() > 0 &&
              data.status == 'applied' &&
-             data.timestamp is timestamp;
+             data.timestamp is timestamp &&
+             data.seekerName is string && data.seekerName.size() > 0 &&
+             (!('seekerPhoto' in data) || data.seekerPhoto is string) &&
+             (!('qualifications' in data) || data.qualifications is list);
     }
 
     // ===============================================================
@@ -310,7 +316,9 @@ service cloud.firestore {
         resource.data.employerId == request.auth.uid ||
         isAdmin()
       );
-      allow create: if isAuthenticated() && isValidApplication(request.resource.data);
+      allow create: if isAuthenticated() && 
+                    isValidApplication(request.resource.data) &&
+                    applicationId == request.resource.data.jobId + "_" + request.resource.data.seekerId;
       allow update: if isAuthenticated() && (
         (resource.data.employerId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])) ||
         isAdmin()

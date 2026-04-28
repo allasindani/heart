@@ -372,13 +372,16 @@ const compressImage = async (file: File) => {
     const options = {
       maxSizeMB: 1, // Aim for 1MB
       maxWidthOrHeight: 1280, // Slightly smaller for significantly faster uploads
-      useWebWorker: true,
+      useWebWorker: false, // More compatible in many environments
       initialQuality: 0.7 // Good balance of quality and speed
     };
     try {
-      return await imageCompression(file, options);
+      console.log(`[COMPRESSION] Compressing ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+      const compressedFile = await imageCompression(file, options);
+      console.log(`[COMPRESSION] Success: ${(compressedFile.size / 1024 / 1024).toFixed(2)} MB`);
+      return compressedFile;
     } catch (error) {
-      console.error("Compression error:", error);
+      console.error("[COMPRESSION ERROR]", error);
       return file;
     }
   }
@@ -387,13 +390,17 @@ const compressImage = async (file: File) => {
 
 const uploadFileToServer = (file: File, onProgress?: (progress: number) => void) => {
   return new Promise<string>((resolve, reject) => {
+    if (!file) return reject(new Error("No file to upload"));
+    
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/upload');
     xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        onProgress?.(Math.round((e.loaded / e.total) * 100));
+      if (e.lengthComputable && e.total > 0) {
+        const progress = Math.round((e.loaded / e.total) * 100);
+        onProgress?.(isNaN(progress) ? 0 : progress);
       }
     };
+    
     xhr.onload = () => {
       if (xhr.status === 200) {
         try {
@@ -416,8 +423,10 @@ const uploadFileToServer = (file: File, onProgress?: (progress: number) => void)
         }
       }
     };
+    
     xhr.onerror = () => reject(new Error('Network error during upload. Please check your connection.'));
     xhr.ontimeout = () => reject(new Error('Upload timed out. The file might be too large or connection too slow.'));
+    xhr.timeout = 60000; // 60 seconds timeout
     
     const formData = new FormData();
     formData.append('file', file);
@@ -1428,7 +1437,7 @@ export default function App() {
     if (!user) return;
     const existing = applications.find(a => a.jobId === job.id && a.seekerId === user.uid);
     if (existing) {
-      toast.error(appSettings.siteName || "Heart Connect", { description: "You already applied!" });
+      toast.error(appSettings?.siteName || "Heart Connect", { description: "You already applied!" });
       return;
     }
     setApplyingJob(job);
@@ -1437,7 +1446,7 @@ export default function App() {
   const finalizeJobApplication = async (job: Job, qualifications: JobApplication['qualifications']) => {
     if (!user) return;
     try {
-      await addDoc(collection(db, 'applications'), {
+      await setDoc(doc(db, 'applications', `${job.id}_${user.uid}`), {
         jobId: job.id,
         employerId: job.employerId,
         seekerId: user.uid,
@@ -1472,7 +1481,7 @@ export default function App() {
       }
       setSelectedChat(chat);
       setActiveTab('chats');
-      toast.success(appSettings.siteName || "Heart Connect", { description: "Applied!" });
+      toast.success(appSettings?.siteName || "Heart Connect", { description: "Applied!" });
     } catch (e) { toast.error("Apply failed"); }
   };
 
@@ -1490,10 +1499,10 @@ export default function App() {
         text: `Application for "${job?.title || 'Job'}" updated to: ${status}`,
         relatedId: app.jobId
       });
-      toast.success(appSettings.siteName || "Heart Connect", { description: `Status updated to ${status}` });
+      toast.success(appSettings?.siteName || "Heart Connect", { description: `Status updated to ${status}` });
     } catch (e) { 
       console.error(e);
-      toast.error(appSettings.siteName || "Heart Connect", { description: "Update failed" }); 
+      toast.error(appSettings?.siteName || "Heart Connect", { description: "Update failed" }); 
     }
   };
 
@@ -1662,7 +1671,7 @@ export default function App() {
   useEffect(() => {
     if (!user || activeTab !== 'status') return;
     const qPosts = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(50));
-    const qStatus = query(collection(db, 'statuses'), orderBy('createdAt', 'desc'));
+    const qStatus = query(collection(db, 'statuses'), orderBy('createdAt', 'desc'), limit(100));
     const unsubPosts = onSnapshot(qPosts, (snap) => setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Post))), (e) => handleFirestoreError(e, OperationType.LIST, 'posts'));
     const unsubStatus = onSnapshot(qStatus, (snap) => setStatuses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Status))), (e) => handleFirestoreError(e, OperationType.LIST, 'statuses'));
     
@@ -2301,6 +2310,7 @@ export default function App() {
               setAdMediaUrl={setAdMediaUrl} 
               setUploading={setUploading} 
               setUploadProgress={setUploadProgress} 
+              uploadProgress={uploadProgress}
               setUser={setUser} 
               uploading={uploading} 
               usersMap={usersMap} 
@@ -2680,7 +2690,7 @@ const SkeletonChat = () => (
   </div>
 );
 
-const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, showPostModal, setShowPostModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer, targetPostId, isRefreshing }: any) => {
+const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, showPostModal, setShowPostModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, uploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer, targetPostId, isRefreshing }: any) => {
   const [newPost, setNewPost] = useState('');
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
@@ -2762,7 +2772,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
     });
 
     if (!isLiked) {
-      awardPoints(appSettings.pointsPerLike);
+      awardPoints(appSettings?.pointsPerLike || 0);
       // Notify author
       if (post.userId !== user.uid) {
         await notifyUser({
@@ -2804,7 +2814,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
 
     await updateDoc(postRef, { commentCount: increment(1) });
     setCommentInput('');
-    awardPoints(appSettings.pointsPerComment);
+    awardPoints(appSettings?.pointsPerComment || 0);
   };
 
   const handlePost = async () => {
@@ -2838,7 +2848,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
     setNewPost('');
     setPostMedia(null);
     setPostMediaType(null);
-    awardPoints(appSettings.pointsPerPost);
+    awardPoints(appSettings?.pointsPerPost || 0);
   };
 
   const handlePostFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2854,7 +2864,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
     };
     const currentLimit = limits[user.category as keyof typeof limits] || limits.General;
     if ((user.uploadCount || 0) >= currentLimit) {
-      toast.error(appSettings.siteName || "Heart Connect", { 
+      toast.error(appSettings?.siteName || "Heart Connect", { 
         description: `You have reached your upload limit for ${user.category} tier. Please upgrade to upload more media!` 
       });
       return;
@@ -2873,7 +2883,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
       await updateDoc(userDocRef, { uploadCount: increment(1) });
       setUser(prev => prev ? { ...prev, uploadCount: (prev.uploadCount || 0) + 1 } : null);
     } catch (error: any) {
-      toast.error(appSettings.siteName || "Heart Connect", { description: "Upload failed: " + (error.message || "Unknown error") });
+      toast.error(appSettings?.siteName || "Heart Connect", { description: "Upload failed: " + (error.message || "Unknown error") });
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -2893,43 +2903,68 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
   };
 
   const handleCreateStatus = async (mediaUrl?: string, type: string = 'text') => {
-    setUploading(true);
+    // Avoid redundant setUploading(true) if already uploading from handleStatusFileUpload
+    const isExternalUpload = !!mediaUrl;
+    if (!isExternalUpload) setUploading(true);
+    
     try {
       const durationMs = statusDuration === '24h' ? 24 * 60 * 60 * 1000 : statusDuration === '1w' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
       const expiresAt = new Date(Date.now() + durationMs);
       
       await addDoc(collection(db, 'statuses'), {
-        userId: user.uid,
+        userId: user?.uid || 'unknown',
         type,
         content: mediaUrl || statusText,
         caption: type !== 'text' ? statusCaption : '',
         createdAt: serverTimestamp(),
         expiresAt,
-        user: { displayName: user.displayName, photoURL: user.photoURL }
+        user: { displayName: user?.displayName || 'Unknown User', photoURL: user?.photoURL || '' }
       });
+      
       setShowStatusModal(false);
       setStatusText('');
       setStatusCaption('');
-    } catch (error) {
+      return true;
+    } catch (error: any) {
       console.error("Status error:", error);
+      if (!isExternalUpload) {
+        toast.error(appSettings?.siteName || "Heart Connect", { 
+          description: "Failed to create status: " + (error.message || "Unknown error") 
+        });
+      }
+      return false;
     } finally {
-      setUploading(false);
+      if (!isExternalUpload) setUploading(false);
     }
   };
 
   const handleStatusFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    let file = e.target.files?.[0];
+    const file = e.target.files?.[0];
     if (!file) return;
+
     setUploading(true);
     setUploadProgress(0);
     try {
-      file = await compressImage(file);
-      const url = await uploadFileToServer(file, (p) => setUploadProgress(p));
-      const type = file.type.startsWith('image/') ? 'image' : 'video';
-      await handleCreateStatus(url, type);
-      toast.success(appSettings.siteName || "Heart Connect", { description: "Status uploaded successfully!" });
+      console.log("[STATUS] Starting upload for:", file.name);
+      let uploadFile = file;
+      if (file.type.startsWith('image/')) {
+        uploadFile = await compressImage(file);
+      }
+      
+      const url = await uploadFileToServer(uploadFile, (p) => setUploadProgress(p));
+      const type = uploadFile.type.startsWith('image/') ? 'image' : 'video';
+      
+      const success = await handleCreateStatus(url, type);
+      if (success) {
+        toast.success(appSettings?.siteName || "Heart Connect", { 
+          description: "Status uploaded successfully!" 
+        });
+      }
     } catch (error: any) {
-      toast.error(appSettings.siteName || "Heart Connect", { description: "Status upload failed: " + (error.message || "Unknown error") });
+      console.error("[STATUS UPLOAD ERROR]", error);
+      toast.error(appSettings?.siteName || "Heart Connect", { 
+        description: "Status upload failed: " + (error.message || "Unknown error") 
+      });
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -2937,8 +2972,9 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
   };
 
   const handleViewStatus = async (status: any) => {
+    if (!status) return;
     setViewingStatus(status);
-    if (status.userId !== user.uid) {
+    if (status.userId !== user?.uid) {
       const { increment } = await import('firebase/firestore');
       await updateDoc(doc(db, 'statuses', status.id), { views: increment(1) });
     }
@@ -2996,16 +3032,16 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
             return activeStatuses.map((s: any) => {
               const statusUser = usersMap[s.userId];
               return (
-                <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => handleViewStatus(s)}>
-                  <div className="p-0.5 rounded-full border-2 border-[#00a884] ring-2 ring-white dark:ring-[#111b21]">
-                    <Avatar src={statusUser?.photoURL} name={statusUser?.displayName} size={56} />
-                  </div>
-                  <span className="text-[10px] text-gray-600 dark:text-[#8696a0] truncate w-16 text-center flex items-center justify-center gap-0.5 font-bold">
-                    {statusUser?.uid === user.uid ? 'Me' : (statusUser?.displayName?.split(' ')[0] || "User")}
-                    <TierBadge tier={statusUser?.category} size={10} />
-                    {statusUser?.isVerified && <VerifiedBadge size={10} />}
-                  </span>
-                </div>
+                    <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => handleViewStatus(s)}>
+                      <div className="p-0.5 rounded-full border-2 border-[#00a884] ring-2 ring-white dark:ring-[#111b21]">
+                        <Avatar src={statusUser?.photoURL} name={statusUser?.displayName} size={56} />
+                      </div>
+                      <span className="text-[10px] text-gray-600 dark:text-[#8696a0] truncate w-16 text-center flex items-center justify-center gap-0.5 font-bold">
+                        {statusUser?.uid === user?.uid ? 'Me' : (statusUser?.displayName?.split(' ')[0] || "User")}
+                        <TierBadge tier={statusUser?.category} size={10} />
+                        {statusUser?.isVerified && <VerifiedBadge size={10} />}
+                      </span>
+                    </div>
               );
             });
           })()}
@@ -3048,6 +3084,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
 
           return (
             <motion.div 
+              key="status-viewer"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -3128,6 +3165,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
         {showStatusModal && (
           <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
             <motion.div 
+              key="status-creator"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -3172,10 +3210,18 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                   </div>
 
                   <div className="flex gap-3 pt-2">
-                    <input type="file" ref={fileInputRef} onChange={handleStatusFileUpload} className="hidden" accept="image/*,video/*" />
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      onChange={handleStatusFileUpload} 
+                      className="hidden" 
+                      accept="image/*,video/*" 
+                      key={uploading ? 'uploading' : 'idle'}
+                    />
                     <button 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex-1 bg-gray-100 dark:bg-[#2a3942] text-gray-700 dark:text-[#e9edef] py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                      onClick={() => !uploading && fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="flex-1 bg-gray-100 dark:bg-[#2a3942] text-gray-700 dark:text-[#e9edef] py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
                     >
                       <ImageIcon className="w-5 h-5" /> Photo/Video
                     </button>
@@ -3399,7 +3445,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                       if (navigator.share) {
                         navigator.share({ title: 'Heart Connect Post', text: post.content, url: window.location.href });
                       } else {
-                        toast.error(appSettings.siteName || "Heart Connect", { description: "Sharing not supported on this browser." });
+                        toast.error(appSettings?.siteName || "Heart Connect", { description: "Sharing not supported on this browser." });
                       }
                     }}
                     className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -3425,7 +3471,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                             setShowCreateAd(true);
                           } catch (err) {
                             console.error(err);
-                            toast.error(appSettings.siteName || "Heart Connect", { description: "Failed to pick photo for boost" });
+                            toast.error(appSettings?.siteName || "Heart Connect", { description: "Failed to pick photo for boost" });
                           } finally {
                             setUploading(false);
                           }
@@ -3704,7 +3750,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
     const currentDiscoverUser = discoverUsers[currentIndex];
     
     if (matchCount >= currentLimit) {
-      toast.error(appSettings.siteName || "Heart Connect", { description: `Daily swipe limit reached (${matchCount}/${currentLimit}). Upgrade to unlock more hearts!` });
+      toast.error(appSettings?.siteName || "Heart Connect", { description: `Daily swipe limit reached (${matchCount}/${currentLimit}). Upgrade to unlock more hearts!` });
       return;
     }
 
