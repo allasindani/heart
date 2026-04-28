@@ -396,13 +396,29 @@ const uploadFileToServer = (file: File, onProgress?: (progress: number) => void)
     };
     xhr.onload = () => {
       if (xhr.status === 200) {
-        const data = JSON.parse(xhr.responseText);
-        resolve(data.url);
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (data && data.url) {
+            resolve(data.url);
+          } else {
+            reject(new Error('Server returned unexpected response format'));
+          }
+        } catch (e) {
+          console.error("Upload response parse error:", xhr.responseText);
+          reject(new Error('Failed to parse server response'));
+        }
       } else {
-        reject(new Error('Failed to upload file to server'));
+        try {
+          const errorData = JSON.parse(xhr.responseText);
+          reject(new Error(errorData.error || `Upload failed with status ${xhr.status}`));
+        } catch (e) {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
       }
     };
-    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.onerror = () => reject(new Error('Network error during upload. Please check your connection.'));
+    xhr.ontimeout = () => reject(new Error('Upload timed out. The file might be too large or connection too slow.'));
+    
     const formData = new FormData();
     formData.append('file', file);
     xhr.send(formData);

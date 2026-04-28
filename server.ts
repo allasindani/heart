@@ -19,20 +19,12 @@ if (!fs.existsSync(uploadsBaseDir)) {
 // Configure multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Create subfolders by date to avoid massive single directory
-    const now = new Date();
-    const year = now.getFullYear().toString();
-    const month = (now.getMonth() + 1).toString().padStart(2, '0');
-    const day = now.getDate().toString().padStart(2, '0');
-    
-    const targetDir = path.join('uploads', year, month, day);
-    const fullTargetDir = path.join(process.cwd(), targetDir);
-    
-    if (!fs.existsSync(fullTargetDir)) {
-      fs.mkdirSync(fullTargetDir, { recursive: true });
+    // Reverting to flat uploads for now to debug crash, but ensuring we use absolute path
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
     }
-    
-    cb(null, targetDir);
+    cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -283,16 +275,25 @@ async function startServer() {
     }
   });
 
-  app.post("/api/upload", upload.single('file'), (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-    // req.file.path is something like "uploads/2026/04/28/filename.jpg"
-    // We want the URL to be "/uploads/2026/04/28/filename.jpg"
-    // Since we handle /uploads as a static directory, we can use the path directly but ensured it starts with /
-    const relativePath = req.file.path.replace(/\\/g, '/'); // Ensure forward slashes for URLs
-    const fileUrl = `/${relativePath}`;
-    res.json({ url: fileUrl });
+  app.post("/api/upload", (req, res) => {
+    upload.single('file')(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        console.error("[MULTER ERROR]", err);
+        return res.status(400).json({ error: `Upload error: ${err.message}` });
+      } else if (err) {
+        console.error("[UPLOAD UNKNOWN ERROR]", err);
+        return res.status(500).json({ error: "Unknown server error during upload" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+      
+      // Since it's flat now, url is simply /uploads/filename
+      const fileUrl = `/uploads/${req.file.filename}`;
+      console.log(`[UPLOAD SUCCESS] -> URL: ${fileUrl}`);
+      res.json({ url: fileUrl });
+    });
   });
 
   // Dedicated WhatsApp Welcome Page
