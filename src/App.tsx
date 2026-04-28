@@ -367,9 +367,9 @@ const SplashScreen = ({ siteName, logoUrl, onForceLoad }: { siteName?: string, l
 };
 
 const compressImage = async (file: File) => {
-  if (file.size > 0.5 * 1024 * 1024 && file.type.startsWith('image/')) {
+  if (file.size > 5 * 1024 * 1024 && file.type.startsWith('image/')) {
     const options = {
-      maxSizeMB: 0.5,
+      maxSizeMB: 5,
       maxWidthOrHeight: 1920,
       useWebWorker: true
     };
@@ -523,8 +523,8 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
                 fromId: userCredential.user.uid,
                 fromName: `${capFirst} ${capLast}`,
                 type: 'broadcast',
-                text: `Just joined Heart Connect! Come say hi! 👋`,
-                title: 'New Member Nearby'
+                text: `A new ${gender === 'male' ? 'gentleman' : gender === 'female' ? 'lady' : 'member'} just joined Heart Connect! Come say hi to ${capFirst}! 👋`,
+                title: 'New Match Alert!'
               });
             });
           }
@@ -571,7 +571,7 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
                 key={s.uid || idx} 
                 whileHover={{ y: -5 }}
                 className="relative flex-shrink-0 w-32 snap-center group cursor-pointer" 
-                onClick={() => toast.info(appSettings.siteName || "Heart Connect", { description: "Sign up to chat with local singles!" })}
+                onClick={() => toast.info(settings.siteName || "Heart Connect", { description: "Sign up to chat with local singles!" })}
               >
                 <div className="relative aspect-[3/4] rounded-2xl overflow-hidden shadow-md group-hover:shadow-xl transition-all border border-black/5 dark:border-white/5">
                   <img 
@@ -1904,6 +1904,7 @@ export default function App() {
             onUpdate={(updatedUser: User) => setUser(updatedUser)} 
             darkMode={darkMode}
             setDarkMode={setDarkMode}
+            settings={appSettings}
           />
         </div>
       ) : showAdmin ? (
@@ -2009,8 +2010,8 @@ export default function App() {
                 <div className="relative cursor-pointer" onClick={() => setShowNotifications(true)}>
                   <Bell className="w-6 h-6" />
                   {notifications.filter(n => !n.read).length > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
-                      {notifications.filter(n => !n.read).length}
+                    <span className="absolute -top-1.5 -right-1.5 bg-[#25d366] text-white text-[9px] min-w-[15px] h-[15px] px-1 rounded-full flex items-center justify-center font-black shadow-sm ring-2 ring-white dark:ring-[#111b21] animate-in zoom-in duration-300">
+                      {notifications.filter(n => !n.read).length > 99 ? '99+' : notifications.filter(n => !n.read).length}
                     </span>
                   )}
                 </div>
@@ -2137,7 +2138,45 @@ export default function App() {
             )}
 
             {activeTab === 'chats' && (
-              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              <div className="flex flex-col min-h-full">
+                {/* Dashboard Featured Hearts Section */}
+                {users.filter(u => u.isFeaturedSingle).length > 0 && (
+                  <div className="py-4 border-b border-gray-50 dark:border-gray-800/50 bg-[#00a884]/5 animate-in fade-in slide-in-from-top duration-700">
+                    <div className="flex items-center justify-between px-4 mb-3">
+                      <h3 className="text-[10px] font-black uppercase text-gray-500 dark:text-[#8696a0] tracking-widest flex items-center gap-2">
+                        <Sparkles className="w-3 h-3 text-orange-500" /> Featured Hearts
+                      </h3>
+                      <div className="flex items-center gap-1.5">
+                         <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_5px_rgba(34,197,94,0.5)]"></div>
+                         <span className="text-[8px] font-black text-green-500 uppercase tracking-widest">Active Now</span>
+                      </div>
+                    </div>
+                    <div className="flex overflow-x-auto no-scrollbar gap-4 px-4 snap-x">
+                      {users.filter(u => u.isFeaturedSingle).map(u => (
+                        <motion.div 
+                          key={u.uid} 
+                          onClick={() => setViewingUser(u)}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="flex-shrink-0 w-20 space-y-2 cursor-pointer snap-center relative group"
+                        >
+                          <div className="relative w-20 h-20 rounded-2xl overflow-hidden border-2 border-white dark:border-gray-800 shadow-sm group-hover:border-[#00a884] transition-colors bg-white dark:bg-[#2a3942]">
+                            <img src={u.photoURL} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={u.displayName} referrerPolicy="no-referrer" />
+                            {u.isVerified && (
+                              <div className="absolute top-1 right-1 bg-white dark:bg-[#111b21] rounded-full p-0.5 shadow-sm border border-black/5">
+                                 <Shield className="w-2.5 h-2.5 text-[#00a884]" fill="currentColor" />
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
+                          </div>
+                          <p className="text-[10px] font-black text-center truncate text-gray-700 dark:text-[#e9edef] uppercase tracking-tighter">{u.displayName.split(' ')[0]}</p>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
                 {isRefreshing ? (
                   <div className="p-0">
                     {[1, 2, 3, 4, 5, 6].map(i => <SkeletonChat key={i} />)}
@@ -2195,7 +2234,7 @@ export default function App() {
                                 {chat.updatedAt?.toDate ? formatWhatsAppTime(chat.updatedAt.toDate()) : ''}
                               </span>
                               {(chat.unreadCount?.[user.uid] || 0) > 0 && (
-                                <div className="bg-[#00a884] text-white text-[10px] h-4 min-w-[20px] rounded-full px-1 flex items-center justify-center font-bold">
+                                <div className="bg-[#25d366] text-white text-[9px] h-[16px] min-w-[16px] px-1 rounded-full flex items-center justify-center font-black shadow-sm ring-1 ring-white dark:ring-[#111b21]">
                                   {chat.unreadCount![user.uid]}
                                 </div>
                               )}
@@ -2223,8 +2262,8 @@ export default function App() {
                       </div>
                     );
                   })
-                )
-              }
+                )}
+              </div>
             </div>
           )}
             {activeTab === 'status' && <StatusAndWallView 
@@ -2909,13 +2948,22 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
           {(() => {
             const activeStatuses = (statuses || []).filter((s: any) => {
               if (!s || !s.userId) return false;
-              if (s.expiresAt?.toDate) {
-                return s.expiresAt.toDate() > new Date();
+              let expiryValid = false;
+              try {
+                if (s.expiresAt?.toDate) {
+                  expiryValid = s.expiresAt.toDate() > new Date();
+                } else if (s.expiresAt instanceof Date) {
+                  expiryValid = s.expiresAt > new Date();
+                } else if (s.expiresAt && typeof s.expiresAt === 'object' && s.expiresAt.seconds) {
+                  expiryValid = (s.expiresAt.seconds * 1000) > Date.now();
+                } else {
+                  expiryValid = true; // Default to showing if no valid expiry found
+                }
+              } catch (e) {
+                console.warn("Expiry check error:", e);
+                expiryValid = true;
               }
-              if (s.expiresAt instanceof Date) {
-                return s.expiresAt > new Date();
-              }
-              return true; // Default to showing if no valid expiry found
+              return expiryValid;
             });
             if (activeStatuses.length === 0) {
               return (
@@ -2951,13 +2999,22 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
         {viewingStatus && (() => {
           const activeStatuses = (statuses || []).filter((s: any) => {
             if (!s || !s.userId) return false;
-            if (s.expiresAt?.toDate) {
-              return s.expiresAt.toDate() > new Date();
+            let expiryValid = false;
+            try {
+              if (s.expiresAt?.toDate) {
+                expiryValid = s.expiresAt.toDate() > new Date();
+              } else if (s.expiresAt instanceof Date) {
+                expiryValid = s.expiresAt > new Date();
+              } else if (s.expiresAt && typeof s.expiresAt === 'object' && s.expiresAt.seconds) {
+                expiryValid = (s.expiresAt.seconds * 1000) > Date.now();
+              } else {
+                expiryValid = true; // Default to showing if no valid expiry found
+              }
+            } catch (e) {
+              console.warn("Expiry check error in modal:", e);
+              expiryValid = true;
             }
-            if (s.expiresAt instanceof Date) {
-              return s.expiresAt > new Date();
-            }
-            return true;
+            return expiryValid;
           });
           const currentIndex = activeStatuses.findIndex((s: any) => s.id === viewingStatus.id);
           const statusUser = usersMap[viewingStatus.userId];
@@ -4327,8 +4384,12 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
                   }}
                   whileDrag={{ scale: 0.98 }}
                   className={cn(
-                    "bg-white dark:bg-[#111b21] p-2.5 flex flex-col gap-1.5 rounded-[1.25rem] border border-gray-100 dark:border-gray-800 transition-all cursor-pointer relative z-10", 
-                    !n.read && "border-[#00a884] shadow-sm ring-1 ring-[#00a884]/5"
+                    "p-3 flex flex-col gap-1.5 rounded-[1.25rem] border transition-all cursor-pointer relative z-10", 
+                    !n.read 
+                      ? n.title === 'New Match Alert!' 
+                        ? "bg-pink-50/50 dark:bg-pink-900/10 border-pink-200/50 dark:border-pink-800/30 ring-1 ring-pink-500/10"
+                        : "bg-green-50/30 dark:bg-[#00a884]/5 border-[#00a884]/30 dark:border-[#00a884]/20 shadow-sm ring-1 ring-[#00a884]/5"
+                      : "bg-white dark:bg-[#111b21] border-gray-100 dark:border-gray-800"
                   )}
                   onClick={() => handleNotificationClick(n)}
                 >
@@ -4336,33 +4397,40 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
                     <Avatar 
                       src={usersMap[n.fromId]?.photoURL} 
                       name={n.fromName} 
-                      size={40} 
+                      size={44} 
                     >
-                      <div className="absolute -bottom-0.5 -right-0.5 w-4.5 h-4.5 bg-white dark:bg-[#111b21] rounded-full flex items-center justify-center p-0.5 shadow-sm">
-                        <div className="w-full h-full bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center text-[#00a884]">
-                          {n.type === 'like' && <ThumbsUp className="w-2.5 h-2.5" />}
+                      <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-white dark:bg-[#111b21] rounded-full flex items-center justify-center p-0.5 shadow-sm">
+                        <div className={cn(
+                          "w-full h-full rounded-full flex items-center justify-center",
+                          n.title === 'New Match Alert!' ? "bg-pink-500 text-white" : "bg-gray-50 dark:bg-gray-800 text-[#00a884]"
+                        )}>
+                          {n.title === 'New Match Alert!' && <Heart className="w-3 h-3 fill-white" />}
+                          {n.type === 'like' && n.title !== 'New Match Alert!' && <ThumbsUp className="w-2.5 h-2.5" />}
                           {n.type === 'message' && <MessageSquare className="w-2.5 h-2.5" />}
                           {n.type === 'friend_request' && <UserPlus className="w-2.5 h-2.5" />}
                           {n.type === 'friend_accept' && <CheckCircle2 className="w-2.5 h-2.5 text-green-500" />}
                           {n.type === 'comment' && <MessageCircle className="w-2.5 h-2.5" />}
-                          {n.type === 'broadcast' && <Megaphone className="w-2.5 h-2.5" />}
+                          {n.type === 'broadcast' && n.title !== 'New Match Alert!' && <Megaphone className="w-2.5 h-2.5" />}
                         </div>
                       </div>
                     </Avatar>
                     
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between mb-0.5">
                         <span className="text-[13px] font-black text-[#111b21] dark:text-[#e9edef] flex items-center gap-1 truncation-fix">
                           {n.fromName}
                           <TierBadge tier={usersMap[n.fromId]?.category} size={11} />
                         </span>
-                        <span className="text-[8px] font-bold text-gray-400 shrink-0 uppercase tracking-tighter">
-                          {n.timestamp?.toDate ? formatWhatsAppTime(n.timestamp.toDate()) : 'Now'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {!n.read && <div className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-pulse" />}
+                          <span className="text-[8px] font-bold text-gray-400 shrink-0 uppercase tracking-tighter">
+                            {n.timestamp?.toDate ? formatWhatsAppTime(n.timestamp.toDate()) : 'Now'}
+                          </span>
+                        </div>
                       </div>
                       <p className={cn(
-                        "text-[11px] line-clamp-1", 
-                        n.read ? "text-gray-400 dark:text-[#8696a0]" : "text-gray-700 dark:text-[#d1d7db] font-medium"
+                        "text-[12px] leading-snug", 
+                        n.read ? "text-gray-400 dark:text-[#8696a0]" : "text-gray-700 dark:text-[#d1d7db] font-bold"
                       )}>
                         {n.text}
                       </p>
@@ -4423,7 +4491,7 @@ const CreateAd = ({ user, onBack, settings, initialContent = '', initialMediaUrl
       setMediaUrl(url);
     } catch (error: any) {
       console.error("Ad media upload error details:", error);
-      toast.error(appSettings.siteName || "Heart Connect", { description: "Upload failed: " + (error.message || "Unknown error") });
+      toast.error(settings.siteName || "Heart Connect", { description: "Upload failed: " + (error.message || "Unknown error") });
     } finally {
       setUploading(false);
     }
@@ -4431,7 +4499,7 @@ const CreateAd = ({ user, onBack, settings, initialContent = '', initialMediaUrl
 
   const handleSubmit = async () => {
     if (!content.trim() || !mediaUrl) {
-      toast.error(appSettings.siteName || "Heart Connect", { description: "Please provide ad content and an image." });
+      toast.error(settings.siteName || "Heart Connect", { description: "Please provide ad content and an image." });
       return;
     }
     
@@ -4470,16 +4538,16 @@ const CreateAd = ({ user, onBack, settings, initialContent = '', initialMediaUrl
           timestamp: serverTimestamp()
         });
         
-        toast.success(appSettings.siteName || "Heart Connect", { description: "Upload Complete! Ad submission and payment proof sent! Admin will review and publish your ad soon." });
+        toast.success(settings.siteName || "Heart Connect", { description: "Upload Complete! Ad submission and payment proof sent! Admin will review and publish your ad soon." });
         onBack();
       } catch (error: any) {
         console.error("Ad proof upload error details:", error);
-        toast.error(appSettings.siteName || "Heart Connect", { description: "Upload failed: " + (error.message || "Unknown error") });
+        toast.error(settings.siteName || "Heart Connect", { description: "Upload failed: " + (error.message || "Unknown error") });
       } finally {
         setSubmitting(false);
       }
     };
-      toast.error(appSettings.siteName || "Heart Connect", { description: "Please upload proof of payment for the ad campaign." });
+      toast.error(settings.siteName || "Heart Connect", { description: "Please upload proof of payment for the ad campaign." });
     input.click();
   };
 
@@ -4640,7 +4708,7 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
         throw new Error(session.error || 'Failed to create payment session');
       }
     } catch (error: any) {
-      toast.error(appSettings.siteName || "Heart Connect", { description: "Payment error: " + error.message });
+      toast.error(settings?.siteName || "Heart Connect", { description: "Payment error: " + error.message });
     } finally {
       setUploading(false);
     }
@@ -4668,9 +4736,9 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
           timestamp: serverTimestamp()
         });
         
-        toast.success(appSettings.siteName || "Heart Connect", { description: "Upload Complete! Payment proof submitted. Admin will verify and update your tier soon." });
+        toast.success(settings?.siteName || "Heart Connect", { description: "Upload Complete! Payment proof submitted. Admin will verify and update your tier soon." });
       } catch (error: any) {
-        toast.error(appSettings.siteName || "Heart Connect", { description: "Upload failed: " + (error.message || "Unknown error") });
+        toast.error(settings?.siteName || "Heart Connect", { description: "Upload failed: " + (error.message || "Unknown error") });
       } finally {
         setUploading(false);
       }
@@ -4958,7 +5026,7 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
   const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, activeAds: 0, totalPoints: 0 });
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'featured' | 'ads' | 'config' | 'branding' | 'payments' | 'vaccancies' | 'notifications'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'featured' | 'ads' | 'config' | 'branding' | 'payments' | 'vacancies' | 'notifications'>('users');
   const [ads, setAds] = useState<Post[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -5177,7 +5245,7 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
   };
 
   if (loading) return <div className="flex-1 flex items-center justify-center bg-white"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>;
-  if (editingUser) return <ProfileSettings user={editingUser} onBack={() => setEditingUser(null)} onUpdate={handleUpdateUser} />;
+  if (editingUser) return <ProfileSettings user={editingUser} onBack={() => setEditingUser(null)} onUpdate={handleUpdateUser} settings={appSettings} />;
 
   return (
     <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a] h-full max-h-full overflow-hidden">
@@ -5186,199 +5254,125 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
         <h2 className="text-xl font-medium flex items-center gap-2"><Shield className="w-5 h-5 text-[#00a884]" /> Admin Dashboard</h2>
       </div>
       
-      <div className="flex bg-white dark:bg-[#111b21] border-b border-gray-100 dark:border-gray-800 overflow-x-auto flex-shrink-0">
+      <div className="flex bg-white dark:bg-[#111b21] border-b border-gray-100 dark:border-gray-800 overflow-x-auto flex-shrink-0 no-scrollbar">
         {['users', 'featured', 'ads', 'config', 'branding', 'payments', 'vacancies', 'notifications'].map((t) => (
           <button 
             key={t}
             onClick={() => setActiveTab(t as any)}
-            className={cn("flex-shrink-0 px-4 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2", activeTab === t ? "border-[#00a884] text-[#00a884]" : "border-transparent text-gray-400 dark:text-[#8696a0]")}
+            className={cn(
+              "flex-shrink-0 px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 uppercase", 
+              activeTab === t 
+                ? "border-[#00a884] text-[#00a884] bg-[#00a884]/5" 
+                : "border-transparent text-gray-400 dark:text-[#8696a0]"
+            )}
           >
-            {t === 'vacancies' ? 'Jobs' : t}
+            {t === 'featured' ? '★ Featured' : t === 'vacancies' ? 'Jobs' : t === 'users' ? 'Admin List' : t}
           </button>
         ))}
       </div>
 
       <div className="flex-1 p-4 space-y-6 pb-32 scroll-smooth overflow-y-auto custom-scrollbar min-h-0">
-        {activeTab === 'users' ? (
+        {activeTab === 'users' || activeTab === 'featured' ? (
           <>
-            {/* Stats Section */}
-            <div className="space-y-4 p-1">
-              <div className="flex justify-between items-center mb-1">
-                <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Dashboard Overview</h3>
-                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_5px_rgba(34,197,94,0.5)]" />
-              </div>
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
-                  <UserIcon className="w-5 h-5 text-blue-500 mx-auto mb-1" />
-                  <div className="text-xl font-bold dark:text-[#e9edef]">{stats.totalUsers}</div>
-                  <div className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">Users</div>
+            {/* Stats Section - only show in 'users' tab */}
+            {activeTab === 'users' && (
+              <div className="space-y-4 p-1 animate-in fade-in duration-500">
+                <div className="flex justify-between items-center mb-1">
+                  <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Dashboard Overview</h3>
+                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_5px_rgba(34,197,94,0.5)]" />
                 </div>
-                <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
-                  <BarChart3 className="w-5 h-5 text-green-500 mx-auto mb-1" />
-                  <div className="text-xl font-bold dark:text-[#e9edef]">{stats.totalPoints}</div>
-                  <div className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">Total Points</div>
+                {/* Stats Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+                    <UserIcon className="w-5 h-5 text-blue-500 mx-auto mb-1" />
+                    <div className="text-xl font-bold dark:text-[#e9edef]">{stats.totalUsers}</div>
+                    <div className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">Users</div>
+                  </div>
+                  <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+                    <BarChart3 className="w-5 h-5 text-green-500 mx-auto mb-1" />
+                    <div className="text-xl font-bold dark:text-[#e9edef]">{stats.totalPoints}</div>
+                    <div className="text-[10px] text-gray-400 dark:text-[#8696a0] uppercase font-bold">Total Points</div>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* User Management Section */}
-            <div className="bg-white dark:bg-[#111b21] rounded-3xl shadow-lg border border-gray-100 dark:border-gray-800 flex flex-col">
+            <div className="bg-white dark:bg-[#111b21] rounded-3xl shadow-lg border border-gray-100 dark:border-gray-800 flex flex-col animate-in slide-in-from-bottom-2 duration-400">
               <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/30 dark:bg-gray-800/20">
                 <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-[#00a884]" />
-                  <h3 className="font-bold text-gray-800 dark:text-[#e9edef] text-sm tracking-tight uppercase">User Management</h3>
+                  {activeTab === 'featured' ? <Sparkles className="w-4 h-4 text-orange-500" /> : <Users className="w-4 h-4 text-[#00a884]" />}
+                  <h3 className="font-bold text-gray-800 dark:text-[#e9edef] text-sm tracking-tight uppercase">
+                    {activeTab === 'featured' ? 'Featured Singles' : 'Registered Users'}
+                  </h3>
                 </div>
-                <div className="text-[10px] font-black text-[#00a884] bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-full uppercase tracking-widest">{users.length} Records</div>
+                <div className={cn(
+                  "text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-widest",
+                  activeTab === 'featured' ? "text-orange-500 bg-orange-50 dark:bg-orange-900/20" : "text-[#00a884] bg-green-50 dark:bg-green-900/20"
+                )}>
+                  {activeTab === 'featured' ? users.filter(u => u.isFeaturedSingle).length : users.filter(u => !u.isFeaturedSingle).length} Records
+                </div>
               </div>
               <div className="divide-y divide-gray-50 dark:divide-gray-800">
-                {/* Section: Featured Users */}
-                {users.filter(u => u.isFeaturedSingle).length > 0 && (
-                  <div className="bg-orange-50/30 dark:bg-orange-950/10">
-                    <div className="px-4 py-2 bg-orange-100/50 dark:bg-orange-900/30 flex items-center gap-2 border-y border-orange-100 dark:border-orange-900/30">
-                      <Sparkles className="w-3 h-3 text-orange-500" />
-                      <span className="text-[10px] font-black uppercase text-orange-700 dark:text-orange-500 tracking-tighter">Featured Members</span>
-                    </div>
-                    {users.filter(u => u.isFeaturedSingle).map(u => (
-                      <AdminUserRow 
-                        key={u.uid} 
-                        u={u} 
-                        users={users} 
-                        setUsers={setUsers} 
-                        setEditingUser={setEditingUser} 
-                        setUserCategory={setUserCategory} 
-                        toggleUserRole={toggleUserRole} 
-                        toggleUserSuspension={toggleUserSuspension} 
-                        toggleUserVerification={toggleUserVerification} 
-                        deleteUser={deleteUser}
-                        setLoading={setLoading}
-                        appSettings={appSettings}
-                      />
-                    ))}
-                  </div>
-                )}
+                {activeTab === 'featured' ? (
+                  <>
+                    {users.filter(u => u.isFeaturedSingle).length > 0 ? (
+                      users.filter(u => u.isFeaturedSingle).map(u => (
+                        <AdminUserRow 
+                          key={u.uid} 
+                          u={u} 
+                          users={users} 
+                          setUsers={setUsers} 
+                          setEditingUser={setEditingUser} 
+                          setUserCategory={setUserCategory} 
+                          toggleUserRole={toggleUserRole} 
+                          toggleUserSuspension={toggleUserSuspension} 
+                          toggleUserVerification={toggleUserVerification} 
+                          deleteUser={deleteUser}
+                          setLoading={setLoading}
+                          appSettings={appSettings}
+                        />
+                      ))
+                    ) : (
+                      <div className="p-12 text-center">
+                        <Sparkles className="w-12 h-12 text-orange-200 mx-auto mb-3" />
+                        <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">No Featured Singles</p>
+                        <p className="text-[10px] text-gray-400 mt-2">Activate featured status on users to see them here.</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {/* Section: Zim/System Users */}
+                    {users.filter(u => !u.isFeaturedSingle && u.uid.startsWith('zim_')).length > 0 && (
+                      <div className="bg-blue-50/10 dark:bg-blue-900/5">
+                        <div className="px-4 py-2 bg-blue-50/50 dark:bg-blue-900/20 flex items-center gap-2 border-y border-blue-50 dark:border-blue-900/20">
+                          <Shield className="w-3 h-3 text-blue-500" />
+                          <span className="text-[10px] font-black uppercase text-blue-500 tracking-tighter">System & Zimbabwe Profiles</span>
+                        </div>
+                        {users.filter(u => !u.isFeaturedSingle && u.uid.startsWith('zim_')).map(u => (
+                          <AdminUserRow key={u.uid} u={u} users={users} setUsers={setUsers} setEditingUser={setEditingUser} setUserCategory={setUserCategory} toggleUserRole={toggleUserRole} toggleUserSuspension={toggleUserSuspension} toggleUserVerification={toggleUserVerification} deleteUser={deleteUser} setLoading={setLoading} appSettings={appSettings} />
+                        ))}
+                      </div>
+                    )}
 
-                {/* Section: System-Created Users */}
-                {users.filter(u => u.uid.startsWith('zim_') && !u.isFeaturedSingle).length > 0 && (
-                  <div className="bg-blue-50/30 dark:bg-blue-950/10">
-                    <div className="px-4 py-2 bg-blue-100/50 dark:bg-blue-900/30 flex items-center gap-2 border-y border-blue-100 dark:border-blue-900/30">
-                      <Shield className="w-3 h-3 text-blue-500" />
-                      <span className="text-[10px] font-black uppercase text-blue-700 dark:text-blue-500 tracking-tighter">System & Zim Profiles</span>
+                    {/* Section: Standard Users */}
+                    <div className="px-4 py-2 bg-gray-50/50 dark:bg-gray-800/20 flex items-center gap-2 border-y border-gray-100 dark:border-gray-800">
+                      <UserIcon className="w-3 h-3 text-gray-400" />
+                      <span className="text-[10px] font-black uppercase text-gray-400 tracking-tighter">Standard Users</span>
                     </div>
-                    {users.filter(u => u.uid.startsWith('zim_') && !u.isFeaturedSingle).map(u => (
-                      <AdminUserRow 
-                        key={u.uid} 
-                        u={u} 
-                        users={users} 
-                        setUsers={setUsers} 
-                        setEditingUser={setEditingUser} 
-                        setUserCategory={setUserCategory} 
-                        toggleUserRole={toggleUserRole} 
-                        toggleUserSuspension={toggleUserSuspension} 
-                        toggleUserVerification={toggleUserVerification} 
-                        deleteUser={deleteUser}
-                        setLoading={setLoading}
-                        appSettings={appSettings}
-                      />
-                    ))}
-                  </div>
+                    {users.filter(u => !u.isFeaturedSingle && !u.uid.startsWith('zim_')).length > 0 ? (
+                      users.filter(u => !u.isFeaturedSingle && !u.uid.startsWith('zim_')).map(u => (
+                        <AdminUserRow key={u.uid} u={u} users={users} setUsers={setUsers} setEditingUser={setEditingUser} setUserCategory={setUserCategory} toggleUserRole={toggleUserRole} toggleUserSuspension={toggleUserSuspension} toggleUserVerification={toggleUserVerification} deleteUser={deleteUser} setLoading={setLoading} appSettings={appSettings} />
+                      ))
+                    ) : (
+                      <div className="p-8 text-center text-gray-400 italic text-xs">No users found.</div>
+                    )}
+                  </>
                 )}
-
-                {/* Section: Standard Users */}
-                <div className="px-4 py-2 bg-gray-100/50 dark:bg-gray-800/50 flex items-center gap-2 border-y border-gray-100 dark:border-gray-800">
-                  <UserIcon className="w-3 h-3 text-gray-500" />
-                  <span className="text-[10px] font-black uppercase text-gray-500 tracking-tighter">Other Users</span>
-                </div>
-                {users.filter(u => !u.isFeaturedSingle && !u.uid.startsWith('zim_')).map(u => (
-                  <AdminUserRow 
-                    key={u.uid} 
-                    u={u} 
-                    users={users} 
-                    setUsers={setUsers} 
-                    setEditingUser={setEditingUser} 
-                    setUserCategory={setUserCategory} 
-                    toggleUserRole={toggleUserRole} 
-                    toggleUserSuspension={toggleUserSuspension} 
-                    toggleUserVerification={toggleUserVerification} 
-                    deleteUser={deleteUser}
-                    setLoading={setLoading}
-                    appSettings={appSettings}
-                  />
-                ))}
               </div>
             </div>
           </>
-        ) : activeTab === 'featured' ? (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-800 dark:text-[#e9edef] flex items-center gap-2 tracking-tight uppercase text-sm">
-                <Sparkles className="w-5 h-5 text-orange-500" /> Featured Singles
-              </h3>
-              <div className="text-[10px] font-black text-orange-500 bg-orange-50 dark:bg-orange-900/20 px-2 py-1 rounded-full uppercase tracking-widest">
-                {users.filter(u => u.isFeaturedSingle).length} Members
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {users.filter(u => u.isFeaturedSingle).map(u => (
-                <div key={u.uid} className="bg-white dark:bg-[#111b21] rounded-[2rem] p-5 shadow-sm border border-gray-100 dark:border-gray-800 space-y-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-center gap-4">
-                    <Avatar src={u.photoURL} name={u.displayName} size={56} />
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-base truncate dark:text-[#e9edef]">{u.displayName}</h4>
-                      <p className="text-[10px] text-gray-400 dark:text-[#8696a0] font-bold uppercase tracking-widest">{u.datingProfile?.city || 'Location Hidden'}</p>
-                    </div>
-                    <button 
-                      onClick={() => setEditingUser(u)}
-                      className="p-3 bg-gray-50 dark:bg-[#202c33] text-[#00a884] rounded-2xl hover:bg-[#00a884] hover:text-white transition-all shadow-sm"
-                    >
-                      <Edit2 className="w-5 h-5" />
-                    </button>
-                  </div>
-                  
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={async () => {
-                        await updateDoc(doc(db, 'users', u.uid), { isFeaturedSingle: false });
-                        setUsers(users.map(user => user.uid === u.uid ? { ...user, isFeaturedSingle: false } : user));
-                        toast.success(appSettings.siteName || "Heart Connect", { description: "Removed from featured list." });
-                      }}
-                      className="flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-gray-50 dark:bg-[#202c33] text-gray-500 hover:text-red-500 transition-colors"
-                    >
-                      Unfeature
-                    </button>
-                    <button 
-                      onClick={() => {
-                        const newName = prompt("Enter new Display Name:", u.displayName);
-                        if (newName) handleUpdateUser({ ...u, displayName: newName });
-                      }}
-                      className="flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-[#00a884]/10 text-[#00a884]"
-                    >
-                      Quick Rename
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              {users.filter(u => u.isFeaturedSingle).length === 0 && (
-                <div className="col-span-full py-20 bg-gray-50 dark:bg-[#111b21]/50 rounded-[2rem] border-2 border-dashed border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center text-gray-400 italic">
-                  <Sparkles className="w-12 h-12 mb-4 opacity-20" />
-                  No users currently featured.
-                </div>
-              )}
-            </div>
-
-            <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-3xl border border-blue-100 dark:border-blue-800 flex items-start gap-4">
-              <div className="p-2 bg-blue-500 rounded-xl text-white shadow-lg">
-                <Shield size={18} />
-              </div>
-              <p className="text-xs text-blue-700 dark:text-blue-300 font-medium leading-relaxed">
-                <span className="font-bold block mb-0.5">Admin Note:</span>
-                Featured users appear at the top of searching results and in the welcome gallery. 
-                Regularly update their profiles to keep the engagement high.
-              </p>
-            </div>
-          </div>
         ) : (
           <>
             {activeTab === 'ads' && (
@@ -5641,7 +5635,7 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
           </div>
         )}
 
-        {activeTab === 'vaccancies' && (
+        {activeTab === 'vacancies' && (
           <div className="space-y-4">
             <h3 className="font-bold text-gray-700 dark:text-[#e9edef]">Manage Vacancies</h3>
             {jobs.length === 0 ? (
@@ -5687,12 +5681,13 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
 </div>
 );
 };
-const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: { 
+const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settings }: { 
   user: User, 
   onBack: () => void, 
   onUpdate: (u: User) => void,
   darkMode?: boolean,
-  setDarkMode?: (v: boolean) => void
+  setDarkMode?: (v: boolean) => void,
+  settings: AppSettings
 }) => {
   const [firstName, setFirstName] = useState(user.firstName || user.displayName.split(' ')[0] || '');
   const [lastName, setLastName] = useState(user.lastName || user.displayName.split(' ')[1] || '');
@@ -5722,12 +5717,12 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
       if (type === 'photo') setPhotoURL(url);
       else setCoverURL(url);
       
-      toast.success(appSettings.siteName || "Heart Connect", { 
+      toast.success(settings.siteName || "Heart Connect", { 
         description: `${type === 'photo' ? 'Photo' : 'Cover'} uploaded successfully! Click Save to persist changes.` 
       });
     } catch (error: any) {
       console.error(`${type} upload error details:`, error);
-      toast.error(appSettings.siteName || "Heart Connect", { 
+      toast.error(settings.siteName || "Heart Connect", { 
         description: "Upload failed: " + (error.message || "Unknown error") 
       });
     } finally {
@@ -5737,7 +5732,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
 
   const handleSave = async () => {
     if (!firstName.trim() || !lastName.trim()) {
-      toast.error(appSettings.siteName || "Heart Connect", { description: "Please enter both Name and Surname" });
+      toast.error(settings.siteName || "Heart Connect", { description: "Please enter both Name and Surname" });
       return;
     }
     setSaving(true);
@@ -5783,7 +5778,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
       onBack();
     } catch (error) {
       console.error("Error updating profile:", error);
-      toast.error(appSettings.siteName || "Heart Connect", { description: "Failed to update profile. Please check your connection." });
+      toast.error(settings.siteName || "Heart Connect", { description: "Failed to update profile. Please check your connection." });
     } finally {
       setSaving(false);
     }
@@ -5995,7 +5990,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode }: {
                   if (user.isVerified) {
                     setJobRole('employer');
                   } else {
-                    toast.warning(appSettings.siteName || "Heart Connect", { description: "Verification Required: Only verified users can register as employers and post jobs." });
+                    toast.warning(settings?.siteName || "Heart Connect", { description: "Verification Required: Only verified users can register as employers and post jobs." });
                   }
                 }}
                 className={cn(
