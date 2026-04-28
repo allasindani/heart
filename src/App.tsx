@@ -412,7 +412,8 @@ const uploadFileToServer = (file: File, onProgress?: (progress: number) => void)
           }
         } catch (e) {
           console.error("Upload response parse error:", xhr.responseText);
-          reject(new Error('Failed to parse server response'));
+          const preview = xhr.responseText ? xhr.responseText.substring(0, 100) : "empty response";
+          reject(new Error(`Failed to parse server response: ${preview}`));
         }
       } else {
         try {

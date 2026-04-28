@@ -26,10 +26,15 @@ const storage = multer.diskStorage({
     const relativePath = path.join('uploads', year, month, day);
     const absolutePath = path.join(process.cwd(), relativePath);
     
-    if (!fs.existsSync(absolutePath)) {
-      fs.mkdirSync(absolutePath, { recursive: true });
+    try {
+      if (!fs.existsSync(absolutePath)) {
+        fs.mkdirSync(absolutePath, { recursive: true });
+      }
+      cb(null, absolutePath);
+    } catch (err: any) {
+      console.error("[MULTER DESTINATION ERROR]", err);
+      cb(err, absolutePath);
     }
-    cb(null, absolutePath);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -280,25 +285,36 @@ async function startServer() {
   });
 
   app.post("/api/upload", (req, res) => {
-    upload.single('file')(req, res, (err) => {
-      if (err instanceof multer.MulterError) {
-        console.error("[MULTER ERROR]", err);
-        return res.status(400).json({ error: `Upload error: ${err.message}` });
-      } else if (err) {
-        console.error("[UPLOAD UNKNOWN ERROR]", err);
-        return res.status(500).json({ error: "Unknown server error during upload" });
-      }
+    try {
+      upload.single('file')(req, res, (err) => {
+        if (err instanceof multer.MulterError) {
+          console.error("[MULTER ERROR]", err);
+          return res.status(400).json({ error: `Upload error: ${err.message}` });
+        } else if (err) {
+          console.error("[UPLOAD UNKNOWN ERROR]", err);
+          return res.status(500).json({ error: "Unknown server error during upload" });
+        }
 
-      if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded' });
-      }
-      
-      // Convert absolute path to relative URL
-      const relativePath = req.file.path.replace(process.cwd(), '').replace(/\\/g, '/');
-      const fileUrl = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
-      console.log(`[UPLOAD SUCCESS] -> URL: ${fileUrl}`);
-      res.json({ url: fileUrl });
-    });
+        if (!req.file) {
+          return res.status(400).json({ error: 'No file uploaded' });
+        }
+        
+        try {
+          // Convert absolute path to relative URL more robustly
+          const relPath = path.relative(process.cwd(), req.file.path).replace(/\\/g, '/');
+          const fileUrl = relPath.startsWith('/') ? relPath : `/${relPath}`;
+          
+          console.log(`[UPLOAD SUCCESS] -> URL: ${fileUrl}`);
+          res.json({ url: fileUrl });
+        } catch (pathErr) {
+          console.error("[PATH ERROR]", pathErr);
+          res.status(500).json({ error: "Failed to generate file URL" });
+        }
+      });
+    } catch (criticalErr) {
+      console.error("[CRITICAL UPLOAD ERROR]", criticalErr);
+      res.status(500).json({ error: "Critical server error during upload" });
+    }
   });
 
   // Dedicated WhatsApp Welcome Page
