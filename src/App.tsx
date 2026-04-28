@@ -869,6 +869,29 @@ export default function App() {
   }, []); // Run once on mount
 
   useEffect(() => {
+    const handleConnError = (e: any) => {
+      toast.error("Database Connection Issue", {
+        description: e.detail?.message || "Cloud Firestore is currently unreachable. The app will work in offline mode until connection is restored.",
+        duration: 10000,
+      });
+    };
+    window.addEventListener('firestore-connection-error', handleConnError);
+    
+    // Add online/offline listeners
+    const handleOnline = () => toast.success("Back Online", { description: "Your internet connection has been restored." });
+    const handleOffline = () => toast.error("Offline", { description: "You are currently offline. Some features may be limited." });
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('firestore-connection-error', handleConnError);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     // Back Button Logic
     const handleBackButton = () => {
       // Priority 1: Close main overlays/sub-views first (matches big ternary in App.tsx)

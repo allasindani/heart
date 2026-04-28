@@ -117,6 +117,10 @@ service cloud.firestore {
       allow read: if true;
     }
 
+    match /_diagnostics_/connection {
+      allow read: if true;
+    }
+
     // ===============================================================
     // Helper Functions
     // ===============================================================
