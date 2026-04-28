@@ -392,8 +392,13 @@ const uploadFileToServer = (file: File, onProgress?: (progress: number) => void)
   return new Promise<string>((resolve, reject) => {
     if (!file) return reject(new Error("No file to upload"));
     
+    // Explicit targeting of the API endpoint
+    const uploadUrl = '/api/media-upload';
+    console.log(`[UPLOAD DEBUG] Starting upload for: ${file.name} to ${uploadUrl}`);
+    
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/media-upload');
+    xhr.open('POST', uploadUrl);
+    
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && e.total > 0) {
         const progress = Math.round((e.loaded / e.total) * 100);
@@ -402,32 +407,51 @@ const uploadFileToServer = (file: File, onProgress?: (progress: number) => void)
     };
     
     xhr.onload = () => {
+      console.log(`[UPLOAD DEBUG] Status: ${xhr.status}`);
       if (xhr.status === 200) {
         try {
           const data = JSON.parse(xhr.responseText);
           if (data && data.url) {
+            console.log(`[UPLOAD SUCCESS] URL: ${data.url}`);
             resolve(data.url);
           } else {
-            reject(new Error('Server returned unexpected response format'));
+            reject(new Error('Server returned success but no URL found in response.'));
           }
         } catch (e) {
-          console.error("Upload response parse error:", xhr.responseText);
+          console.error("[UPLOAD PARSE ERROR] Content:", xhr.responseText.substring(0, 500));
           const preview = xhr.responseText ? xhr.responseText.substring(0, 100) : "empty response";
-          reject(new Error(`Failed to parse server response: ${preview}`));
+          let errorMsg = `Failed to parse server response: ${preview}`;
+          if (xhr.responseText.toLowerCase().includes('<!doctype html>')) {
+             errorMsg = "Server returned HTML instead of JSON. The API endpoint might be misconfigured or pointing to the wrong URL.";
+          }
+          reject(new Error(errorMsg));
         }
       } else {
+        let errorMsg = `Upload failed with status ${xhr.status}`;
         try {
           const errorData = JSON.parse(xhr.responseText);
-          reject(new Error(errorData.error || `Upload failed with status ${xhr.status}`));
+          errorMsg = errorData.error || errorData.message || errorMsg;
         } catch (e) {
-          reject(new Error(`Upload failed with status ${xhr.status}`));
+          if (xhr.responseText.toLowerCase().includes('<!doctype html>')) {
+             errorMsg = `Server error ${xhr.status} (HTML response). Likely an Nginx or SPA fallback issue.`;
+          }
         }
+        console.error(`[UPLOAD ERROR ${xhr.status}]`, errorMsg);
+        reject(new Error(errorMsg));
       }
     };
     
-    xhr.onerror = () => reject(new Error('Network error during upload. Please check your connection.'));
-    xhr.ontimeout = () => reject(new Error('Upload timed out. The file might be too large or connection too slow.'));
-    xhr.timeout = 60000; // 60 seconds timeout
+    xhr.onerror = () => {
+      console.error("[UPLOAD NETWORK ERROR]");
+      reject(new Error('Network error during upload. Please check your connection.'));
+    };
+    
+    xhr.ontimeout = () => {
+      console.error("[UPLOAD TIMEOUT]");
+      reject(new Error('Upload timed out. File might be too large.'));
+    };
+    
+    xhr.timeout = 240000; // 4 minutes for large files
     
     const formData = new FormData();
     formData.append('file', file);
