@@ -58,8 +58,48 @@ async function startServer() {
 
   // Debug Middleware for Production/VPS issues
   app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - Host: ${req.get('host')} - IP: ${req.ip}`);
+    if (req.url.startsWith('/api/')) {
+      console.log(`[API DEBUG] ${req.method} ${req.url} - Content-Type: ${req.get('Content-Type')}`);
+    } else {
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    }
     next();
+  });
+
+  // Media Upload Route - Standard Middleware Style
+  app.post("/api/media-upload", upload.single('file'), (req, res) => {
+    console.log("[MEDIA-UPLOAD] Multer processed request.");
+    
+    if (!req.file) {
+      console.warn("[UPLOAD DEBUG] No file recognized by multer");
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    
+    try {
+      const fileName = path.basename(req.file.path);
+      const fileUrl = `/uploads/${fileName}`;
+      
+      console.log(`[UPLOAD SUCCESS] -> URL: ${fileUrl}, Size: ${req.file.size} bytes`);
+      res.json({ url: fileUrl });
+    } catch (innerErr: any) {
+      console.error("[UPLOAD CRITICAL ERROR]", innerErr);
+      res.status(500).json({ error: `Server error during URL generation: ${innerErr.message}` });
+    }
+  });
+
+  app.get("/api/ping", (req, res) => {
+    res.json({ pong: true, timestamp: new Date().toISOString() });
+  });
+
+  // Keep old endpoint for backwards compatibility
+  app.post("/api/upload", (req, res) => {
+    console.warn(`[UPLOAD DEPRECATED] Recieved request to old endpoint: ${req.url}. Redirecting to /api/media-upload logic.`);
+    // Just reuse the same logic or return redirect info
+    res.status(308).json({ 
+      error: "Endpoint moved", 
+      redirect: "/api/media-upload",
+      message: "Please use /api/media-upload"
+    });
   });
 
   // Absolute paths for robustness
@@ -114,41 +154,6 @@ async function startServer() {
   app.get("/download/update", serveStaticFile('heart-connect-update.zip', 'application/zip'));
 
   app.use(compression());
-
-  app.post("/api/media-upload", (req, res) => {
-    upload.single('file')(req, res, (err) => {
-      if (err instanceof multer.MulterError) {
-        console.error("[MULTER ERROR]", err);
-        return res.status(400).json({ error: `Upload error: ${err.message}` });
-      } else if (err) {
-        console.error("[UPLOAD UNKNOWN ERROR]", err);
-        return res.status(500).json({ error: "Unknown server error during upload" });
-      }
-
-      if (!req.file) {
-        console.warn("[UPLOAD DEBUG] No file in request");
-        return res.status(400).json({ error: 'No file uploaded' });
-      }
-      
-      try {
-        // Ensure the file URL points to the static /uploads/ folder
-        const fileName = path.basename(req.file.path);
-        const fileUrl = `/uploads/${fileName}`;
-        
-        console.log(`[UPLOAD SUCCESS] -> URL: ${fileUrl}, Original: ${req.file.originalname}`);
-        res.json({ url: fileUrl });
-      } catch (innerErr: any) {
-        console.error("[UPLOAD CRITICAL ERROR]", innerErr);
-        res.status(500).json({ error: `Server error during upload: ${innerErr.message}` });
-      }
-    });
-  });
-
-  app.post("/api/upload", (req, res) => {
-    // Keep the old endpoint for safety but redirect to new one or log it
-    console.warn(`[UPLOAD DEPRECATED] Request to old endpoint: ${req.url}`);
-    res.status(308).json({ error: "Please use /api/media-upload", redirect: "/api/media-upload" });
-  });
 
   app.use(express.json());
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
@@ -291,6 +296,25 @@ async function startServer() {
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
+  });
+
+  // Catch-all for API routes to prevent falling through to Vite/Static
+  app.all("/api/*", (req, res) => {
+    console.warn(`[API 404] No route matched: ${req.method} ${req.url}`);
+    res.status(404).json({ error: `API route not found: ${req.url}` });
+  });
+
+  // Global Error Handler
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error("[GLOBAL ERROR]", err);
+    if (res.headersSent) {
+      return next(err);
+    }
+    res.status(500).json({ 
+      error: "Internal Server Error", 
+      message: err.message,
+      path: req.url
+    });
   });
 
   // Dedicated WhatsApp Welcome Page
