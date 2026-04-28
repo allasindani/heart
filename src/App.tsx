@@ -393,7 +393,7 @@ const uploadFileToServer = (file: File, onProgress?: (progress: number) => void)
     if (!file) return reject(new Error("No file to upload"));
     
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/upload');
+    xhr.open('POST', '/api/media-upload');
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && e.total > 0) {
         const progress = Math.round((e.loaded / e.total) * 100);

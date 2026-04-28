@@ -45,7 +45,7 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ 
-  storage,
+  dest: 'uploads/',
   limits: {
     fileSize: 50 * 1024 * 1024 // 50MB limit
   }
@@ -141,6 +141,34 @@ async function startServer() {
   app.get("/download/update", serveStaticFile('heart-connect-update.zip', 'application/zip'));
 
   app.use(compression());
+
+  app.post("/api/media-upload", upload.single('file'), (req, res) => {
+    console.log(`[UPLOAD DEBUG] Request received: ${req.method} ${req.url}`);
+    
+    if (!req.file) {
+      console.warn("[UPLOAD DEBUG] No file in request");
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    
+    try {
+      // Ensure the file URL points to the static /uploads/ folder
+      const fileName = path.basename(req.file.path);
+      const fileUrl = `/uploads/${fileName}`;
+      
+      console.log(`[UPLOAD SUCCESS] -> URL: ${fileUrl}, Original: ${req.file.originalname}`);
+      res.json({ url: fileUrl });
+    } catch (err: any) {
+      console.error("[UPLOAD CRITICAL ERROR]", err);
+      res.status(500).json({ error: `Server error during upload: ${err.message}` });
+    }
+  });
+
+  app.post("/api/upload", (req, res) => {
+    // Keep the old endpoint for safety but redirect to new one or log it
+    console.warn(`[UPLOAD DEPRECATED] Request to old endpoint: ${req.url}`);
+    res.status(308).json({ error: "Please use /api/media-upload", redirect: "/api/media-upload" });
+  });
+
   app.use(express.json());
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
@@ -281,39 +309,6 @@ async function startServer() {
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/upload", (req, res) => {
-    try {
-      upload.single('file')(req, res, (err) => {
-        if (err instanceof multer.MulterError) {
-          console.error("[MULTER ERROR]", err);
-          return res.status(400).json({ error: `Upload error: ${err.message}` });
-        } else if (err) {
-          console.error("[UPLOAD UNKNOWN ERROR]", err);
-          return res.status(500).json({ error: "Unknown server error during upload" });
-        }
-
-        if (!req.file) {
-          return res.status(400).json({ error: 'No file uploaded' });
-        }
-        
-        try {
-          // Convert absolute path to relative URL more robustly
-          const relPath = path.relative(process.cwd(), req.file.path).replace(/\\/g, '/');
-          const fileUrl = relPath.startsWith('/') ? relPath : `/${relPath}`;
-          
-          console.log(`[UPLOAD SUCCESS] -> URL: ${fileUrl}`);
-          res.json({ url: fileUrl });
-        } catch (pathErr) {
-          console.error("[PATH ERROR]", pathErr);
-          res.status(500).json({ error: "Failed to generate file URL" });
-        }
-      });
-    } catch (criticalErr) {
-      console.error("[CRITICAL UPLOAD ERROR]", criticalErr);
-      res.status(500).json({ error: "Critical server error during upload" });
     }
   });
 
