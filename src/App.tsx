@@ -367,11 +367,13 @@ const SplashScreen = ({ siteName, logoUrl, onForceLoad }: { siteName?: string, l
 };
 
 const compressImage = async (file: File) => {
-  if (file.size > 5 * 1024 * 1024 && file.type.startsWith('image/')) {
+  // Compress if larger than 1MB
+  if (file.size > 1 * 1024 * 1024 && file.type.startsWith('image/')) {
     const options = {
-      maxSizeMB: 5,
-      maxWidthOrHeight: 1920,
-      useWebWorker: true
+      maxSizeMB: 1, // Aim for 1MB
+      maxWidthOrHeight: 1280, // Slightly smaller for significantly faster uploads
+      useWebWorker: true,
+      initialQuality: 0.7 // Good balance of quality and speed
     };
     try {
       return await imageCompression(file, options);
@@ -3163,11 +3165,20 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                     </button>
                     <button 
                       onClick={() => handleCreateStatus()}
-                      disabled={!statusText.trim() || uploading}
+                      disabled={(!statusText.trim() && !statusCaption.trim()) || uploading}
                       className="flex-[2] bg-[#00a884] text-white py-4 rounded-2xl font-bold shadow-lg shadow-[#00a884]/20 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                     >
-                      {uploading ? <CircleDashed className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                      Post Status
+                      {uploading ? (
+                        <>
+                          <CircleDashed className="w-5 h-5 animate-spin" />
+                          <span>{uploadProgress}%</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-5 h-5" />
+                          <span>Post Status</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -3273,7 +3284,12 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                       disabled={(!newPost.trim() && !postMedia) || uploading}
                       className="w-full bg-[#00a884] text-white py-3.5 rounded-xl font-bold shadow-lg shadow-[#00a884]/20 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                     >
-                      {uploading ? <CircleDashed className="w-5 h-5 animate-spin" /> : "Post"}
+                      {uploading ? (
+                        <>
+                          <CircleDashed className="w-5 h-5 animate-spin" />
+                          <span>Uploading... {uploadProgress}%</span>
+                        </>
+                      ) : "Post"}
                     </button>
                   </div>
                 </div>
@@ -4475,18 +4491,20 @@ const CreateAd = ({ user, onBack, settings, initialContent = '', initialMediaUrl
   const [duration, setDuration] = useState(settings.minAdDuration);
   const [mediaUrl, setMediaUrl] = useState(initialMediaUrl);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setUploadProgress(0);
     try {
       console.log("Starting ad media upload:", file.name, "Size:", file.size);
       const compressedFile = await compressImage(file);
       console.log("Compressed size:", compressedFile.size);
       
-      const url = await uploadFileToServer(compressedFile);
+      const url = await uploadFileToServer(compressedFile, (p) => setUploadProgress(p));
       console.log("Ad media upload complete, URL:", url);
       setMediaUrl(url);
     } catch (error: any) {
@@ -4510,12 +4528,13 @@ const CreateAd = ({ user, onBack, settings, initialContent = '', initialMediaUrl
       const file = e.target.files?.[0];
       if (!file) return;
       setSubmitting(true);
+      setUploadProgress(0);
       try {
         console.log("Starting ad proof upload:", file.name, "Size:", file.size);
         const compressedFile = await compressImage(file);
         console.log("Compressed size:", compressedFile.size);
         
-        const proofUrl = await uploadFileToServer(compressedFile);
+        const proofUrl = await uploadFileToServer(compressedFile, (p) => setUploadProgress(p));
         console.log("Ad proof upload complete, URL:", proofUrl);
         
         const totalCost = duration * settings.adPricePerDay;
@@ -4580,8 +4599,17 @@ const CreateAd = ({ user, onBack, settings, initialContent = '', initialMediaUrl
                   <img src={mediaUrl} className="w-full h-full object-cover rounded-xl" alt="Preview" referrerPolicy="no-referrer" />
                 ) : (
                   <>
-                    <Camera className="w-6 h-6 text-gray-400" />
-                    <span className="text-[10px] text-gray-400 mt-1">Upload</span>
+                    {uploading ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <CircleDashed className="w-6 h-6 text-[#00a884] animate-spin" />
+                        <span className="text-[10px] font-bold text-[#00a884]">{uploadProgress}%</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Camera className="w-6 h-6 text-gray-400" />
+                        <span className="text-[10px] text-gray-400 mt-1">Upload</span>
+                      </>
+                    )}
                   </>
                 )}
                 <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
@@ -4644,8 +4672,17 @@ const CreateAd = ({ user, onBack, settings, initialContent = '', initialMediaUrl
           disabled={uploading || submitting}
           className="w-full bg-[#00a884] text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-[#008f6f] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
         >
-          {submitting ? <CircleDashed className="w-6 h-6 animate-spin" /> : <Megaphone className="w-6 h-6" />}
-          Submit Ad & Upload Proof
+          {submitting ? (
+            <div className="flex items-center gap-2">
+              <CircleDashed className="w-5 h-5 animate-spin" />
+              <span>Uploading Proof {uploadProgress}%</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Megaphone className="w-5 h-5" />
+              <span>Submit Ad & Upload Proof</span>
+            </div>
+          )}
         </button>
       </div>
     </div>
@@ -5031,6 +5068,8 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [paymentProofs, setPaymentProofs] = useState<PaymentProof[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -5563,13 +5602,22 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
                       onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (file) {
-                          const compressed = await compressImage(file);
-                          const url = await uploadFileToServer(compressed);
-                          setSettings({...settings, logoUrl: url});
+                          setUploading(true);
+                          setUploadProgress(0);
+                          try {
+                            const compressed = await compressImage(file);
+                            const url = await uploadFileToServer(compressed, (p) => setUploadProgress(p));
+                            setSettings({...settings, logoUrl: url});
+                          } finally {
+                            setUploading(false);
+                          }
                         }
                       }}
                       className="text-[10px] text-gray-500"
                     />
+                    {uploading && activeTab === 'branding' && (
+                      <div className="text-[10px] text-[#00a884] font-bold">Uploading Logo: {uploadProgress}%</div>
+                    )}
                   </div>
                 </div>
                 <div>
@@ -5582,12 +5630,21 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
                       onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (file) {
-                          const url = await uploadFileToServer(file);
-                          setSettings({...settings, faviconUrl: url});
+                          setUploading(true);
+                          setUploadProgress(0);
+                          try {
+                            const url = await uploadFileToServer(file, (p) => setUploadProgress(p));
+                            setSettings({...settings, faviconUrl: url});
+                          } finally {
+                            setUploading(false);
+                          }
                         }
                       }}
                       className="text-[10px] text-gray-500"
                     />
+                    {uploading && activeTab === 'branding' && (
+                      <div className="text-[10px] text-[#00a884] font-bold">Uploading Favicon: {uploadProgress}%</div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -5703,15 +5760,19 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
   const [jobRole, setJobRole] = useState(user.jobRole || 'seeker');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const compressAndUpload = async (file: File, type: 'photo' | 'cover' = 'photo') => {
     setUploading(true);
+    setUploadProgress(0);
     try {
       console.log(`Starting ${type} upload:`, file.name, "Size:", file.size);
       const compressedFile = await compressImage(file);
       console.log("Compressed size:", compressedFile.size);
       
-      const url = await uploadFileToServer(compressedFile);
+      const url = await uploadFileToServer(compressedFile, (progress) => {
+        setUploadProgress(progress);
+      });
       console.log(`${type} upload complete, URL:`, url);
       
       if (type === 'photo') setPhotoURL(url);
@@ -5851,7 +5912,12 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
                   }} 
                 />
               </label>
-              {uploading && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 rounded-full flex items-center justify-center"><CircleDashed className="w-8 h-8 animate-spin text-[#00a884]" /></div>}
+              {uploading && (
+                <div className="absolute inset-0 bg-white/70 dark:bg-black/70 rounded-full flex flex-col items-center justify-center z-20">
+                  <CircleDashed className="w-8 h-8 animate-spin text-[#00a884] mb-2" />
+                  <span className="text-[10px] font-bold text-[#00a884]">{uploadProgress}%</span>
+                </div>
+              )}
             </div>
             <h3 className="mt-4 text-xl font-bold dark:text-[#e9edef] flex items-center gap-2">
               {firstName} {lastName}

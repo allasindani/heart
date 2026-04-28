@@ -11,22 +11,44 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Ensure uploads directory exists
-const uploadsDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+const uploadsBaseDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsBaseDir)) {
+  fs.mkdirSync(uploadsBaseDir, { recursive: true });
 }
 
 // Configure multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    // Create subfolders by date to avoid massive single directory
+    const now = new Date();
+    const year = now.getFullYear().toString();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    
+    const targetDir = path.join('uploads', year, month, day);
+    const fullTargetDir = path.join(process.cwd(), targetDir);
+    
+    if (!fs.existsSync(fullTargetDir)) {
+      fs.mkdirSync(fullTargetDir, { recursive: true });
+    }
+    
+    cb(null, targetDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + '-' + file.originalname.replace(/[^a-zA-Z0-9.]/g, '_'));
+    // Sanitize and keep extension
+    const ext = path.extname(file.originalname).toLowerCase();
+    const name = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9]/g, '_');
+    cb(null, `${uniqueSuffix}-${name}${ext}`);
   }
 });
-const upload = multer({ storage });
+
+const upload = multer({ 
+  storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB limit
+  }
+});
 
 async function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -265,7 +287,11 @@ async function startServer() {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
-    const fileUrl = `/uploads/${req.file.filename}`;
+    // req.file.path is something like "uploads/2026/04/28/filename.jpg"
+    // We want the URL to be "/uploads/2026/04/28/filename.jpg"
+    // Since we handle /uploads as a static directory, we can use the path directly but ensured it starts with /
+    const relativePath = req.file.path.replace(/\\/g, '/'); // Ensure forward slashes for URLs
+    const fileUrl = `/${relativePath}`;
     res.json({ url: fileUrl });
   });
 
