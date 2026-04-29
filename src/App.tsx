@@ -58,6 +58,7 @@ import {
   Copy,
   Clock,
   Gift,
+  Loader2,
   Sun,
   Moon,
   Smartphone
@@ -1885,7 +1886,7 @@ export default function App() {
     const unsubStatus = onSnapshot(qStatus, (snap) => setStatuses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Status))), (e) => handleFirestoreError(e, OperationType.LIST, 'statuses'));
     
     // Notifications listener
-    const qNotif = query(collection(db, 'notifications'), where('userId', '==', user.uid), orderBy('timestamp', 'desc'), limit(20));
+    const qNotif = query(collection(db, 'notifications'), where('userId', '==', user.uid), orderBy('timestamp', 'desc'), limit(50));
     const unsubNotif = onSnapshot(qNotif, (snap) => setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification))), (e) => handleFirestoreError(e, OperationType.LIST, 'notifications'));
 
     return () => { unsubPosts(); unsubStatus(); unsubNotif(); };
@@ -4758,8 +4759,14 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliat
 };
 
 const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate, appSettings }: any) => {
+  const [isProcessing, setIsProcessing] = useState(false);
+
   const markAsRead = async (id: string) => {
-    await updateDoc(doc(db, 'notifications', id), { read: true });
+    try {
+      await updateDoc(doc(db, 'notifications', id), { read: true });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `notifications/${id}`);
+    }
   };
 
   const deleteNotification = async (id: string) => {
@@ -4770,19 +4777,67 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
     }
   };
 
-  const clearAll = async () => {
-    if (notifications.length === 0) return;
-    if (window.confirm(`Are you sure you want to clear all ${notifications.length} notifications?`)) {
-      try {
-        const batch = writeBatch(db);
-        notifications.forEach((n: any) => {
-          batch.delete(doc(db, 'notifications', n.id));
-        });
-        await batch.commit();
-        toast.success("All notifications cleared");
-      } catch (e) {
-        handleFirestoreError(e, OperationType.DELETE, 'notifications/all');
+  const markAllRead = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    try {
+      const q = query(collection(db, 'notifications'), where('userId', '==', user.uid), where('read', '==', false));
+      const snap = await getDocs(q);
+      
+      if (snap.empty) {
+        setIsProcessing(false);
+        return;
       }
+
+      const docs = snap.docs;
+      const chunks = [];
+      for (let i = 0; i < docs.length; i += 500) {
+        chunks.push(docs.slice(i, i + 500));
+      }
+
+      await Promise.all(chunks.map(async (chunk) => {
+        const batch = writeBatch(db);
+        chunk.forEach(d => batch.update(d.ref, { read: true }));
+        await batch.commit();
+      }));
+      
+      toast.success("All marked as read");
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, 'notifications/all');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const clearAll = async () => {
+    if (isProcessing || notifications.length === 0) return;
+    setIsProcessing(true);
+    try {
+      const q = query(collection(db, 'notifications'), where('userId', '==', user.uid));
+      const snap = await getDocs(q);
+      
+      if (snap.empty) {
+        setIsProcessing(false);
+        return;
+      }
+
+      const docs = snap.docs;
+      const chunks = [];
+      for (let i = 0; i < docs.length; i += 500) {
+        chunks.push(docs.slice(i, i + 500));
+      }
+
+      await Promise.all(chunks.map(async (chunk) => {
+        const batch = writeBatch(db);
+        chunk.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }));
+      
+      toast.success("All notifications cleared");
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, 'notifications/all');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -4846,12 +4901,22 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
         </div>
         <div className="flex items-center gap-2">
           {notifications.length > 0 && (
-            <button 
-              onClick={clearAll} 
-              className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full transition-all text-[9px] font-black uppercase tracking-widest flex items-center gap-1"
-            >
-              <Trash2 className="w-3.5 h-3.5" /> Clear All
-            </button>
+            <>
+              <button 
+                onClick={markAllRead} 
+                disabled={isProcessing}
+                className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full transition-all text-[9px] font-black uppercase tracking-widest flex items-center gap-1 disabled:opacity-50"
+              >
+                {isProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCheck className="w-3.5 h-3.5" />} Read
+              </button>
+              <button 
+                onClick={clearAll} 
+                disabled={isProcessing}
+                className="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-100 rounded-full transition-all text-[9px] font-black uppercase tracking-widest flex items-center gap-1 border border-red-500/30 disabled:opacity-50"
+              >
+                {isProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Clear
+              </button>
+            </>
           )}
           <div className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-black uppercase">
             {notifications.filter((n:any) => !n.read).length} Unread
@@ -4925,8 +4990,14 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
                         </span>
                         <div className="flex items-center gap-2">
                           {!n.read && <div className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-pulse" />}
-                          <span className="text-[8px] font-bold text-gray-400 shrink-0 uppercase tracking-tighter">
+                          <span className="text-[8px] font-bold text-gray-400 shrink-0 uppercase tracking-tighter flex items-center gap-1.5">
                             {n.timestamp?.toDate ? formatWhatsAppTime(n.timestamp.toDate()) : 'Now'}
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
+                              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-gray-400 hover:text-red-500 transition-colors"
+                            >
+                              <X size={10} />
+                            </button>
                           </span>
                         </div>
                       </div>
