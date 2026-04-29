@@ -55,6 +55,7 @@ import {
   RefreshCw,
   Users,
   Star,
+  Eraser,
   Copy,
   Clock,
   Gift,
@@ -4777,46 +4778,19 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
     }
   };
 
-  const markAllRead = async () => {
+  const clearRead = async () => {
     if (isProcessing) return;
+    const readOnes = notifications.filter((n: any) => n.read);
+    if (readOnes.length === 0) return;
+    
     setIsProcessing(true);
+    const toastId = toast.loading("Clearing read notifications...");
     try {
-      const q = query(collection(db, 'notifications'), where('userId', '==', user.uid), where('read', '==', false));
+      const q = query(collection(db, 'notifications'), where('userId', '==', user.uid), where('read', '==', true));
       const snap = await getDocs(q);
       
       if (snap.empty) {
-        setIsProcessing(false);
-        return;
-      }
-
-      const docs = snap.docs;
-      const chunks = [];
-      for (let i = 0; i < docs.length; i += 500) {
-        chunks.push(docs.slice(i, i + 500));
-      }
-
-      await Promise.all(chunks.map(async (chunk) => {
-        const batch = writeBatch(db);
-        chunk.forEach(d => batch.update(d.ref, { read: true }));
-        await batch.commit();
-      }));
-      
-      toast.success("All marked as read");
-    } catch (e) {
-      handleFirestoreError(e, OperationType.UPDATE, 'notifications/all');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const clearAll = async () => {
-    if (isProcessing || notifications.length === 0) return;
-    setIsProcessing(true);
-    try {
-      const q = query(collection(db, 'notifications'), where('userId', '==', user.uid));
-      const snap = await getDocs(q);
-      
-      if (snap.empty) {
+        toast.dismiss(toastId);
         setIsProcessing(false);
         return;
       }
@@ -4833,8 +4807,79 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
         await batch.commit();
       }));
       
-      toast.success("All notifications cleared");
+      toast.success("Read notifications removed", { id: toastId });
     } catch (e) {
+      toast.error("Operation failed", { id: toastId });
+      handleFirestoreError(e, OperationType.DELETE, 'notifications/read');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const markAllRead = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    const toastId = toast.loading("Marking all as read...");
+    try {
+      const q = query(collection(db, 'notifications'), where('userId', '==', user.uid), where('read', '==', false));
+      const snap = await getDocs(q);
+      
+      if (snap.empty) {
+        toast.dismiss(toastId);
+        setIsProcessing(false);
+        return;
+      }
+
+      const docs = snap.docs;
+      const chunks = [];
+      for (let i = 0; i < docs.length; i += 500) {
+        chunks.push(docs.slice(i, i + 500));
+      }
+
+      await Promise.all(chunks.map(async (chunk) => {
+        const batch = writeBatch(db);
+        chunk.forEach(d => batch.update(d.ref, { read: true }));
+        await batch.commit();
+      }));
+      
+      toast.success("All marked as read", { id: toastId });
+    } catch (e) {
+      toast.error("Operation failed", { id: toastId });
+      handleFirestoreError(e, OperationType.UPDATE, 'notifications/all');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const clearAll = async () => {
+    if (isProcessing || notifications.length === 0) return;
+    setIsProcessing(true);
+    const toastId = toast.loading("Clearing all notifications...");
+    try {
+      const q = query(collection(db, 'notifications'), where('userId', '==', user.uid));
+      const snap = await getDocs(q);
+      
+      if (snap.empty) {
+        toast.dismiss(toastId);
+        setIsProcessing(false);
+        return;
+      }
+
+      const docs = snap.docs;
+      const chunks = [];
+      for (let i = 0; i < docs.length; i += 500) {
+        chunks.push(docs.slice(i, i + 500));
+      }
+
+      await Promise.all(chunks.map(async (chunk) => {
+        const batch = writeBatch(db);
+        chunk.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }));
+      
+      toast.success("All notifications cleared", { id: toastId });
+    } catch (e) {
+      toast.error("Operation failed", { id: toastId });
       handleFirestoreError(e, OperationType.DELETE, 'notifications/all');
     } finally {
       setIsProcessing(false);
@@ -4910,11 +4955,18 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
                 {isProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCheck className="w-3.5 h-3.5" />} Read
               </button>
               <button 
+                onClick={clearRead} 
+                disabled={isProcessing}
+                className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full transition-all text-[9px] font-black uppercase tracking-widest flex items-center gap-1 disabled:opacity-50"
+              >
+                {isProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eraser className="w-3.5 h-3.5" />} Clear Read
+              </button>
+              <button 
                 onClick={clearAll} 
                 disabled={isProcessing}
                 className="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-100 rounded-full transition-all text-[9px] font-black uppercase tracking-widest flex items-center gap-1 border border-red-500/30 disabled:opacity-50"
               >
-                {isProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Clear
+                {isProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Clear All
               </button>
             </>
           )}
