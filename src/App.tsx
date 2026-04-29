@@ -4759,21 +4759,34 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliat
   );
 };
 
-const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate, appSettings }: any) => {
+const NotificationCenter = ({ user, notifications: initialNotifications, usersMap, onBack, onNavigate, appSettings }: any) => {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [optimisticDeletedIds, setOptimisticDeletedIds] = useState<string[]>([]);
+  const [optimisticReadIds, setOptimisticReadIds] = useState<string[]>([]);
+
+  // Derived state for instant UI
+  const notifications = useMemo(() => {
+    return initialNotifications
+      .filter((n: any) => !optimisticDeletedIds.includes(n.id))
+      .map((n: any) => optimisticReadIds.includes(n.id) ? { ...n, read: true } : n);
+  }, [initialNotifications, optimisticDeletedIds, optimisticReadIds]);
 
   const markAsRead = async (id: string) => {
+    setOptimisticReadIds(prev => [...prev, id]);
     try {
       await updateDoc(doc(db, 'notifications', id), { read: true });
     } catch (e) {
+      setOptimisticReadIds(prev => prev.filter(oid => oid !== id));
       handleFirestoreError(e, OperationType.UPDATE, `notifications/${id}`);
     }
   };
 
   const deleteNotification = async (id: string) => {
+    setOptimisticDeletedIds(prev => [...prev, id]);
     try {
       await deleteDoc(doc(db, 'notifications', id));
     } catch (e) {
+      setOptimisticDeletedIds(prev => prev.filter(oid => oid !== id));
       handleFirestoreError(e, OperationType.DELETE, `notifications/${id}`);
     }
   };
@@ -4785,6 +4798,11 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
     
     setIsProcessing(true);
     const toastId = toast.loading("Clearing read notifications...");
+    
+    // Optimistic clear
+    const idsToClear = readOnes.map((n: any) => n.id);
+    setOptimisticDeletedIds(prev => [...prev, ...idsToClear]);
+
     try {
       const q = query(collection(db, 'notifications'), where('userId', '==', user.uid), where('read', '==', true));
       const snap = await getDocs(q);
@@ -4809,6 +4827,8 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
       
       toast.success("Read notifications removed", { id: toastId });
     } catch (e) {
+      // Revert optimistic
+      setOptimisticDeletedIds(prev => prev.filter(id => !idsToClear.includes(id)));
       toast.error("Operation failed", { id: toastId });
       handleFirestoreError(e, OperationType.DELETE, 'notifications/read');
     } finally {
@@ -4818,8 +4838,16 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
 
   const markAllRead = async () => {
     if (isProcessing) return;
+    const unreadOnes = notifications.filter((n: any) => !n.read);
+    if (unreadOnes.length === 0) return;
+
     setIsProcessing(true);
     const toastId = toast.loading("Marking all as read...");
+    
+    // Optimistic read
+    const idsToMark = unreadOnes.map((n: any) => n.id);
+    setOptimisticReadIds(prev => [...prev, ...idsToMark]);
+
     try {
       const q = query(collection(db, 'notifications'), where('userId', '==', user.uid), where('read', '==', false));
       const snap = await getDocs(q);
@@ -4844,6 +4872,8 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
       
       toast.success("All marked as read", { id: toastId });
     } catch (e) {
+      // Revert optimistic
+      setOptimisticReadIds(prev => prev.filter(id => !idsToMark.includes(id)));
       toast.error("Operation failed", { id: toastId });
       handleFirestoreError(e, OperationType.UPDATE, 'notifications/all');
     } finally {
@@ -4855,6 +4885,11 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
     if (isProcessing || notifications.length === 0) return;
     setIsProcessing(true);
     const toastId = toast.loading("Clearing all notifications...");
+    
+    // Optimistic clear all
+    const allIds = notifications.map((n: any) => n.id);
+    setOptimisticDeletedIds(prev => [...prev, ...allIds]);
+
     try {
       const q = query(collection(db, 'notifications'), where('userId', '==', user.uid));
       const snap = await getDocs(q);
@@ -4879,6 +4914,8 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
       
       toast.success("All notifications cleared", { id: toastId });
     } catch (e) {
+      // Revert optimistic
+      setOptimisticDeletedIds(prev => prev.filter(id => !allIds.includes(id)));
       toast.error("Operation failed", { id: toastId });
       handleFirestoreError(e, OperationType.DELETE, 'notifications/all');
     } finally {
