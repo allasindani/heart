@@ -5081,9 +5081,19 @@ const NotificationCenter = ({ user, notifications: initialNotifications, usersMa
                           {!n.read && <div className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-pulse" />}
                           <span className="text-[8px] font-bold text-gray-400 shrink-0 uppercase tracking-tighter flex items-center gap-1.5">
                             {n.timestamp?.toDate ? formatWhatsAppTime(n.timestamp.toDate()) : 'Now'}
+                            {!n.read && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); markAsRead(n.id); }}
+                                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-gray-400 hover:text-[#00a884] transition-colors"
+                                title="Mark as read"
+                              >
+                                <Check size={10} />
+                              </button>
+                            )}
                             <button 
                               onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
                               className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-gray-400 hover:text-red-500 transition-colors"
+                              title="Delete notification"
                             >
                               <X size={10} />
                             </button>
