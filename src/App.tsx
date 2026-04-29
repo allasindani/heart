@@ -92,6 +92,7 @@ import {
   arrayRemove,
   limit,
   getDocs,
+  getDoc,
   writeBatch,
   deleteField
 } from 'firebase/firestore';
@@ -100,7 +101,7 @@ import { cn, formatWhatsAppTime, formatLastSeen } from './lib/utils';
 import { COUNTRIES } from './constants';
 import imageCompression from 'browser-image-compression';
 import { getAI } from './lib/gemini';
-import { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment, AppSettings, PaymentProof, Job, JobApplication } from './types';
+import { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment, AppSettings, PaymentProof, Job, JobApplication, Call } from './types';
 
 // --- Error Handling ---
 enum OperationType { CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LIST = 'list', GET = 'get', WRITE = 'write' }
@@ -124,6 +125,24 @@ const notifyUser = async (notification: Partial<AppNotification>) => {
   try {
     const { userId, title, text, fromId, fromName, type, relatedId } = notification;
     if (!userId) return;
+
+    // Check recipient settings
+    const userSnap = await getDoc(doc(db, 'users', userId));
+    if (userSnap.exists()) {
+      const userData = userSnap.data() as User;
+      
+      // Global toggle
+      if (userData.notificationsEnabled === false) return;
+      
+      // Granular settings
+      const settings = userData.notificationSettings;
+      if (settings) {
+        if (type === 'message' && settings.messages === false) return;
+        if (type === 'friend_request' && settings.friendRequests === false) return;
+        if (type === 'friend_accept' && settings.friendRequests === false) return;
+        if (type === 'status_update' && settings.statusUpdates === false) return;
+      }
+    }
 
     const docData = {
       userId,
@@ -766,6 +785,19 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
 export default function App() {
   console.log("App component rendering...");
   const [user, setUser] = useState<User | null>(null);
+  const [callState, setCallState] = useState<{
+    isActive: boolean;
+    type: 'voice' | 'video';
+    status: 'idle' | 'outgoing' | 'incoming' | 'ongoing';
+    callId: string | null;
+    otherUser: any | null;
+  }>({
+    isActive: false,
+    type: 'voice',
+    status: 'idle',
+    callId: null,
+    otherUser: null
+  });
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'chats' | 'status' | 'dating' | 'jobs'>('chats');
@@ -804,6 +836,76 @@ export default function App() {
   const [applyingJob, setApplyingJob] = useState<Job | null>(null);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
+
+  const handleStartCall = async (otherUser: any, type: 'voice' | 'video' = 'voice') => {
+    if (!user) return;
+    
+    // Only verified or Tier users can call
+    if (!user.isVerified && user.category === 'General') {
+      toast.error("Premium Feature", { 
+        description: "Calls are only for verified accounts or premium tiers. Upgrade to start calling!" 
+      });
+      setShowUpgrade(true);
+      return;
+    }
+
+    try {
+      const channelId = Math.random().toString(36).substring(7);
+      const callData = {
+        callerId: user.uid,
+        receiverId: otherUser.uid,
+        type,
+        status: 'pending',
+        callerName: user.displayName,
+        callerPhoto: user.photoURL || null,
+        channelId,
+        timestamp: serverTimestamp()
+      };
+      
+      const docRef = await addDoc(collection(db, 'calls'), callData);
+      
+      setCallState({
+        isActive: true,
+        type,
+        status: 'outgoing',
+        callId: docRef.id,
+        otherUser
+      });
+
+      fetch('/api/send-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: otherUser.uid,
+          title: `Incoming ${type} call`,
+          message: `${user.displayName} is calling you...`,
+          data: { type: 'call', callId: docRef.id }
+        })
+      }).catch(e => console.warn("Call push failed:", e));
+
+    } catch (e) {
+      console.error("Call error:", e);
+      toast.error("Failed to start call");
+    }
+  };
+
+  const handleAcceptCall = async () => {
+    if (!callState.callId) return;
+    await updateDoc(doc(db, 'calls', callState.callId), { status: 'accepted' });
+    setCallState(prev => ({ ...prev, status: 'ongoing' }));
+  };
+
+  const handleRejectCall = async () => {
+    if (!callState.callId) return;
+    await updateDoc(doc(db, 'calls', callState.callId), { status: 'rejected' });
+    setCallState({ isActive: false, type: 'voice', status: 'idle', callId: null, otherUser: null });
+  };
+
+  const handleEndCall = async () => {
+    if (!callState.callId) return;
+    await updateDoc(doc(db, 'calls', callState.callId), { status: 'ended' });
+    setCallState({ isActive: false, type: 'voice', status: 'idle', callId: null, otherUser: null });
+  };
 
   useEffect(() => {
     // Notify CapacitorUpdater that app is ready (Prevents rollback)
@@ -914,6 +1016,60 @@ export default function App() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    // 1. Listen for INCOMING calls
+    const qCall = query(
+      collection(db, 'calls'), 
+      where('receiverId', '==', user.uid), 
+      where('status', '==', 'pending'),
+      orderBy('timestamp', 'desc'),
+      limit(1)
+    );
+    
+    const unsubCall = onSnapshot(qCall, (snap) => {
+      if (!snap.empty && !callState.isActive) {
+        const data = { id: snap.docs[0].id, ...snap.docs[0].data() } as Call;
+        setCallState({
+          isActive: true,
+          type: data.type,
+          status: 'incoming',
+          callId: data.id,
+          otherUser: {
+            uid: data.callerId,
+            displayName: data.callerName,
+            photoURL: data.callerPhoto
+          }
+        });
+      }
+    }, (e) => handleFirestoreError(e, OperationType.LIST, 'calls/incoming'));
+
+    // 2. Listen for ACTIVE call updates (if we have a callId)
+    let unsubActive: (() => void) | null = null;
+    if (callState.callId && callState.isActive) {
+      unsubActive = onSnapshot(doc(db, 'calls', callState.callId), (snap) => {
+        if (snap.exists()) {
+          const data = snap.data() as Call;
+          if (data.status === 'accepted' && callState.status === 'outgoing') {
+            setCallState(prev => ({ ...prev, status: 'ongoing' }));
+          } else if (data.status === 'rejected' || data.status === 'ended') {
+            setCallState({ isActive: false, type: 'voice', status: 'idle', callId: null, otherUser: null });
+            if (data.status === 'rejected') toast.error("Call Rejected");
+            else toast.info("Call Ended");
+          }
+        } else {
+          setCallState({ isActive: false, type: 'voice', status: 'idle', callId: null, otherUser: null });
+        }
+      }, (e) => handleFirestoreError(e, OperationType.GET, `calls/${callState.callId}`));
+    }
+
+    return () => {
+      unsubCall();
+      if (unsubActive) unsubActive();
+    };
+  }, [user?.uid, callState.isActive, callState.callId, callState.status]);
 
   useEffect(() => {
     // Back Button Logic
@@ -1719,7 +1875,12 @@ export default function App() {
   useEffect(() => {
     if (!user || activeTab !== 'status') return;
     const qPosts = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(50));
-    const qStatus = query(collection(db, 'statuses'), orderBy('createdAt', 'desc'), limit(100));
+    const qStatus = query(
+      collection(db, 'statuses'), 
+      where('expiresAt', '>', new Date()),
+      orderBy('expiresAt', 'asc'),
+      limit(100)
+    );
     const unsubPosts = onSnapshot(qPosts, (snap) => setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Post))), (e) => handleFirestoreError(e, OperationType.LIST, 'posts'));
     const unsubStatus = onSnapshot(qStatus, (snap) => setStatuses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Status))), (e) => handleFirestoreError(e, OperationType.LIST, 'statuses'));
     
@@ -1956,6 +2117,85 @@ export default function App() {
 
   return (
     <div className="h-screen bg-white dark:bg-[#111b21] flex flex-col overflow-hidden max-w-md mx-auto shadow-2xl border-x border-gray-200 dark:border-gray-800 relative transition-colors duration-300">
+      {/* Overlays */}
+      <AnimatePresence>
+        {callState.isActive && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-8 backdrop-blur-xl"
+          >
+            <div className="flex flex-col items-center gap-8 max-w-sm w-full text-center">
+              <div className="relative">
+                <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-4 border-[#00a884] shadow-[0_0_50px_rgba(0,168,132,0.3)] animate-pulse">
+                  <img 
+                    src={callState.otherUser?.photoURL || "https://picsum.photos/seed/user/200"} 
+                    className="w-full h-full object-cover" 
+                    alt={callState.otherUser?.displayName} 
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                {callState.status === 'ongoing' && (
+                   <div className="absolute -bottom-2 -right-2 bg-green-500 p-2 rounded-full border-2 border-black shadow-lg">
+                      <Clock className="w-4 h-4 text-white" />
+                   </div>
+                )}
+              </div>
+              
+              <div>
+                <h2 className="text-3xl md:text-4xl font-black text-white mb-2 tracking-tight">{callState.otherUser?.displayName}</h2>
+                <div className="flex items-center justify-center gap-2">
+                  <div className={cn("w-2 h-2 rounded-full", callState.status === 'ongoing' ? "bg-green-500" : "bg-yellow-500 animate-ping")} />
+                  <p className="text-[#00a884] font-black uppercase tracking-widest text-[10px]">
+                    {callState.status === 'incoming' ? `Incoming ${callState.type} Call` : 
+                     callState.status === 'outgoing' ? `Calling (${callState.type})` : 
+                     callState.status === 'ongoing' ? `Ongoing ${callState.type} Call` : 'Connecting...'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-12 flex gap-10">
+                {callState.status === 'incoming' ? (
+                  <>
+                    <button 
+                      onClick={handleRejectCall}
+                      className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-110 active:scale-90 transition-all border-4 border-black/20"
+                    >
+                      <X className="w-8 h-8" />
+                    </button>
+                    <button 
+                      onClick={handleAcceptCall}
+                      className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-110 active:scale-90 transition-all border-4 border-black/20 animate-bounce"
+                    >
+                      {callState.type === 'video' ? <Video className="w-8 h-8" /> : <Phone className="w-8 h-8" />}
+                    </button>
+                  </>
+                ) : (
+                  <button 
+                    onClick={handleEndCall}
+                    className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-110 active:scale-90 transition-all border-4 border-black/20"
+                  >
+                    <X className="w-10 h-10" />
+                  </button>
+                )}
+              </div>
+              
+              {callState.status === 'ongoing' && callState.type === 'video' && (
+                <div className="mt-8 bg-gray-900/50 rounded-2xl w-full aspect-video flex flex-col items-center justify-center border border-white/5 relative overflow-hidden backdrop-blur-sm">
+                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+                   <Video className="w-12 h-12 text-[#00a884] mb-4 opacity-50" />
+                   <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest relative z-10">Video Stream Active</p>
+                   <div className="absolute top-4 right-4 flex gap-1">
+                      {[1,2,3].map(i => <div key={i} className="w-1 h-3 bg-[#00a884] rounded-full opacity-50" />)}
+                   </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <Toaster position="top-center" richColors />
       {user && <AdMobBanner />}
       {uploading && (
@@ -1969,7 +2209,7 @@ export default function App() {
       )}
       {selectedChat ? (
         <div className="absolute inset-0 z-50 bg-[#efeae2] dark:bg-[#0b141a] flex flex-col">
-          <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} onUserClick={(u: any) => { setViewingUser(u); setSelectedChat(null); }} />
+          <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} onUserClick={(u: any) => { setViewingUser(u); setSelectedChat(null); }} onStartCall={handleStartCall} />
         </div>
       ) : showProfile ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
@@ -1995,6 +2235,7 @@ export default function App() {
             onStartChat={(chat: any) => { setViewingUser(null); setSelectedChat(chat); }}
             onOpenAffiliate={() => { setViewingUser(null); setShowAffiliate(true); }}
             onEditProfile={() => { setViewingUser(null); setShowProfile(true); }}
+            onStartCall={handleStartCall}
           />
         </div>
       ) : showNotifications ? (
@@ -2430,7 +2671,7 @@ export default function App() {
 
 // --- Sub-Components ---
 
-const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: any) => {
+const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, onStartCall }: any) => {
   const [input, setInput] = useState('');
   const [otherUser, setOtherUser] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
@@ -2579,9 +2820,15 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick }: 
           </p>
         </div>
         <div className="flex gap-5 mr-2">
-          <Video className="w-6 h-6" />
-          <Phone className="w-6 h-6" />
-          <MoreVertical className="w-6 h-6" />
+          <Video 
+            className="w-6 h-6 cursor-pointer hover:text-[#00a884] transition-colors" 
+            onClick={() => onStartCall(otherUser, 'video')}
+          />
+          <Phone 
+            className="w-6 h-6 cursor-pointer hover:text-[#00a884] transition-colors" 
+            onClick={() => onStartCall(otherUser, 'voice')}
+          />
+          <MoreVertical className="w-6 h-6 cursor-pointer" />
         </div>
       </div>
       <div 
@@ -2893,6 +3140,19 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
         isVerified: user.isVerified || false
       } 
     });
+
+    if (user.role === 'admin') {
+      fetch('/api/broadcast-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `Announcement from ${user.displayName}`,
+          message: censoredContent.substring(0, 100) || "New post from admin",
+          data: { type: 'broadcast' }
+        })
+      }).catch(e => console.warn("Broadcast failed:", e));
+    }
+
     setNewPost('');
     setPostMedia(null);
     setPostMediaType(null);
@@ -2959,7 +3219,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
       const durationMs = statusDuration === '24h' ? 24 * 60 * 60 * 1000 : statusDuration === '1w' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
       const expiresAt = new Date(Date.now() + durationMs);
       
-      await addDoc(collection(db, 'statuses'), {
+      const newStatus = await addDoc(collection(db, 'statuses'), {
         userId: user?.uid || 'unknown',
         type,
         content: mediaUrl || statusText,
@@ -2968,6 +3228,32 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
         expiresAt,
         user: { displayName: user?.displayName || 'Unknown User', photoURL: user?.photoURL || '' }
       });
+
+      // Notify friends of new status
+      if (user?.friends?.length) {
+        user.friends.forEach(friendId => {
+          notifyUser({
+            userId: friendId,
+            fromId: user.uid,
+            fromName: user.displayName,
+            type: 'status_update' as any,
+            text: `updated their status`,
+            relatedId: user.uid
+          });
+        });
+      }
+
+      if (user?.role === 'admin') {
+        fetch('/api/broadcast-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: `Announcement from ${user.displayName}`,
+            message: type === 'text' ? (statusText.substring(0, 100) || "New status from admin") : "Check out my new status update!",
+            data: { type: 'status_broadcast' }
+          })
+        }).catch(e => console.warn("Broadcast failed:", e));
+      }
       
       setShowStatusModal(false);
       setStatusText('');
@@ -3991,6 +4277,12 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
                     onDragEnd={(e, info) => {
                       if (info.offset.x > 100) { setSwipeDirection('right'); handleLike(); }
                       else if (info.offset.x < -100) { setSwipeDirection('left'); handlePass(); }
+                      else { setSwipeDirection(null); }
+                    }}
+                    onDrag={(e, info) => {
+                      if (info.offset.x > 50) setSwipeDirection('right');
+                      else if (info.offset.x < -50) setSwipeDirection('left');
+                      else setSwipeDirection(null);
                     }}
                     initial={{ scale: 0.9, opacity: 0, y: 20 }}
                     animate={{ 
@@ -4004,7 +4296,17 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
                     transition={{ type: "spring", stiffness: 300, damping: 20 }}
                     className="absolute inset-0 max-w-sm mx-auto z-20 group h-full"
                   >
-                    <div className="relative h-full w-full rounded-[3.5rem] overflow-hidden shadow-2xl border-4 border-white dark:border-[#111b21]">
+                    <div className="relative h-full w-full rounded-[3.5rem] overflow-hidden shadow-2xl border-4 border-white dark:border-[#111b21] bg-white dark:bg-[#111b21]">
+                      {swipeDirection === 'right' && (
+                        <div className="absolute top-10 left-10 z-50 border-4 border-green-500 text-green-500 font-black text-4xl px-4 py-2 rounded-xl rotate-[-20deg] uppercase pointer-events-none">
+                          LIKE
+                        </div>
+                      )}
+                      {swipeDirection === 'left' && (
+                        <div className="absolute top-10 right-10 z-50 border-4 border-red-500 text-red-500 font-black text-4xl px-4 py-2 rounded-xl rotate-[20deg] uppercase pointer-events-none">
+                          NOPE
+                        </div>
+                      )}
                       <img src={currentUser.photoURL} className="w-full h-full object-cover" alt={currentUser.displayName} referrerPolicy="no-referrer" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent pointer-events-none" />
                       
@@ -4026,8 +4328,8 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
 
                         <p className="text-sm text-gray-300 italic line-clamp-2 leading-relaxed mb-6 font-medium">"{currentUser.datingProfile?.bio || "Let's connect!"}"</p>
                         
-                        <div className="flex gap-2 flex-wrap">
-                          {currentUser.datingProfile?.interests?.slice(0, 3).map((interest: string) => (
+                        <div className="flex gap-2 flex-wrap min-h-[30px]">
+                          {currentUser.datingProfile?.interests?.slice(0, 4).map((interest: string) => (
                             <span key={interest} className="text-[8px] font-black uppercase tracking-widest px-2.5 py-1 bg-[#00a884]/30 border border-[#00a884]/40 rounded-lg">
                               {interest}
                             </span>
@@ -4166,7 +4468,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
   );
 };
 
-const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliate, onEditProfile }: any) => {
+const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliate, onEditProfile, onStartCall }: any) => {
   const [fullUser, setFullUser] = useState<User | null>(null);
   const [uploading, setUploading] = useState(false);
   const [requestStatus, setRequestStatus] = useState<'none' | 'pending' | 'accepted'>('none');
@@ -4273,11 +4575,23 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliat
           </div>
           
           <div className="flex gap-2 mb-2">
-            <button onClick={handleStartChat} className="p-3 bg-gray-100 dark:bg-gray-800 rounded-full text-[#667781] dark:text-[#8696a0] hover:bg-gray-200 transition-colors">
+            <button 
+              onClick={handleStartChat} 
+              className="p-3 bg-gray-100 dark:bg-gray-800 rounded-full text-[#667781] dark:text-[#8696a0] hover:bg-gray-200 transition-colors"
+            >
               <MessageSquare className="w-6 h-6" />
             </button>
-            <button className="p-3 bg-gray-100 dark:bg-gray-800 rounded-full text-[#667781] dark:text-[#8696a0] hover:bg-gray-200 transition-colors">
+            <button 
+              onClick={() => onStartCall(fullUser, 'voice')}
+              className="p-3 bg-gray-100 dark:bg-gray-800 rounded-full text-[#667781] dark:text-[#8696a0] hover:bg-gray-200 transition-colors"
+            >
               <Phone className="w-6 h-6" />
+            </button>
+            <button 
+              onClick={() => onStartCall(fullUser, 'video')}
+              className="p-3 bg-gray-100 dark:bg-gray-800 rounded-full text-[#667781] dark:text-[#8696a0] hover:bg-gray-200 transition-colors"
+            >
+              <Video className="w-6 h-6" />
             </button>
             <button className="p-3 bg-gray-100 dark:bg-gray-800 rounded-full text-[#667781] dark:text-[#8696a0] hover:bg-gray-200 transition-colors">
               <Share2 className="w-6 h-6" />
@@ -4358,7 +4672,43 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliat
               </p>
             </div>
           </div>
+
+          {fullUser.datingProfile?.interests && fullUser.datingProfile.interests.length > 0 && (
+            <div className="p-5 flex items-start gap-4">
+              <div className="p-2 bg-gray-50 dark:bg-[#202c33] rounded-xl text-[#00a884]">
+                <Heart size={20} />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest mb-1">Interests</h4>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {fullUser.datingProfile.interests.map((it: string, i: number) => (
+                    <span key={i} className="text-[10px] font-bold text-[#111b21] dark:text-[#e9edef] bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-lg">
+                      {it}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* Dating Gallery Section */}
+        {fullUser.datingProfile?.photos && fullUser.datingProfile.photos.length > 0 && (
+          <div className="bg-white dark:bg-[#111b21] rounded-[2rem] shadow-sm p-6 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-bold text-[#111b21] dark:text-[#e9edef] flex items-center gap-2">
+                <Camera size={18} className="text-[#00a884]" /> Dating Gallery
+              </h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {fullUser.datingProfile.photos.map((photo: string, i: number) => (
+                <div key={i} className="relative aspect-square rounded-[1.5rem] overflow-hidden group shadow-md">
+                  <img src={photo} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Gallery" referrerPolicy="no-referrer" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Catalog Section (Featured Photos) */}
         <div className="bg-white dark:bg-[#111b21] rounded-[2rem] shadow-sm p-6 space-y-4">
@@ -4420,6 +4770,22 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
     }
   };
 
+  const clearAll = async () => {
+    if (notifications.length === 0) return;
+    if (window.confirm(`Are you sure you want to clear all ${notifications.length} notifications?`)) {
+      try {
+        const batch = writeBatch(db);
+        notifications.forEach((n: any) => {
+          batch.delete(doc(db, 'notifications', n.id));
+        });
+        await batch.commit();
+        toast.success("All notifications cleared");
+      } catch (e) {
+        handleFirestoreError(e, OperationType.DELETE, 'notifications/all');
+      }
+    }
+  };
+
   const handleNotificationClick = (n: any) => {
     markAsRead(n.id);
     if (n.type === 'message' && n.relatedId) {
@@ -4478,8 +4844,18 @@ const NotificationCenter = ({ user, notifications, usersMap, onBack, onNavigate,
           <button onClick={onBack} className="p-1 hover:bg-black/10 rounded-full transition-all"><ChevronLeft className="w-6 h-6" /></button>
           <h2 className="text-xl font-black tracking-tight">Notifications</h2>
         </div>
-        <div className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-black uppercase">
-          {notifications.filter((n:any) => !n.read).length} Unread
+        <div className="flex items-center gap-2">
+          {notifications.length > 0 && (
+            <button 
+              onClick={clearAll} 
+              className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full transition-all text-[9px] font-black uppercase tracking-widest flex items-center gap-1"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Clear All
+            </button>
+          )}
+          <div className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-black uppercase">
+            {notifications.filter((n:any) => !n.read).length} Unread
+          </div>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
@@ -5865,9 +6241,14 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
   const [country, setCountry] = useState(user.datingProfile?.country || '');
   const [city, setCity] = useState(user.datingProfile?.city || '');
   const [datingCategory, setDatingCategory] = useState(user.datingProfile?.datingCategory || 'Soulmates');
+  const [datingInterests, setDatingInterests] = useState(user.datingProfile?.interests?.join(', ') || '');
+  const [datingPhotos, setDatingPhotos] = useState<string[]>(user.datingProfile?.photos || []);
   const [photoURL, setPhotoURL] = useState(user.photoURL || '');
   const [coverURL, setCoverURL] = useState(user.coverURL || '');
   const [jobRole, setJobRole] = useState(user.jobRole || 'seeker');
+  const [notifMessages, setNotifMessages] = useState(user.notificationSettings?.messages ?? true);
+  const [notifFriendRequests, setNotifFriendRequests] = useState(user.notificationSettings?.friendRequests ?? true);
+  const [notifStatusUpdates, setNotifStatusUpdates] = useState(user.notificationSettings?.statusUpdates ?? true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -5920,6 +6301,11 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
         coverURL,
         status,
         jobRole,
+        notificationSettings: {
+          messages: notifMessages,
+          friendRequests: notifFriendRequests,
+          statusUpdates: notifStatusUpdates,
+        },
         datingProfile: {
           ...user.datingProfile,
           bio: datingBio,
@@ -5927,7 +6313,9 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
           gender,
           country,
           city,
-          datingCategory
+          datingCategory,
+          interests: datingInterests.split(',').map(i => i.trim()).filter(i => i !== ''),
+          photos: datingPhotos
         }
       };
       await updateDoc(userDoc, updatedData);
@@ -6149,6 +6537,55 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
                 />
               </div>
             </div>
+            <div>
+              <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Interests (separate with commas)</label>
+              <input 
+                type="text" 
+                value={datingInterests} 
+                onChange={(e) => setDatingInterests(e.target.value)}
+                placeholder="Music, Travel, Reading..."
+                className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
+              />
+            </div>
+            <div>
+              <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-3 block">Dating Gallery ({datingPhotos.length}/6)</label>
+              <div className="grid grid-cols-4 gap-2">
+                {datingPhotos.map((p, idx) => (
+                  <div key={idx} className="relative aspect-square rounded-lg overflow-hidden group">
+                    <img src={p} className="w-full h-full object-cover" alt="Dating" />
+                    <button 
+                      onClick={() => setDatingPhotos(prev => prev.filter((_, i) => i !== idx))}
+                      className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                {datingPhotos.length < 6 && (
+                  <label className="aspect-square rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-800 flex items-center justify-center cursor-pointer hover:border-[#00a884] transition-colors">
+                    <Plus className="w-6 h-6 text-gray-400" />
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      accept="image/*" 
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setUploading(true);
+                          try {
+                            const compressed = await compressImage(file);
+                            const url = await uploadFileToServer(compressed, (p) => setUploadProgress(p));
+                            setDatingPhotos(prev => [...prev, url]);
+                          } finally {
+                            setUploading(false);
+                          }
+                        }
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
           </section>
 
           <section className="bg-white dark:bg-[#111b21] rounded-xl p-4 shadow-sm space-y-4">
@@ -6178,6 +6615,48 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
                 <Building2 className="w-5 h-5" />
                 Employer
               </button>
+            </div>
+          </section>
+
+          <section className="bg-white dark:bg-[#111b21] rounded-xl p-4 shadow-sm space-y-4">
+            <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider block">Notification Preferences</label>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-[14px] font-medium text-[#111b21] dark:text-[#e9edef]">New Messages</h4>
+                  <p className="text-[10px] text-gray-500 dark:text-[#8696a0]">Receive alerts when you get a chat message</p>
+                </div>
+                <button 
+                  onClick={() => setNotifMessages(!notifMessages)}
+                  className={cn("w-10 h-5 rounded-full transition-colors relative", notifMessages ? "bg-[#00a884]" : "bg-gray-300 dark:bg-gray-700")}
+                >
+                  <div className={cn("absolute top-1 w-3 h-3 bg-white rounded-full transition-transform", notifMessages ? "left-6" : "left-1")} />
+                </button>
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-[14px] font-medium text-[#111b21] dark:text-[#e9edef]">Friend Requests</h4>
+                  <p className="text-[10px] text-gray-500 dark:text-[#8696a0]">Alerts for new friend requests and accepts</p>
+                </div>
+                <button 
+                  onClick={() => setNotifFriendRequests(!notifFriendRequests)}
+                  className={cn("w-10 h-5 rounded-full transition-colors relative", notifFriendRequests ? "bg-[#00a884]" : "bg-gray-300 dark:bg-gray-700")}
+                >
+                  <div className={cn("absolute top-1 w-3 h-3 bg-white rounded-full transition-transform", notifFriendRequests ? "left-6" : "left-1")} />
+                </button>
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-[14px] font-medium text-[#111b21] dark:text-[#e9edef]">Status Updates</h4>
+                  <p className="text-[10px] text-gray-500 dark:text-[#8696a0]">Alerts when friends update their status</p>
+                </div>
+                <button 
+                  onClick={() => setNotifStatusUpdates(!notifStatusUpdates)}
+                  className={cn("w-10 h-5 rounded-full transition-colors relative", notifStatusUpdates ? "bg-[#00a884]" : "bg-gray-300 dark:bg-gray-700")}
+                >
+                  <div className={cn("absolute top-1 w-3 h-3 bg-white rounded-full transition-transform", notifStatusUpdates ? "left-6" : "left-1")} />
+                </button>
+              </div>
             </div>
           </section>
 

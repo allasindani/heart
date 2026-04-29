@@ -42,6 +42,12 @@ export interface User {
   isFeaturedSingle?: boolean;
   hasSeenAffiliateWelcome?: boolean;
   featuredPhotos?: string[];
+  notificationsEnabled?: boolean;
+  notificationSettings?: {
+    messages: boolean;
+    friendRequests: boolean;
+    statusUpdates: boolean;
+  };
 }
 
 export interface Job {
@@ -83,7 +89,7 @@ export interface Notification {
   userId: string;
   fromId: string;
   fromName: string;
-  type: 'like' | 'comment' | 'message' | 'friend_request' | 'friend_accept' | 'job_update' | 'broadcast';
+  type: 'like' | 'comment' | 'message' | 'friend_request' | 'friend_accept' | 'job_update' | 'broadcast' | 'status_update';
   text: string;
   title?: string;
   read: boolean;
@@ -199,4 +205,16 @@ export interface Status {
     displayName: string;
     photoURL?: string;
   };
+}
+
+export interface Call {
+  id: string;
+  callerId: string;
+  receiverId: string;
+  type: 'voice' | 'video';
+  status: 'pending' | 'accepted' | 'rejected' | 'ended';
+  callerName: string;
+  callerPhoto?: string;
+  channelId: string;
+  timestamp: any;
 }
