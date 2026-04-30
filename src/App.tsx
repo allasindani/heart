@@ -72,7 +72,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import OneSignal from 'onesignal-cordova-plugin';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -234,39 +234,46 @@ const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
   }
 };
 
-let genAI: GoogleGenerativeAI | null = null;
-const getGeminiModel = () => {
+let genAI: GoogleGenAI | null = null;
+const getGemini = () => {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
-  if (!genAI) genAI = new GoogleGenerativeAI(key);
-  return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  if (!genAI) genAI = new GoogleGenAI({ apiKey: key });
+  return genAI;
 };
 
 const generateIcebreaker = async (targetUser: User, currentUser: User) => {
-  const model = getGeminiModel();
-  if (!model) throw new Error("AI matches not configured");
+  const ai = getGemini();
+  if (!ai) throw new Error("AI not configured");
   
   const prompt = `You are an AI wingman for a dating app called Heart Connect. 
   Current user: ${currentUser.displayName}, Bio: ${currentUser.datingProfile?.bio || "None"}, Interests: ${currentUser.datingProfile?.interests?.join(", ") || "None"}.
   Target user: ${targetUser.displayName}, Bio: ${targetUser.datingProfile?.bio || "None"}, Interests: ${targetUser.datingProfile?.interests?.join(", ") || "None"}.
   Generate 3 short, flirty, and engaging icebreaker messages the current user could send to the target user based on their shared interests or bios. Keep them under 20 words each. Return as a simple numbered list.`;
 
-  const result = await model.generateContent(prompt);
-  return result.response.text();
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: prompt
+  });
+  return response.text;
 };
 
 const translateText = async (text: string, targetLanguage: string = "English") => {
-  const model = getGeminiModel();
-  if (!model) throw new Error("AI matches not configured");
+  const ai = getGemini();
+  if (!ai) throw new Error("AI not configured");
+
+  const prompt = `Translate the following text to ${targetLanguage}. Return ONLY the translated text without any explanations or quotes: "${text}"`;
   
-  const prompt = `Translate the following text to ${targetLanguage}. Return ONLY the translated text: "${text}"`;
-  const result = await model.generateContent(prompt);
-  return result.response.text();
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: prompt
+  });
+  return response.text;
 };
 
 const getAIMatchSuggestions = async (user: User, allUsers: User[]) => {
-  const model = getGeminiModel();
-  if (!model) throw new Error("AI matches not configured");
+  const ai = getGemini();
+  if (!ai) throw new Error("AI not configured");
 
   const candidates = allUsers
     .filter(u => u.uid !== user.uid && u.datingProfile)
@@ -283,14 +290,21 @@ const getAIMatchSuggestions = async (user: User, allUsers: User[]) => {
   Return the UIDs of the top 5 most compatible candidates based on shared interests and personality. 
   Format your response as a JSON array of strings (the UIDs) only.`;
 
-  const result = await model.generateContent(prompt);
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: prompt
+  });
+  
   try {
-    const text = result.response.text();
+    const text = response.text.trim();
     const jsonMatch = text.match(/\[.*\]/s);
-    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+    if (jsonMatch) {
+      const uids = JSON.parse(jsonMatch[0]);
+      return Array.isArray(uids) ? uids : [];
+    }
     return [];
   } catch (e) {
-    console.error("AI Matching failed:", e);
+    console.error("AI matching failed to parse response:", e);
     return [];
   }
 };
@@ -304,21 +318,23 @@ const AdSenseSlot = ({ code, id, className }: { code?: string, id: string, class
       container.innerHTML = code;
       
       const scripts = container.getElementsByTagName('script');
-      for (let i = 0; i < scripts.length; i++) {
-        const script = scripts[i];
+      // Create an array to avoid live HTMLCollection issues while iterating
+      const scriptList = Array.from(scripts);
+      
+      scriptList.forEach(oldScript => {
         const newScript = document.createElement('script');
         
         // Copy all attributes
-        Array.from(script.attributes).forEach(attr => {
+        Array.from(oldScript.attributes).forEach(attr => {
           newScript.setAttribute(attr.name, attr.value);
         });
         
         // Copy inline script content
-        newScript.textContent = script.textContent;
+        newScript.textContent = oldScript.textContent;
         
         // Replace the old script with the new one to trigger execution
-        script.parentNode?.replaceChild(newScript, script);
-      }
+        oldScript.parentNode?.replaceChild(newScript, oldScript);
+      });
     }
   }, [code]);
 
@@ -1666,19 +1682,46 @@ export default function App() {
     };
   }, [user?.uid]);
 
-  // Seed Data for Zimbabwe Profiles
+  // Head injection for arbitrary code (Analytics, AdSense, etc)
   useEffect(() => {
-    if (appSettings?.googleAnalyticsCode) {
-      const script = document.createElement('script');
-      script.innerHTML = appSettings.googleAnalyticsCode;
-      document.head.appendChild(script);
-    }
-    if (appSettings?.adSenseCode) {
-      const script = document.createElement('script');
-      script.innerHTML = appSettings.adSenseCode;
-      document.head.appendChild(script);
-    }
-  }, [appSettings]);
+    const injectGlobalCode = (code: string | undefined, id: string) => {
+      if (!code) return;
+      
+      // Clean up previous injection
+      const existingContainer = document.getElementById(id);
+      if (existingContainer) existingContainer.remove();
+      const existingScripts = document.querySelectorAll(`script[data-injected-by="${id}"]`);
+      existingScripts.forEach(s => s.remove());
+
+      // Create a temporary container to parse the HTML
+      const div = document.createElement('div');
+      div.id = id;
+      div.style.display = 'none';
+      div.innerHTML = code;
+
+      // Extract and execute scripts, append other elements
+      const children = Array.from(div.childNodes);
+      children.forEach(child => {
+        if (child instanceof HTMLScriptElement) {
+          const newScript = document.createElement('script');
+          newScript.setAttribute('data-injected-by', id);
+          Array.from(child.attributes).forEach(attr => {
+            newScript.setAttribute(attr.name, attr.value);
+          });
+          newScript.textContent = child.textContent;
+          document.head.appendChild(newScript);
+        } else if (child instanceof HTMLElement) {
+          const clone = child.cloneNode(true) as HTMLElement;
+          if (clone instanceof HTMLLinkElement || clone instanceof HTMLMetaElement || clone instanceof HTMLStyleElement) {
+            document.head.appendChild(clone);
+          }
+        }
+      });
+    };
+
+    injectGlobalCode(appSettings?.googleAnalyticsCode, 'hc-global-ga');
+    injectGlobalCode(appSettings?.adSenseCode, 'hc-global-adsense');
+  }, [appSettings.googleAnalyticsCode, appSettings.adSenseCode]);
 
   useEffect(() => {
     const seedZimProfiles = async () => {
