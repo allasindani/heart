@@ -759,22 +759,27 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
           )}
 
           {!isLogin && (
-            <div className="space-y-2 text-left">
-              <label className="text-[10px] font-black text-gray-400 dark:text-[#8696a0] uppercase tracking-widest ml-1">Select Gender</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['male', 'female', 'other'] as const).map((g) => (
+            <div className="space-y-3 text-left">
+              <label className="text-[10px] font-black text-gray-400 dark:text-[#8696a0] uppercase tracking-widest ml-1">Your Gender</label>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { id: 'male', label: 'Male', icon: '♂️' },
+                  { id: 'female', label: 'Female', icon: '♀️' },
+                  { id: 'other', label: 'Other', icon: '✨' }
+                ].map((g) => (
                   <button
-                    key={g}
+                    key={g.id}
                     type="button"
-                    onClick={() => setGender(g)}
+                    onClick={() => setGender(g.id as any)}
                     className={cn(
-                      "py-2.5 rounded-xl text-xs font-bold transition-all border uppercase tracking-wider",
-                      gender === g 
-                        ? "bg-[#00a884] border-[#00a884] text-white shadow-md shadow-[#00a884]/20" 
-                        : "bg-white dark:bg-[#111b21] border-gray-200 dark:border-gray-800 text-gray-500 dark:text-[#8696a0] hover:border-gray-300"
+                      "flex flex-col items-center gap-1 py-3 px-2 rounded-2xl text-xs font-black transition-all border-2",
+                      gender === g.id 
+                        ? "bg-[#00a884] border-[#00a884] text-white shadow-lg shadow-[#00a884]/20 scale-[1.02]" 
+                        : "bg-white dark:bg-[#111b21] border-gray-100 dark:border-gray-800 text-gray-500 dark:text-[#8696a0] hover:border-gray-200"
                     )}
                   >
-                    {g}
+                    <span className="text-lg">{g.icon}</span>
+                    <span className="uppercase tracking-tighter">{g.label}</span>
                   </button>
                 ))}
               </div>
@@ -2097,21 +2102,21 @@ export default function App() {
   const sendMessage = async (text: string, type: string = 'text') => {
     if (!selectedChat || !text.trim()) return;
     
-    // Constraint: Users without profile photos allowed 3 messages only
-    if (!user.photoURL && (user.messageCount || 0) >= 3) {
+    // Constraint: NO CHAT without profile photo
+    if (!user.photoURL) {
       toast.error(appSettings.siteName || "Heart Connect", {
-        description: "⚠️ Profile Photo Required! To ensure community safety, users without profile photos are limited to 3 messages. Please upload a profile photo to continue messaging."
+        description: "⚠️ Profile Photo Required! To ensure community safety and prevent fake accounts, you MUST upload a profile photo BEFORE you can start chatting. Please update your profile now."
       });
       setShowProfile(true);
       
-      // Send them a formal notification as well
+      // Formal Notification
       await addDoc(collection(db, 'notifications'), {
         userId: user.uid,
         fromId: 'system',
         fromName: appSettings.siteName || 'Heart Connect',
         type: 'broadcast',
-        text: 'Action Required: Please upload a profile photo to unlock unlimited messaging. Your safety is our priority!',
-        title: 'Messaging Limit Reached',
+        text: 'Action Required: You cannot send messages without a profile photo. Please upload one in your profile settings to unlock chatting!',
+        title: 'Photo Required',
         read: false,
         timestamp: serverTimestamp()
       });
@@ -2132,7 +2137,7 @@ export default function App() {
         fromId: 'system',
         fromName: appSettings.siteName || 'Heart Connect',
         type: 'broadcast',
-        text: `Hi ${user.displayName?.split(' ')?.[0] || 'user'}, to continue chatting with your loved one please update to tier or verification.`,
+        text: `Hi ${user.displayName?.split(' ')?.[0] || 'user'}, you have reached your free 3-message limit. Upgrade to a premium tier now to unlock unlimited chats and find your perfect match!`,
         title: 'Upgrade Required',
         read: false,
         timestamp: serverTimestamp()
@@ -6880,6 +6885,9 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
   const [notifMessages, setNotifMessages] = useState(user.notificationSettings?.messages ?? true);
   const [notifFriendRequests, setNotifFriendRequests] = useState(user.notificationSettings?.friendRequests ?? true);
   const [notifStatusUpdates, setNotifStatusUpdates] = useState(user.notificationSettings?.statusUpdates ?? true);
+  const [zodiac, setZodiac] = useState(user.datingProfile?.zodiac || '');
+  const [education, setEducation] = useState(user.datingProfile?.education || '');
+  const [religion, setReligion] = useState(user.datingProfile?.religion || '');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -6945,6 +6953,9 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
           country,
           city,
           datingCategory,
+          zodiac,
+          education,
+          religion,
           interests: datingInterests.split(',').map(i => i.trim()).filter(i => i !== ''),
           photos: datingPhotos
         }
@@ -7095,8 +7106,35 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
             </div>
           </section>
 
-          <section className="bg-white dark:bg-[#111b21] rounded-xl p-4 shadow-sm space-y-4">
-            <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider block">Dating Details</label>
+          <section className="bg-white dark:bg-[#111b21] rounded-xl p-4 shadow-sm space-y-6">
+            <label className="text-xs font-semibold text-[#00a884] uppercase tracking-wider block">Dating & Social Details</label>
+            
+            <div className="space-y-3">
+              <label className="text-xs font-semibold text-gray-400 dark:text-[#8696a0] uppercase tracking-wider block ml-1">Your Gender</label>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { id: 'male', label: 'Male', icon: '♂️' },
+                  { id: 'female', label: 'Female', icon: '♀️' },
+                  { id: 'other', label: 'Other', icon: '✨' }
+                ].map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => setGender(g.id as any)}
+                    className={cn(
+                      "flex flex-col items-center gap-1 py-3 px-2 rounded-2xl text-xs font-black transition-all border-2",
+                      gender === g.id 
+                        ? "bg-[#00a884] border-[#00a884] text-white shadow-lg shadow-[#00a884]/20 scale-[1.02]" 
+                        : "bg-white dark:bg-[#111b21] border-gray-100 dark:border-gray-800 text-gray-500 dark:text-[#8696a0] hover:border-gray-200"
+                    )}
+                  >
+                    <span className="text-lg">{g.icon}</span>
+                    <span className="uppercase tracking-tighter">{g.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Age</label>
@@ -7108,16 +7146,40 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
                 />
               </div>
               <div>
-                <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Gender</label>
+                <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Zodiac Sign</label>
                 <select 
-                  value={gender} 
-                  onChange={(e) => setGender(e.target.value as any)}
+                  value={zodiac} 
+                  onChange={(e) => setZodiac(e.target.value)}
                   className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
                 >
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
+                  <option value="">Select Zodiac</option>
+                  {['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'].map(z => (
+                    <option key={z} value={z}>{z}</option>
+                  ))}
                 </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Education</label>
+                <input 
+                  type="text" 
+                  value={education} 
+                  onChange={(e) => setEducation(e.target.value)}
+                  placeholder="Degree, College..."
+                  className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
+                />
+              </div>
+              <div>
+                <label className="text-[12px] text-gray-500 dark:text-[#8696a0] mb-1 block">Religion</label>
+                <input 
+                  type="text" 
+                  value={religion} 
+                  onChange={(e) => setReligion(e.target.value)}
+                  placeholder="Christian, Muslim, etc."
+                  className="w-full border-b border-gray-200 dark:border-gray-800 py-2 outline-none focus:border-[#00a884] transition-colors text-[16px] bg-transparent dark:text-[#e9edef]"
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">

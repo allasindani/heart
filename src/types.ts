@@ -36,6 +36,8 @@ export interface User {
       lng: number;
     };
     zodiac?: string;
+    education?: string;
+    religion?: string;
   };
   friends?: string[];
   jobRole?: 'employer' | 'seeker';
