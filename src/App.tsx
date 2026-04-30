@@ -303,14 +303,17 @@ const AdSenseSlot = ({ code, id, className }: { code?: string, id: string, class
 };
 
 const Logo = ({ size = 40, className = "", url }: { size?: number, className?: string, url?: string }) => (
-  <div className={cn("relative flex items-center justify-center", className)} style={{ width: size, height: size }}>
-    <div className="absolute inset-0 bg-[#00a884] rounded-2xl rotate-12 opacity-20 animate-pulse" />
-    <div className="absolute inset-0 bg-[#00a884] rounded-2xl -rotate-6 opacity-10" />
-    <div className="relative bg-gradient-to-br from-[#00a884] to-[#008069] rounded-2xl flex items-center justify-center shadow-lg overflow-hidden" style={{ width: size, height: size }}>
-      {url ? (
+  <div className={cn("relative flex items-center justify-center group", className)} style={{ width: size, height: size }}>
+    <div className="absolute inset-0 bg-[#00a884] rounded-[24%] rotate-12 opacity-20 group-hover:rotate-45 transition-transform duration-500" />
+    <div className="absolute inset-0 bg-[#00a884] rounded-[24%] -rotate-6 opacity-10 group-hover:-rotate-12 transition-transform duration-500" />
+    <div className="relative bg-gradient-to-br from-[#00a884] to-[#008069] rounded-[24%] flex items-center justify-center shadow-xl overflow-hidden ring-4 ring-white dark:ring-[#111b21]" style={{ width: size, height: size }}>
+      {url && url !== "" ? (
         <img src={url} className="w-full h-full object-cover" alt="Logo" referrerPolicy="no-referrer" onError={handleImageError} />
       ) : (
-        <Heart className="text-white fill-white" style={{ width: size * 0.5, height: size * 0.5 }} />
+        <div className="relative">
+          <Heart className="text-white fill-current drop-shadow-lg" style={{ width: size * 0.55, height: size * 0.55 }} />
+          <div className="absolute inset-0 bg-white opacity-20 blur-sm rounded-full -z-10 animate-pulse" />
+        </div>
       )}
     </div>
   </div>
@@ -331,11 +334,13 @@ const Avatar = ({ src, name, size = 40, className = "", isOnline, children }: { 
   const colorIndex = name ? name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length : 0;
   const bgColor = colors[colorIndex];
 
+  const hasValidSrc = src && src.trim() !== "";
+
   return (
     <div className={cn("relative flex-shrink-0", className)} style={{ width: size, height: size }}>
-      {src ? (
+      {hasValidSrc ? (
         <img 
-          src={src} 
+          src={src as string} 
           className="w-full h-full rounded-full object-cover" 
           alt={name} 
           referrerPolicy="no-referrer"
@@ -348,7 +353,7 @@ const Avatar = ({ src, name, size = 40, className = "", isOnline, children }: { 
         />
       ) : null}
       <div 
-        className={cn("w-full h-full rounded-full items-center justify-center text-white font-bold", bgColor, src ? "hidden" : "flex")}
+        className={cn("w-full h-full rounded-full items-center justify-center text-white font-bold", bgColor, hasValidSrc ? "hidden" : "flex")}
         style={{ fontSize: size * 0.4 }}
       >
         {getInitials(name)}
@@ -412,47 +417,78 @@ const SplashScreen = ({ siteName, logoUrl, onForceLoad }: { siteName?: string, l
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[1000] bg-white dark:bg-[#111b21] flex flex-col items-center justify-center">
+    <div className="fixed inset-0 z-[1000] bg-white dark:bg-[#111b21] flex flex-col items-center justify-center overflow-hidden">
+      {/* Background decoration */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+        <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-[#00a884]/5 rounded-full blur-[120px]" />
+        <div className="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] bg-[#00a884]/5 rounded-full blur-[120px]" />
+      </div>
+
       <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
+        initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className="flex flex-col items-center gap-6"
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        className="flex flex-col items-center gap-8 relative z-10"
       >
-        <Logo size={80} url={logoUrl} />
-        <div className="flex flex-col items-center">
-          <h1 className="text-2xl font-black text-[#111b21] dark:text-[#e9edef] tracking-tighter">{siteName || "Heart Connect"}</h1>
-          <p className="text-sm text-[#667781] dark:text-[#8696a0] font-medium">Connecting Hearts, One Chat at a Time</p>
+        <div className="relative">
+          <Logo size={100} url={logoUrl} className="shadow-2xl shadow-[#00a884]/20" />
+          <motion.div 
+            animate={{ scale: [1, 1.2, 1], opacity: [0.1, 0.3, 0.1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="absolute -inset-4 bg-[#00a884] rounded-full blur-2xl -z-10"
+          />
         </div>
-        <div className="mt-12 flex flex-col items-center gap-4">
-          <div className="w-48 h-1 bg-gray-100 dark:bg-[#2a3942] rounded-full overflow-hidden">
+
+        <div className="flex flex-col items-center text-center">
+          <motion.h1 
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.3, duration: 0.5 }}
+            className="text-3xl font-black text-[#111b21] dark:text-[#e9edef] tracking-tighter mb-2"
+          >
+            {siteName || "Heart Connect"}
+          </motion.h1>
+          <motion.p 
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.5, duration: 0.5 }}
+            className="text-sm text-[#667781] dark:text-[#8696a0] font-medium max-w-[240px]"
+          >
+            Connecting Hearts, One Chat at a Time
+          </motion.p>
+        </div>
+
+        <div className="mt-6 flex flex-col items-center gap-6 w-full max-w-[200px]">
+          <div className="w-full h-1.5 bg-gray-100 dark:bg-[#2a3942] rounded-full overflow-hidden shadow-inner">
             <motion.div
-              initial={{ width: "0%" }}
-              animate={{ width: "100%" }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-              className="h-full bg-[#00a884]"
+              initial={{ x: "-100%" }}
+              animate={{ x: "100%" }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+              className="h-full w-1/2 bg-gradient-to-r from-transparent via-[#00a884] to-transparent"
             />
           </div>
-          <div className="flex items-center gap-2 text-[10px] text-gray-400 uppercase font-bold tracking-widest">
-            <ShieldCheck className="w-3 h-3 text-[#00a884]" />
+          
+          <div className="flex items-center gap-2 text-[9px] text-gray-400 dark:text-gray-500 uppercase font-bold tracking-[0.2em]">
+            <ShieldCheck className="w-3.5 h-3.5 text-[#00a884]" />
             End-to-End Encrypted
           </div>
         </div>
         
-            {showBypass && onForceLoad && (
+        {showBypass && onForceLoad && (
           <motion.button
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
             onClick={onForceLoad}
-            className="mt-8 px-6 py-2 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs font-bold rounded-full hover:bg-gray-200 transition-colors"
+            className="mt-4 px-8 py-3 bg-[#00a884]/10 text-[#00a884] text-xs font-black rounded-2xl hover:bg-[#00a884]/20 transition-all uppercase tracking-widest border border-[#00a884]/20 shadow-lg shadow-[#00a884]/5"
           >
             Entering App...
           </motion.button>
         )}
       </motion.div>
-      <div className="absolute bottom-12 flex flex-col items-center gap-1">
-        <p className="text-[10px] text-gray-400 uppercase font-black tracking-[0.2em]">Powered by</p>
-        <p className="text-sm font-bold text-[#00a884]">{siteName || "Heart Connect"}</p>
+
+      <div className="absolute bottom-12 flex flex-col items-center gap-1.5">
+        <p className="text-[9px] text-gray-400 dark:text-gray-500 uppercase font-black tracking-[0.2em]">Powered by</p>
+        <p className="text-base font-black text-[#00a884] tracking-tight">{siteName || "Heart Connect"}</p>
       </div>
     </div>
   );
@@ -2633,7 +2669,7 @@ export default function App() {
                           className="flex-shrink-0 w-20 space-y-2 cursor-pointer snap-center relative group"
                         >
                           <div className="relative w-20 h-20 rounded-2xl overflow-hidden border-2 border-white dark:border-gray-800 shadow-sm group-hover:border-[#00a884] transition-colors bg-white dark:bg-[#2a3942]">
-                            <img src={u.photoURL} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={u.displayName} referrerPolicy="no-referrer" />
+                            <img src={u.photoURL || undefined} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={u.displayName} referrerPolicy="no-referrer" />
                             {u.isVerified && (
                               <div className="absolute top-1 right-1 bg-white dark:bg-[#111b21] rounded-full p-0.5 shadow-sm border border-black/5">
                                  <Shield className="w-2.5 h-2.5 text-[#00a884]" fill="currentColor" />
@@ -3197,18 +3233,18 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
                   <div className="w-8 h-8 rounded-full bg-[#00a884] flex items-center justify-center shrink-0">
                     <Mic className="w-4 h-4 text-white" />
                   </div>
-                  <audio src={msg.text} controls className="h-8 max-w-[150px]" />
+                  <audio src={msg.text || undefined} controls className="h-8 max-w-[150px]" />
                 </div>
               ) : msg.type === 'image' ? (
                 <img 
-                  src={msg.text} 
+                  src={msg.text || undefined} 
                   className="rounded-lg max-w-full h-auto mb-5" 
                   alt="Sent" 
                   referrerPolicy="no-referrer" 
                   onError={handleImageError}
                 />
               ) : msg.type === 'video' ? (
-                <video src={msg.text} controls className="rounded-lg max-w-full h-auto mb-5" />
+                <video src={msg.text || undefined} controls className="rounded-lg max-w-full h-auto mb-5" />
               ) : (
                 <div className="flex flex-col gap-1">
                   <p className="text-[16px] font-medium text-[#111b21] dark:text-[#e9edef] pr-12 leading-relaxed break-words">{msg.text}</p>
@@ -3884,9 +3920,9 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                 {viewingStatus.type === 'text' ? (
                   <div className="text-white text-2xl font-bold text-center px-6">{viewingStatus.content}</div>
                 ) : viewingStatus.type === 'image' ? (
-                  <img src={viewingStatus.content} className="max-w-full max-h-full object-contain rounded-xl" alt="Status" referrerPolicy="no-referrer" />
+                  <img src={viewingStatus.content || undefined} className="max-w-full max-h-full object-contain rounded-xl" alt="Status" referrerPolicy="no-referrer" />
                 ) : (
-                  <video src={viewingStatus.content} className="max-w-full max-h-full object-contain rounded-xl" autoPlay controls />
+                  <video src={viewingStatus.content || undefined} className="max-w-full max-h-full object-contain rounded-xl" autoPlay controls />
                 )}
 
                 {viewingStatus.caption && (
@@ -4806,7 +4842,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
                   className="flex-shrink-0 w-24 space-y-2 cursor-pointer group snap-center"
                 >
                   <div className="relative w-24 h-32 rounded-3xl overflow-hidden border-2 border-white dark:border-white/10 shadow-lg group-hover:border-[#00a884] transition-all">
-                    <img src={single.photoURL} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={single.displayName} referrerPolicy="no-referrer" />
+                    <img src={single.photoURL || undefined} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={single.displayName} referrerPolicy="no-referrer" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
                     <div className="absolute bottom-2 left-2 right-2 text-[10px] font-black text-white truncate">
                       {single.displayName.split(' ')[0]}
@@ -4860,7 +4896,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
                           NOPE
                         </div>
                       )}
-                      <img src={currentUser.photoURL} className="w-full h-full object-cover" alt={currentUser.displayName} referrerPolicy="no-referrer" />
+                      <img src={currentUser.photoURL || undefined} className="w-full h-full object-cover" alt={currentUser.displayName} referrerPolicy="no-referrer" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent pointer-events-none" />
                       
                       <div className="absolute bottom-0 left-0 right-0 p-8 text-white pointer-events-none">
@@ -4916,7 +4952,7 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
                     onClick={() => onUserClick(u)}
                     className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md group cursor-pointer border-2 border-transparent hover:border-[#00a884] transition-all"
                   >
-                    <img src={u.photoURL} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={u.displayName} referrerPolicy="no-referrer" />
+                    <img src={u.photoURL || undefined} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={u.displayName} referrerPolicy="no-referrer" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                       <div className="absolute bottom-3 left-3 right-3">
                         <div className="flex items-center gap-1.5 mb-0.5">
@@ -5263,7 +5299,7 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliat
             <div className="grid grid-cols-2 gap-3">
               {fullUser.datingProfile.photos.map((photo: string, i: number) => (
                 <div key={i} className="relative aspect-square rounded-[1.5rem] overflow-hidden group shadow-md">
-                  <img src={photo} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Gallery" referrerPolicy="no-referrer" />
+                  <img src={photo || undefined} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Gallery" referrerPolicy="no-referrer" />
                 </div>
               ))}
             </div>
@@ -5284,7 +5320,7 @@ const UserProfileView = ({ user, targetUser, onBack, onStartChat, onOpenAffiliat
           <div className="grid grid-cols-2 gap-3">
             {fullUser.featuredPhotos?.length ? fullUser.featuredPhotos.map((photo, i) => (
               <div key={i} className="relative aspect-square rounded-[1.5rem] overflow-hidden group shadow-md">
-                <img src={photo} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Gallery" referrerPolicy="no-referrer" />
+                <img src={photo || undefined} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Gallery" referrerPolicy="no-referrer" />
                 <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
             )) : (
@@ -7531,7 +7567,7 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
               <div className="grid grid-cols-4 gap-2">
                 {datingPhotos.map((p, idx) => (
                   <div key={idx} className="relative aspect-square rounded-lg overflow-hidden group">
-                    <img src={p} className="w-full h-full object-cover" alt="Dating" />
+                    <img src={p || undefined} className="w-full h-full object-cover" alt="Dating" />
                     <button 
                       onClick={() => setDatingPhotos(prev => prev.filter((_, i) => i !== idx))}
                       className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100"
