@@ -20,6 +20,7 @@ import {
   LogOut,
   Plus,
   Image as ImageIcon,
+  ImagePlus,
   Video as VideoIcon,
   CreditCard,
   ThumbsUp,
@@ -929,6 +930,17 @@ export default function App() {
   const [applyingJob, setApplyingJob] = useState<Job | null>(null);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
+
+  const handleSelectChat = (chat: Chat) => {
+    if (!user.photoURL) {
+      toast.error("Profile Photo Required", {
+        description: "Please upload a profile photo BEFORE you can start chatting. This helps verify your identity and keeps our community safe."
+      });
+      setShowProfile(true);
+      return;
+    }
+    setSelectedChat(chat);
+  };
 
   const handleStartCall = async (otherUser: any, type: 'voice' | 'video' = 'voice') => {
     if (!user) return;
@@ -2351,7 +2363,7 @@ export default function App() {
             user={user} 
             targetUser={viewingUser} 
             onBack={() => setViewingUser(null)} 
-            onStartChat={(chat: any) => { setViewingUser(null); setSelectedChat(chat); }}
+            onStartChat={(chat: any) => { setViewingUser(null); handleSelectChat(chat); }}
             onOpenAffiliate={() => { setViewingUser(null); setShowAffiliate(true); }}
             onEditProfile={() => { setViewingUser(null); setShowProfile(true); }}
             onStartCall={handleStartCall}
@@ -2369,7 +2381,7 @@ export default function App() {
               setShowNotifications(false);
               if (tab === 'chat' && id) {
                 const chat = chats.find(c => c.id === id);
-                if (chat) setSelectedChat(chat);
+                if (chat) handleSelectChat(chat);
               } else if (tab === 'dating') {
                 setActiveTab('dating');
               } else if (tab === 'status') {
@@ -2548,30 +2560,6 @@ export default function App() {
               )}
             </AnimatePresence>
 
-            {deferredPrompt && !isInstalled && (
-              <motion.div 
-                initial={{ y: 50, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                className="mx-4 mb-4 p-4 glass-card rounded-2xl flex items-center justify-between border-[#00a884]/30"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-[#00a884] rounded-lg">
-                    <Download className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold dark:text-white">Install Web App</h4>
-                    <p className="text-[10px] text-gray-500 dark:text-[#8696a0]">Install for faster access and better notifications!</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={handleInstallClick}
-                  className="bg-[#00a884] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-[#008069] transition-colors"
-                >
-                  Install Now
-                </button>
-              </motion.div>
-            )}
-
             {activeTab === 'chats' && (
               <div className="flex flex-col min-h-full">
                 {/* Dashboard Featured Hearts Section */}
@@ -2648,7 +2636,7 @@ export default function App() {
                     const chatPhoto = otherUser?.photoURL;
                     
                     return (
-                      <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 active:bg-gray-100 dark:active:bg-[#202c33] transition-colors cursor-pointer group">
+                      <div key={chat.id} onClick={() => handleSelectChat(chat)} className="flex items-center gap-4 p-4 active:bg-gray-100 dark:active:bg-[#202c33] transition-colors cursor-pointer group">
           <Avatar 
             src={chatPhoto} 
             name={chatName} 
@@ -2726,8 +2714,23 @@ export default function App() {
               onFollowEmployer={handleFollowEmployer} 
               targetPostId={targetPostId}
               isRefreshing={isRefreshing}
+              deferredPrompt={deferredPrompt}
+              handleInstallClick={handleInstallClick}
             />}
-          {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => handleViewUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} setUser={setUser} appSettings={appSettings} />}
+          {activeTab === 'dating' && (
+            <DatingView 
+              user={user} 
+              filters={datingFilters} 
+              onUpdateFilters={setDatingFilters} 
+              onUserClick={(u: User) => handleViewUser(u)} 
+              searchQuery={searchQuery} 
+              onOpenProfile={() => setShowProfile(true)} 
+              setUser={setUser} 
+              appSettings={appSettings}
+              deferredPrompt={deferredPrompt}
+              handleInstallClick={handleInstallClick}
+            />
+          )}
           {activeTab === 'jobs' && (
             <JobsView 
               user={user} 
@@ -3345,7 +3348,7 @@ const SkeletonChat = () => (
   </div>
 );
 
-const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, showPostModal, setShowPostModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, uploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer, targetPostId, isRefreshing }: any) => {
+const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, showPostModal, setShowPostModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, uploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer, targetPostId, isRefreshing, deferredPrompt, handleInstallClick }: any) => {
   const [newPost, setNewPost] = useState('');
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
@@ -4156,6 +4159,34 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                         input.accept = 'image/*';
                         input.onchange = async (e: any) => {
                           const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              const compressedFile = await compressImage(file);
+                              const b64 = await uploadFileToServer(compressedFile);
+                              const postRef = doc(db, 'posts', post.id);
+                              await updateDoc(postRef, { media: arrayUnion(b64) });
+                              toast.success("Image added to post");
+                            } catch (error) {
+                              toast.error("Upload failed");
+                            }
+                          }
+                        };
+                        input.click();
+                      }}
+                      className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    >
+                      <ImagePlus className="w-5 h-5" />
+                      <span>Add Photo</span>
+                    </button>
+                  )}
+                  {post.userId === user.uid && user.category === 'General' && (
+                    <button 
+                      onClick={() => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = 'image/*';
+                        input.onchange = async (e: any) => {
+                          const file = e.target.files?.[0];
                           if (!file) return;
                           setUploading(true);
                           try {
@@ -4246,18 +4277,29 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
               jobIdx++;
             }
 
-            // Ad Logic: after 3, 10, then multiples of 2 and 3 after 10
-            const pos = index + 1;
-            let shouldShowAd = false;
-            if (pos === 3 || pos === 10) shouldShowAd = true;
-            if (pos > 10 && ((pos - 10) % 2 === 0 || (pos - 10) % 3 === 0)) shouldShowAd = true;
+            // Single Ladies Ad Injection: after index 3 (4th post) and 9 (10th post)
+            if (index === 3 || index === 9) {
+              elements.push(
+                <SingleLadiesAds 
+                  key={`single-ladies-ad-${index}`}
+                  deferredPrompt={deferredPrompt} 
+                  onInstall={handleInstallClick} 
+                />
+              );
+            }
 
-            if (shouldShowAd) {
+            // User Ad Logic (Sponsored Ads)
+            const pos = index + 1;
+            let shouldShowSponsoredAd = false;
+            // Original logic for sponsored ads
+            if (pos % 5 === 0) shouldShowSponsoredAd = true; 
+
+            if (shouldShowSponsoredAd) {
               const currentAd = userAds[adIndex % userAds.length];
               if (currentAd) {
                 const adAuthor = usersMap[currentAd.userId];
                 elements.push(
-                  <div key={`ad-${pos}`} className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden border-l-4 border-l-yellow-400">
+                  <div key={`ad-sponsored-${pos}`} className="bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden border-l-4 border-l-yellow-400 mb-4 mx-1">
                     <div className="p-3 flex items-center gap-3">
                       <Avatar src={adAuthor?.photoURL} name={adAuthor?.displayName || "Sponsored"} size={32} />
                       <div className="flex-1">
@@ -4270,14 +4312,14 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
                     </div>
                     <div className="px-3 pb-3">
                       <p className="text-xs text-gray-600 dark:text-[#8696a0] line-clamp-2 mb-2">{currentAd.content}</p>
-                      {currentAd.media?.[0] && <img src={currentAd.media[0]} className="w-full h-24 object-cover rounded-lg" alt="Ad" referrerPolicy="no-referrer" />}
+                      {currentAd.media?.[0] && <img src={currentAd.media[0]} className="w-full h-24 object-cover rounded-lg shadow-sm" alt="Ad" referrerPolicy="no-referrer" />}
                     </div>
                   </div>
                 );
                 adIndex++;
               } else if (appSettings?.adSenseCode) {
                 elements.push(
-                  <div key={`adsense-${pos}`} className="bg-gray-50 dark:bg-[#111b21] rounded-xl p-2 flex items-center justify-center min-h-[100px] border border-dashed border-gray-200 dark:border-gray-800">
+                  <div key={`adsense-${pos}`} className="bg-gray-50 dark:bg-[#111b21] rounded-xl p-2 flex items-center justify-center min-h-[100px] border border-dashed border-gray-200 dark:border-gray-800 mb-4 mx-1">
                     <div dangerouslySetInnerHTML={{ __html: appSettings.adSenseCode }} />
                   </div>
                 );
@@ -4350,7 +4392,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
     </div>
   );
 };
-const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, onOpenProfile, setUser, appSettings }: any) => {
+const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, onOpenProfile, setUser, appSettings, deferredPrompt, handleInstallClick }: any) => {
   const [discoverUsers, setDiscoverUsers] = useState<User[]>([]);
   const [featuredSingles, setFeaturedSingles] = useState<User[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -6860,6 +6902,118 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
 </div>
 );
 };
+// --- Promotional Components ---
+const SingleLadiesAds = ({ deferredPrompt, onInstall }: { deferredPrompt: any, onInstall: () => void }) => {
+  const [showInstall, setShowInstall] = useState(true);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  
+  const ladiesImages = [
+    "https://images.unsplash.com/photo-1523824921871-d6f1a15151f1?q=80&w=800&auto=format&fit=crop", 
+    "https://images.unsplash.com/photo-1542345812-d9e0e3f42230?q=80&w=800&auto=format&fit=crop", 
+    "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?q=80&w=800&auto=format&fit=crop", 
+    "https://images.unsplash.com/photo-1526080652727-5e77c2f07f9c?q=80&w=800&auto=format&fit=crop", 
+    "https://images.unsplash.com/photo-1509631179647-0177331693ae?q=80&w=800&auto=format&fit=crop"
+  ];
+
+  useEffect(() => {
+    const toggleTimer = setInterval(() => {
+      setShowInstall(prev => !prev);
+    }, 5000);
+
+    const imageTimer = setInterval(() => {
+      setCurrentImageIndex(prev => (prev + 1) % ladiesImages.length);
+    }, 3000);
+
+    return () => {
+      clearInterval(toggleTimer);
+      clearInterval(imageTimer);
+    };
+  }, []);
+
+  const handleClick = () => {
+    window.open("https://omg10.com/4/6130375", "_blank");
+  };
+
+  return (
+    <div className="flex flex-col gap-2 p-3 bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 mb-4 mx-1">
+      {/* Alternating Button */}
+      <div className="relative h-[48px]">
+        <AnimatePresence mode="wait">
+          {showInstall && deferredPrompt ? (
+            <motion.button
+              key="install"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.05 }}
+              onClick={onInstall}
+              className="absolute inset-0 w-full bg-[#00a884] text-white rounded-xl font-black flex items-center justify-center gap-2 shadow-sm hover:bg-[#008f6f] transition-all active:scale-95"
+            >
+              <Download className="w-5 h-5" />
+              <span className="uppercase tracking-tight text-xs">Install Heart Connect</span>
+            </motion.button>
+          ) : (
+            <motion.button
+              key="ads"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.05 }}
+              onClick={handleClick}
+              className="absolute inset-0 w-full bg-[#ff2d75] text-white rounded-xl font-black flex items-center justify-center gap-2 shadow-sm hover:bg-[#e62969] transition-all active:scale-95 border-2 border-white/10"
+            >
+              <Heart className="w-5 h-5 fill-current" />
+              <span className="uppercase tracking-tight text-xs">Meet Single African Ladies Now</span>
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Full Banner - High Quality Realistic African Ladies */}
+      <div 
+        onClick={handleClick}
+        className="relative h-64 w-full rounded-xl overflow-hidden cursor-pointer group border border-gray-100 dark:border-gray-800 shadow-md"
+      >
+        <AnimatePresence mode="wait">
+          <motion.img
+            key={currentImageIndex}
+            src={ladiesImages[currentImageIndex]}
+            initial={{ opacity: 0, scale: 1.05 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.8 }}
+            className="w-full h-full object-cover"
+            alt="Beautiful African Single"
+          />
+        </AnimatePresence>
+        
+        {/* Gradient Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
+        
+        {/* Ad Tag */}
+        <div className="absolute top-2 right-2 bg-[#00a884] px-2 py-0.5 rounded text-[8px] font-black text-white uppercase tracking-widest shadow-lg">
+          AD
+        </div>
+
+        <div className="absolute bottom-0 left-0 right-0 p-4">
+          <div className="flex flex-col gap-1">
+            <p className="text-white text-xl font-black leading-tight drop-shadow-2xl uppercase italic tracking-tighter">
+              Real <span className="text-[#00a884] not-italic">Beautiful</span> Ladies Near You
+            </p>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-200 font-bold flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#00a884]" />
+                100% Verified African Profiles
+              </span>
+              <div className="bg-[#00a884] p-2 rounded-full group-hover:scale-110 transition-transform shadow-xl">
+                <ArrowRight className="w-4 h-4 text-white" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settings }: { 
   user: User, 
   onBack: () => void, 
