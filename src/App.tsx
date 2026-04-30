@@ -296,9 +296,35 @@ const getAIMatchSuggestions = async (user: User, allUsers: User[]) => {
 };
 
 const AdSenseSlot = ({ code, id, className }: { code?: string, id: string, className?: string }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (code && containerRef.current) {
+      const container = containerRef.current;
+      container.innerHTML = code;
+      
+      const scripts = container.getElementsByTagName('script');
+      for (let i = 0; i < scripts.length; i++) {
+        const script = scripts[i];
+        const newScript = document.createElement('script');
+        
+        // Copy all attributes
+        Array.from(script.attributes).forEach(attr => {
+          newScript.setAttribute(attr.name, attr.value);
+        });
+        
+        // Copy inline script content
+        newScript.textContent = script.textContent;
+        
+        // Replace the old script with the new one to trigger execution
+        script.parentNode?.replaceChild(newScript, script);
+      }
+    }
+  }, [code]);
+
   if (!code) return null;
   return (
-    <div id={id} className={cn("flex justify-center my-4 overflow-hidden rounded-xl bg-gray-50/10", className)} dangerouslySetInnerHTML={{ __html: code }} />
+    <div ref={containerRef} id={id} className={cn("flex justify-center my-4 overflow-hidden rounded-xl bg-gray-50/10", className)} />
   );
 };
 
@@ -4373,6 +4399,30 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
               );
             }
 
+            // Responsive Ad Injection (independent of user sponsored ads)
+            // Every 6 posts, show a responsive ad
+            if ((index + 1) % 6 === 0) {
+              elements.push(
+                <div key={`responsive-ad-${index}`} className="mb-4 mx-1">
+                  {appSettings.adSenseSlot3 ? (
+                    <AdSenseSlot code={appSettings.adSenseSlot3} id={`monetag-feed-res-${index}`} className="bg-white dark:bg-[#111b21] p-0 overflow-hidden rounded-2xl" />
+                  ) : appSettings.adSenseSlot1 ? (
+                    <AdSenseSlot code={appSettings.adSenseSlot1} id={`adsense-feed-res-${index}`} className="bg-white dark:bg-[#111b21] p-3 border border-gray-50 dark:border-gray-800 rounded-2xl" />
+                  ) : appSettings.adSenseCode ? (
+                    <div className="bg-white dark:bg-[#111b21] p-3 border border-gray-50 dark:border-gray-800 rounded-2xl">
+                       <div dangerouslySetInnerHTML={{ __html: appSettings.adSenseCode }} />
+                    </div>
+                  ) : (
+                    <div className="p-8 bg-[#00a884]/5 rounded-2xl border border-dashed border-[#00a884]/20 flex flex-col items-center justify-center text-center">
+                      <Megaphone className="w-8 h-8 text-[#00a884]/40 mb-2" />
+                      <p className="text-[10px] font-black text-[#00a884]/60 uppercase tracking-widest">Sponsored Suggestion</p>
+                      <p className="text-[9px] text-[#00a884]/40 mt-1">Upgrade your category to remove ads!</p>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             // User Ad Logic (Sponsored Ads)
             const pos = index + 1;
             let shouldShowSponsoredAd = false;
@@ -6756,6 +6806,20 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
                   placeholder="Paste <ins> or <script> here..."
                   className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef] h-24 font-mono text-xs" 
                 />
+              </div>
+              <div className="bg-[#00a884]/5 p-4 rounded-xl border border-[#00a884]/10">
+                <div className="flex items-center gap-2 mb-2">
+                  <Megaphone className="w-4 h-4 text-[#00a884]" />
+                  <span className="text-[10px] font-bold text-[#00a884] uppercase tracking-widest">Monetag Responsive Ad</span>
+                </div>
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Monetag In-Feed / Smart Tag Code</label>
+                <textarea 
+                  value={settings.adSenseSlot3 || ''} 
+                  onChange={(e) => setSettings({...settings, adSenseSlot3: e.target.value})} 
+                  placeholder="Paste your Monetag zone script here..."
+                  className="w-full bg-white dark:bg-[#111b21] border border-gray-100 dark:border-gray-800 p-3 rounded-xl outline-none dark:text-[#e9edef] h-24 font-mono text-xs" 
+                />
+                <p className="text-[9px] text-gray-400 mt-1 italic">This ad will appear in the main feed every 6 posts.</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
