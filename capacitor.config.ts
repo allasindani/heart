@@ -2,8 +2,12 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.heartconnect.app',
-  appName: 'Heart Connect',
+  appName: 'HEART CONNECT',
   webDir: 'dist',
+  server: {
+    url: 'https://chat.opramixes.com',
+    cleartext: true
+  },
   plugins: {
     CapacitorUpdater: {
       autoUpdate: false // We handle it manually in App.tsx

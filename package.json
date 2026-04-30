@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
-    "start": "NODE_ENV=production tsx server.ts",
+    "dev": "NODE_OPTIONS=--max-old-space-size=1024 tsx server.ts",
+    "start": "NODE_ENV=production NODE_OPTIONS=--max-old-space-size=1024 tsx server.ts",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",

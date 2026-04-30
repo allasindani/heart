@@ -8411,11 +8411,11 @@ const AdMobBanner = () => {
 
     const showBanner = async () => {
       const options = {
-        adId: 'ca-app-pub-8271489359179610/4964665647', // User's Android Banner ID
+        adId: 'ca-app-pub-3940256099942544/6300978111', // Test Banner ID
         adSize: BannerAdSize.BANNER,
         position: BannerAdPosition.BOTTOM_CENTER,
         margin: 0,
-        isTesting: false,
+        isTesting: true,
       };
 
       try {
