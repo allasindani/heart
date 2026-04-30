@@ -18,6 +18,7 @@ export interface User {
   uploadCount?: number;
   matchCount?: number;
   messageCount?: number;
+  chatPhotoCount?: number;
   datingProfile?: {
     age: number;
     gender: 'male' | 'female' | 'other';
@@ -176,6 +177,8 @@ export interface AppSettings {
   paymentMethods: { type: string, details: string }[];
   googleAnalyticsCode?: string;
   adSenseCode?: string;
+  adSenseSlot1?: string;
+  adSenseSlot2?: string;
   siteName?: string;
   logoUrl?: string;
   faviconUrl?: string;

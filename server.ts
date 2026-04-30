@@ -6,6 +6,10 @@ import net from "net";
 import multer from "multer";
 import fs from "fs";
 import compression from "compression";
+import dotenv from "dotenv";
+
+// Load environment variables early
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,18 +43,14 @@ async function isPortAvailable(port: number): Promise<boolean> {
 async function getAvailablePort(startPort: number): Promise<number> {
   let port = startPort;
   while (!(await isPortAvailable(port))) {
-    console.log(`Port ${port} is in use, trying ${port + 1}...`);
+    console.warn(`⚠️  Port ${port} is currently OCCUPIED. Searching for next available port...`);
     port++;
     if (port > startPort + 100) {
-      throw new Error("Could not find an available port in range.");
+      throw new Error("❌ CRITICAL: Could not find any available port in the range [ " + startPort + " - " + (startPort + 100) + " ]. Check your running processes.");
     }
   }
   return port;
 }
-
-import Stripe from "stripe";
-
-const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
 async function startServer() {
   const app = express();
@@ -158,44 +158,6 @@ async function startServer() {
 
   app.use(express.json());
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
-
-  app.post("/api/create-checkout-session", async (req, res) => {
-    if (!stripe) {
-      return res.status(500).json({ error: 'Stripe is not configured' });
-    }
-
-    const { tier, price, userId } = req.body;
-
-    try {
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            price_data: {
-              currency: 'usd',
-              product_data: {
-                name: `${tier} Membership - Heart Connect`,
-                description: `Unlock premium features for your account.`,
-              },
-              unit_amount: price * 100,
-            },
-            quantity: 1,
-          },
-        ],
-        mode: 'payment',
-        success_url: `${req.get('origin') || 'https://chat.opramixes.com'}/?payment=success&tier=${tier}`,
-        cancel_url: `${req.get('origin') || 'https://chat.opramixes.com'}/?payment=cancel`,
-        metadata: {
-          userId,
-          tier
-        }
-      });
-
-      res.json({ id: session.id, url: session.url });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
 
   app.get("/api/update", (req, res) => {
     try {

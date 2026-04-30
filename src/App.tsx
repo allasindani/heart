@@ -231,6 +231,13 @@ const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
   }
 };
 
+const AdSenseSlot = ({ code, id, className }: { code?: string, id: string, className?: string }) => {
+  if (!code) return null;
+  return (
+    <div id={id} className={cn("flex justify-center my-4 overflow-hidden rounded-xl bg-gray-50/10", className)} dangerouslySetInnerHTML={{ __html: code }} />
+  );
+};
+
 const Logo = ({ size = 40, className = "", url }: { size?: number, className?: string, url?: string }) => (
   <div className={cn("relative flex items-center justify-center", className)} style={{ width: size, height: size }}>
     <div className="absolute inset-0 bg-[#00a884] rounded-2xl rotate-12 opacity-20 animate-pulse" />
@@ -2032,12 +2039,21 @@ export default function App() {
       return;
     }
 
-    // Constraint: Non-pro Male users limit (1 message only)
-    if (user.gender === 'male' && user.category === 'General' && (user.messageCount || 0) >= 1) {
+    // New Robust Measure: 3 messages limit for General (free) users
+    const isTierUser = user.category !== 'General';
+    if (!isTierUser && !user.isVerified && (user.messageCount || 0) >= 3) {
       toast.error(appSettings.siteName || "Heart Connect", {
-        description: "Upgrade required to send more messages! You are currently on the Free Tier and have used your 1 message limit. Please upgrade to Bronze, Silver, Gold or Platinum to enjoy unlimited chatting."
+        description: "Free messaging limit reached! You are currently on the Free Tier and have reached your 3-message limit. Please upgrade to Bronze, Silver, Gold or Platinum to enjoy unlimited chatting."
       });
       setShowUpgrade(true);
+      return;
+    }
+
+    // Photo sharing limit: 1 photo for non-verified and General (non-tier) users
+    if (type === 'image' && !isTierUser && !user.isVerified && (user.chatPhotoCount || 0) >= 1) {
+      toast.error(appSettings.siteName || "Heart Connect", {
+        description: "Photo limit reached! Free users can only share 1 photo in chats. Upgrade or get verified to share unlimited photos!"
+      });
       return;
     }
     
@@ -2063,10 +2079,15 @@ export default function App() {
     const messagePromise = addDoc(collection(db, `chats/${selectedChat.id}/messages`), msgData);
     const { increment } = await import('firebase/firestore');
     
-    // Increment message count for tracking limits
-    const userUpdatePromise = updateDoc(doc(db, 'users', user.uid), {
+    // Increment counts for tracking limits
+    const updateData: any = {
       messageCount: increment(1)
-    });
+    };
+    if (type === 'image') {
+      updateData.chatPhotoCount = increment(1);
+    }
+
+    const userUpdatePromise = updateDoc(doc(db, 'users', user.uid), updateData);
 
     const chatUpdatePromise = updateDoc(doc(db, 'chats', selectedChat.id), { 
       lastMessage: { 
@@ -2211,7 +2232,7 @@ export default function App() {
       )}
       {selectedChat ? (
         <div className="absolute inset-0 z-50 bg-[#efeae2] dark:bg-[#0b141a] flex flex-col">
-          <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} onUserClick={(u: any) => { setViewingUser(u); setSelectedChat(null); }} onStartCall={handleStartCall} />
+          <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} onUserClick={(u: any) => { setViewingUser(u); setSelectedChat(null); }} onStartCall={handleStartCall} appSettings={appSettings} />
         </div>
       ) : showProfile ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
@@ -2673,11 +2694,12 @@ export default function App() {
 
 // --- Sub-Components ---
 
-const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, onStartCall }: any) => {
+const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, onStartCall, appSettings }: any) => {
   const [input, setInput] = useState('');
   const [otherUser, setOtherUser] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
   const [reactingTo, setReactingTo] = useState<string | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<any>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [otherUserTyping, setOtherUserTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -2773,6 +2795,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
         [`reactions.${user.uid}`]: currentReaction === emoji ? deleteField() : emoji
       });
       setReactingTo(null);
+      setSelectedMessage(null);
     } catch (e) {
       console.error("Error adding reaction:", e);
     }
@@ -2836,11 +2859,13 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
       <div 
         ref={scrollRef} 
         className="flex-1 overflow-y-auto p-4 space-y-2 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] dark:bg-[#0b141a] dark:bg-none bg-repeat custom-scrollbar"
-        onClick={() => setReactingTo(null)}
+        onClick={() => { setReactingTo(null); setSelectedMessage(null); }}
       >
+        <AdSenseSlot code={appSettings?.adSenseSlot2} id="adsense-chat-top" className="mb-4" />
         {messages.map((msg: any) => (
           <div key={msg.id} className={cn("flex w-full mb-1", msg.senderId === user.uid ? "justify-end" : "justify-start")}>
             <div 
+              onClick={(e) => { e.stopPropagation(); setSelectedMessage(msg); }}
               onMouseDown={() => startLongPress(msg.id)}
               onMouseUp={endLongPress}
               onMouseLeave={endLongPress}
@@ -2848,11 +2873,11 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
               onTouchEnd={endLongPress}
               onContextMenu={(e) => e.preventDefault()}
               className={cn(
-                "max-w-[85%] p-2 px-3 rounded-2xl shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] relative min-w-[80px] transition-all",
+                "max-w-[85%] p-2 px-3 rounded-2xl shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] relative min-w-[80px] transition-all cursor-pointer",
                 msg.senderId === user.uid 
                   ? "bg-[#d9fdd3] dark:bg-[#005c4b] rounded-tr-none" 
                   : "bg-white dark:bg-[#202c33] rounded-tl-none",
-                reactingTo === msg.id && "scale-[1.02] ring-2 ring-[#00a884]/30"
+                (reactingTo === msg.id || selectedMessage?.id === msg.id) && "scale-[1.02] ring-4 ring-[#00a884]/40 z-20"
               )}
             >
               {/* Bubble Beak */}
@@ -2864,23 +2889,32 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
                     : "-left-[7px] bg-white dark:bg-[#202c33] [clip-path:polygon(100%_0,100%_100%,0_0)]"
                 )}
               />
-              {reactingTo === msg.id && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: -45 }}
-                  className="absolute left-0 right-0 mx-auto w-fit bg-white rounded-full shadow-xl p-1 flex gap-1 z-50 border border-gray-100"
-                >
-                  {emojis.map(emoji => (
+              <AnimatePresence>
+                {(reactingTo === msg.id || selectedMessage?.id === msg.id) && (
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.5, y: 0 }}
+                    animate={{ opacity: 1, scale: 1, y: -50 }}
+                    exit={{ opacity: 0, scale: 0.5, y: 0 }}
+                    className="absolute left-0 right-0 mx-auto w-fit bg-white dark:bg-[#233138] rounded-full shadow-2xl p-1.5 flex gap-1.5 z-50 border border-gray-100 dark:border-white/10"
+                  >
+                    {emojis.map(emoji => (
+                      <button 
+                        key={emoji} 
+                        onClick={(e) => { e.stopPropagation(); handleReaction(msg.id, emoji); }}
+                        className="hover:scale-150 transition-transform p-1 text-xl active:scale-95"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
                     <button 
-                      key={emoji} 
-                      onClick={(e) => { e.stopPropagation(); handleReaction(msg.id, emoji); }}
-                      className="hover:scale-125 transition-transform p-1 text-xl"
+                      onClick={(e) => { e.stopPropagation(); setReactingTo(null); setSelectedMessage(null); }}
+                      className="p-1 text-gray-400 hover:text-red-500 transition-colors"
                     >
-                      {emoji}
+                      <X className="w-5 h-5" />
                     </button>
-                  ))}
-                </motion.div>
-              )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {msg.type === 'image' ? (
                 <img 
@@ -2897,9 +2931,23 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
               )}
               
               {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                <div className="absolute -bottom-2 right-2 flex -space-x-1 bg-white dark:bg-[#202c33] rounded-full shadow-sm border border-gray-100 dark:border-gray-800 px-1.5 py-0.5 z-10 animate-in zoom-in-50">
-                  {Object.entries(msg.reactions).map(([uid, emoji]: any) => (
-                    <span key={uid} className="text-[11px] drop-shadow-sm">{emoji}</span>
+                <div className="absolute -bottom-2 right-2 flex items-center -space-x-1 hover:z-30 transition-all">
+                  {Object.entries(msg.reactions).reduce((acc: any[], [uid, emoji]: any) => {
+                    if (!acc.find(a => a.emoji === emoji)) {
+                      acc.push({ emoji, count: 1 });
+                    } else {
+                      acc.find(a => a.emoji === emoji).count++;
+                    }
+                    return acc;
+                  }, []).map((reaction, i) => (
+                    <div 
+                      key={i} 
+                      className="flex items-center gap-0.5 bg-white dark:bg-[#202c33] rounded-full shadow-sm border border-gray-100 dark:border-gray-800 px-1.5 py-0.5 z-10 hover:scale-110 cursor-pointer"
+                      title={`${reaction.count} reaction(s)`}
+                    >
+                      <span className="text-[11px] drop-shadow-sm">{reaction.emoji}</span>
+                      {reaction.count > 1 && <span className="text-[9px] font-bold text-gray-500 dark:text-gray-400">{reaction.count}</span>}
+                    </div>
                   ))}
                 </div>
               )}
@@ -3588,6 +3636,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
 
       {/* Wall Section */}
       <div ref={wallRef} className="p-4 space-y-6 pb-24 h-full overflow-y-auto custom-scrollbar">
+        <AdSenseSlot code={appSettings.adSenseSlot1} id="adsense-wall-top" className="mb-4 bg-white dark:bg-[#111b21] p-4 border border-gray-100 dark:border-gray-800" />
         {isRefreshing ? (
           <div className="space-y-6">
             <SkeletonPost />
@@ -5381,32 +5430,6 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
     },
   ];
 
-  const handleUpgradeStripe = async (tier: any) => {
-    if (tier.price === 'Free') return;
-    setUploading(true);
-    try {
-      const response = await fetch('/api/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tier: tier.name,
-          price: parseInt(tier.price.replace('$', '')),
-          userId: user.uid
-        })
-      });
-      const session = await response.json();
-      if (session.url) {
-        window.location.href = session.url;
-      } else {
-        throw new Error(session.error || 'Failed to create payment session');
-      }
-    } catch (error: any) {
-      toast.error(settings?.siteName || "Heart Connect", { description: "Payment error: " + error.message });
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const handleNotifyPayment = async (tier: any) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -5478,20 +5501,12 @@ const UpgradeTiers = ({ user, onBack, settings }: { user: User, onBack: () => vo
               {user.category !== tier.name && tier.name !== 'General' && (
                 <div className="space-y-2">
                   <button 
-                    onClick={() => handleUpgradeStripe(tier)}
+                    onClick={() => handleNotifyPayment(tier)}
                     disabled={uploading}
                     className="w-full bg-[#00a884] text-white py-3 rounded-2xl font-bold shadow-lg shadow-[#00a884]/20 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {uploading ? <CircleDashed className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
-                    Pay with Card/Stripe
-                  </button>
-                  <button 
-                    onClick={() => handleNotifyPayment(tier)}
-                    disabled={uploading}
-                    className="w-full bg-white dark:bg-[#202c33] border border-gray-200 dark:border-white/5 text-[#667781] dark:text-[#8696a0] py-3 rounded-2xl font-bold shadow-sm active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
                     {uploading ? <CircleDashed className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
-                    Manual Payment Proof
+                    Pay & Upload Proof (EcoCash/Manual)
                   </button>
                 </div>
               )}
@@ -6192,6 +6207,26 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
                   placeholder="Paste <ins> or <script> here..."
                   className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef] h-24 font-mono text-xs" 
                 />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">AdSense Slot 1 (Dashboard/Side)</label>
+                  <textarea 
+                    value={settings.adSenseSlot1 || ''} 
+                    onChange={(e) => setSettings({...settings, adSenseSlot1: e.target.value})} 
+                    placeholder="Paste AdSense slot code here..."
+                    className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef] h-24 font-mono text-xs" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">AdSense Slot 2 (Chat/Mobile View)</label>
+                  <textarea 
+                    value={settings.adSenseSlot2 || ''} 
+                    onChange={(e) => setSettings({...settings, adSenseSlot2: e.target.value})} 
+                    placeholder="Paste AdSense slot code here..."
+                    className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef] h-24 font-mono text-xs" 
+                  />
+                </div>
               </div>
             </div>
 
