@@ -19,6 +19,9 @@ export interface User {
   matchCount?: number;
   messageCount?: number;
   chatPhotoCount?: number;
+  blockedUsers?: string[];
+  profileViewsCount?: number;
+  lastProfileViews?: { uid: string, timestamp: any }[];
   datingProfile?: {
     age: number;
     gender: 'male' | 'female' | 'other';
@@ -134,6 +137,9 @@ export interface Message {
   timestamp: any;
   status: 'sent' | 'delivered' | 'seen';
   reactions?: Record<string, string>;
+  isGift?: boolean;
+  giftType?: string;
+  translation?: string;
 }
 
 export interface Post {
@@ -182,6 +188,8 @@ export interface AppSettings {
   siteName?: string;
   logoUrl?: string;
   faviconUrl?: string;
+  adSenseSlot3?: string;
+  pointsPerGift?: number;
   pointsPerInvitation?: number;
   sensoredWords?: string[];
 }

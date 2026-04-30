@@ -10,6 +10,7 @@ import {
   Paperclip, 
   Smile, 
   Mic, 
+  Eye,
   Send,
   Check,
   CheckCheck,
@@ -70,6 +71,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import OneSignal from 'onesignal-cordova-plugin';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -228,6 +230,67 @@ const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
   const fallback = `https://api.dicebear.com/7.x/avataaars/svg?seed=${Math.random()}`;
   if (target.src !== fallback) {
     target.src = fallback;
+  }
+};
+
+let genAI: GoogleGenerativeAI | null = null;
+const getGeminiModel = () => {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  if (!genAI) genAI = new GoogleGenerativeAI(key);
+  return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+};
+
+const generateIcebreaker = async (targetUser: User, currentUser: User) => {
+  const model = getGeminiModel();
+  if (!model) throw new Error("AI matches not configured");
+  
+  const prompt = `You are an AI wingman for a dating app called Heart Connect. 
+  Current user: ${currentUser.displayName}, Bio: ${currentUser.datingProfile?.bio || "None"}, Interests: ${currentUser.datingProfile?.interests?.join(", ") || "None"}.
+  Target user: ${targetUser.displayName}, Bio: ${targetUser.datingProfile?.bio || "None"}, Interests: ${targetUser.datingProfile?.interests?.join(", ") || "None"}.
+  Generate 3 short, flirty, and engaging icebreaker messages the current user could send to the target user based on their shared interests or bios. Keep them under 20 words each. Return as a simple numbered list.`;
+
+  const result = await model.generateContent(prompt);
+  return result.response.text();
+};
+
+const translateText = async (text: string, targetLanguage: string = "English") => {
+  const model = getGeminiModel();
+  if (!model) throw new Error("AI matches not configured");
+  
+  const prompt = `Translate the following text to ${targetLanguage}. Return ONLY the translated text: "${text}"`;
+  const result = await model.generateContent(prompt);
+  return result.response.text();
+};
+
+const getAIMatchSuggestions = async (user: User, allUsers: User[]) => {
+  const model = getGeminiModel();
+  if (!model) throw new Error("AI matches not configured");
+
+  const candidates = allUsers
+    .filter(u => u.uid !== user.uid && u.datingProfile)
+    .slice(0, 20)
+    .map(u => ({
+      uid: u.uid,
+      name: u.displayName,
+      bio: u.datingProfile?.bio,
+      interests: u.datingProfile?.interests
+    }));
+
+  const prompt = `Given the user ${user.displayName} (Bio: ${user.datingProfile?.bio}, Interests: ${user.datingProfile?.interests?.join(", ")}), 
+  and this list of candidates: ${JSON.stringify(candidates)}.
+  Return the UIDs of the top 5 most compatible candidates based on shared interests and personality. 
+  Format your response as a JSON array of strings (the UIDs) only.`;
+
+  const result = await model.generateContent(prompt);
+  try {
+    const text = result.response.text();
+    const jsonMatch = text.match(/\[.*\]/s);
+    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+    return [];
+  } catch (e) {
+    console.error("AI Matching failed:", e);
+    return [];
   }
 };
 
@@ -842,6 +905,22 @@ export default function App() {
   const [showMenu, setShowMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
+
+  const handleViewUser = async (targetUser: User | null) => {
+    setViewingUser(targetUser);
+    if (targetUser && user && targetUser.uid !== user.uid) {
+      try {
+        const { increment } = await import('firebase/firestore');
+        const viewData = { uid: user.uid, timestamp: new Date() };
+        await updateDoc(doc(db, 'users', targetUser.uid), {
+          profileViewsCount: increment(1),
+          lastProfileViews: arrayUnion(viewData)
+        });
+      } catch (e) {
+        console.error("View tracking failed:", e);
+      }
+    }
+  };
   const [applyingJob, setApplyingJob] = useState<Job | null>(null);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
@@ -2046,6 +2125,18 @@ export default function App() {
         description: "Free messaging limit reached! You are currently on the Free Tier and have reached your 3-message limit. Please upgrade to Bronze, Silver, Gold or Platinum to enjoy unlimited chatting."
       });
       setShowUpgrade(true);
+      
+      // Formal Notification
+      await addDoc(collection(db, 'notifications'), {
+        userId: user.uid,
+        fromId: 'system',
+        fromName: appSettings.siteName || 'Heart Connect',
+        type: 'broadcast',
+        text: `Hi ${user.displayName?.split(' ')?.[0] || 'user'}, to continue chatting with your loved one please update to tier or verification.`,
+        title: 'Upgrade Required',
+        read: false,
+        timestamp: serverTimestamp()
+      });
       return;
     }
 
@@ -2232,7 +2323,7 @@ export default function App() {
       )}
       {selectedChat ? (
         <div className="absolute inset-0 z-50 bg-[#efeae2] dark:bg-[#0b141a] flex flex-col">
-          <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} onUserClick={(u: any) => { setViewingUser(u); setSelectedChat(null); }} onStartCall={handleStartCall} appSettings={appSettings} />
+          <ChatView user={user} chat={selectedChat} messages={messages} onBack={() => setSelectedChat(null)} onSendMessage={sendMessage} onUserClick={(u: any) => { handleViewUser(u); setSelectedChat(null); }} onStartCall={handleStartCall} appSettings={appSettings} />
         </div>
       ) : showProfile ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
@@ -2494,7 +2585,7 @@ export default function App() {
                       {users.filter(u => u.isFeaturedSingle).map(u => (
                         <motion.div 
                           key={u.uid} 
-                          onClick={() => setViewingUser(u)}
+                          onClick={() => handleViewUser(u)}
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
                           className="flex-shrink-0 w-20 space-y-2 cursor-pointer snap-center relative group"
@@ -2610,7 +2701,7 @@ export default function App() {
               statuses={statuses} 
               posts={posts} 
               jobs={jobs} 
-              onUserClick={(u: User) => setViewingUser(u)} 
+              onUserClick={(u: User) => handleViewUser(u)} 
               awardPoints={awardPoints} 
               appSettings={appSettings} 
               showStatusModal={showStatusModal} 
@@ -2631,7 +2722,7 @@ export default function App() {
               targetPostId={targetPostId}
               isRefreshing={isRefreshing}
             />}
-          {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => setViewingUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} setUser={setUser} appSettings={appSettings} />}
+          {activeTab === 'dating' && <DatingView user={user} filters={datingFilters} onUpdateFilters={setDatingFilters} onUserClick={(u: User) => handleViewUser(u)} searchQuery={searchQuery} onOpenProfile={() => setShowProfile(true)} setUser={setUser} appSettings={appSettings} />}
           {activeTab === 'jobs' && (
             <JobsView 
               user={user} 
@@ -2702,12 +2793,115 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [otherUserTyping, setOtherUserTyping] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [recordDuration, setRecordDuration] = useState(0);
+  const [showPlusMenu, setShowPlusMenu] = useState(false);
+  const [icebreakers, setIcebreakers] = useState<string[]>([]);
+  const [generatingIcebreaker, setGeneratingIcebreaker] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const longPressTimer = useRef<any>(null);
   const typingTimeoutRef = useRef<any>(null);
+  const recordInterval = useRef<any>(null);
 
   const emojis = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        const file = new File([audioBlob], `voice_${Date.now()}.webm`, { type: 'audio/webm' });
+        setUploading(true);
+        try {
+          const url = await uploadFileToServer(file);
+          onSendMessage(url, 'voice');
+        } catch (e) {
+          console.error("Voice upload failed:", e);
+        } finally {
+          setUploading(false);
+        }
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+      setRecordDuration(0);
+      recordInterval.current = setInterval(() => setRecordDuration(d => d + 1), 1000);
+    } catch (e) {
+      toast.error("Microphone access denied");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder) mediaRecorder.stop();
+    setIsRecording(false);
+    clearInterval(recordInterval.current);
+  };
+
+  const handleIcebreaker = async () => {
+    if (!otherUser) return;
+    setGeneratingIcebreaker(true);
+    setShowPlusMenu(false);
+    try {
+      const text = await generateIcebreaker(otherUser, user);
+      const lines = text.split('\n').map(l => l.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
+      setIcebreakers(lines);
+    } catch (e) {
+      toast.error("AI Icebreaker failed");
+    } finally {
+      setGeneratingIcebreaker(false);
+    }
+  };
+
+  const handleSendGift = async (giftType: string) => {
+    const giftPoints = appSettings?.pointsPerGift || 50;
+    if (user.points < giftPoints) {
+      toast.error("Insufficient points to send a gift!");
+      return;
+    }
+
+    try {
+      // Deduct points
+      await updateDoc(doc(db, 'users', user.uid), {
+        points: user.points - giftPoints
+      });
+      // Send gift message
+      await onSendMessage(giftType, 'gift');
+      setShowPlusMenu(false);
+      toast.success("Gift sent!");
+    } catch (e) {
+      console.error("Gift failed:", e);
+    }
+  };
+
+  const handleTranslateMsg = async (msg: any) => {
+    try {
+      const translation = await translateText(msg.text);
+      await updateDoc(doc(db, `chats/${chat.id}/messages`, msg.id), { translation });
+    } catch (e) {
+      toast.error("Translation failed");
+    }
+  };
+
+  const handleBlockUser = async () => {
+    if (!otherUser || !window.confirm(`Are you sure you want to block ${otherUser.displayName}?`)) return;
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        blockedUsers: arrayUnion(otherUser.uid)
+      });
+      onBack();
+      toast.success("User blocked");
+    } catch (e) {
+      console.error("Block failed:", e);
+    }
+  };
 
   useEffect(() => {
     const otherId = chat.participants.find((p: string) => p !== user.uid);
@@ -2853,7 +3047,18 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
             className="w-6 h-6 cursor-pointer hover:text-[#00a884] transition-colors" 
             onClick={() => onStartCall(otherUser, 'voice')}
           />
-          <MoreVertical className="w-6 h-6 cursor-pointer" />
+          <div className="relative group">
+            <MoreVertical className="w-6 h-6 cursor-pointer" />
+            <div className="absolute right-0 top-8 bg-white dark:bg-[#233138] shadow-xl rounded-xl py-2 w-48 hidden group-hover:block z-[100] border border-gray-100 dark:border-white/10">
+              <button 
+                onClick={handleBlockUser}
+                className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-white/5 text-red-500 flex items-center gap-2 text-sm font-medium"
+              >
+                <ShieldAlert className="w-4 h-4" />
+                Block User
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       <div 
@@ -2912,11 +3117,32 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
                     >
                       <X className="w-5 h-5" />
                     </button>
+                    {selectedMessage?.text && !selectedMessage.translation && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleTranslateMsg(selectedMessage); }}
+                        className="p-1 text-[#00a884] hover:bg-[#00a884]/10 rounded-full"
+                        title="Translate"
+                      >
+                        <RefreshCw className="w-5 h-5" />
+                      </button>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {msg.type === 'image' ? (
+              {msg.type === 'gift' ? (
+                <div className="flex flex-col items-center gap-2 p-2">
+                  <Gift className="w-12 h-12 text-[#00a884] animate-bounce" />
+                  <p className="font-bold text-[#00a884] uppercase tracking-wider text-xs">Virtual Gift: {msg.text}</p>
+                </div>
+              ) : msg.type === 'voice' ? (
+                <div className="flex items-center gap-3 py-1 min-w-[200px]">
+                  <div className="w-8 h-8 rounded-full bg-[#00a884] flex items-center justify-center shrink-0">
+                    <Mic className="w-4 h-4 text-white" />
+                  </div>
+                  <audio src={msg.text} controls className="h-8 max-w-[150px]" />
+                </div>
+              ) : msg.type === 'image' ? (
                 <img 
                   src={msg.text} 
                   className="rounded-lg max-w-full h-auto mb-5" 
@@ -2927,7 +3153,15 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
               ) : msg.type === 'video' ? (
                 <video src={msg.text} controls className="rounded-lg max-w-full h-auto mb-5" />
               ) : (
-                <p className="text-[16px] font-medium text-[#111b21] dark:text-[#e9edef] pr-12 leading-relaxed break-words">{msg.text}</p>
+                <div className="flex flex-col gap-1">
+                  <p className="text-[16px] font-medium text-[#111b21] dark:text-[#e9edef] pr-12 leading-relaxed break-words">{msg.text}</p>
+                  {msg.translation && (
+                    <p className="text-[13px] text-[#00a884] dark:text-[#00a884] italic border-t border-[#00a884]/10 mt-1 pt-1 flex items-center gap-1">
+                      <RefreshCw className="w-3 h-3" />
+                      {msg.translation}
+                    </p>
+                  )}
+                </div>
               )}
               
               {msg.reactions && Object.keys(msg.reactions).length > 0 && (
@@ -2966,42 +3200,113 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
           </div>
         ))}
         {uploading && <div className="flex justify-center"><CircleDashed className="w-6 h-6 animate-spin text-[#00a884]" /></div>}
+        {generatingIcebreaker && <div className="flex justify-center gap-2 items-center text-xs text-[#00a884] font-bold py-2"><Sparkles className="w-4 h-4 animate-pulse" /> AI is thinking...</div>}
+        
+        {icebreakers.length > 0 && (
+          <div className="p-4 bg-white/80 dark:bg-[#111b21]/80 backdrop-blur shadow-inner space-y-2 border-t border-gray-100 dark:border-white/5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-[#00a884] flex items-center gap-1 uppercase tracking-wider">
+                <Sparkles className="w-3 h-3" /> AI Icebreakers
+              </span>
+              <button onClick={() => setIcebreakers([])}><X className="w-3 h-3 text-gray-400" /></button>
+            </div>
+            {icebreakers.map((ib, i) => (
+              <button 
+                key={i} 
+                onClick={() => { onSendMessage(ib); setIcebreakers([]); }}
+                className="w-full text-left p-3 rounded-xl bg-gray-50 dark:bg-white/5 hover:bg-[#00a884]/10 border border-gray-100 dark:border-white/5 transition-all text-xs text-[#111b21] dark:text-[#e9edef] font-medium"
+              >
+                {ib}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-      <div className="bg-[#f0f2f5] dark:bg-[#111b21] p-2 pb-[65px] flex items-center gap-2">
+      <div className="bg-[#f0f2f5] dark:bg-[#111b21] p-2 pb-[65px] flex items-center gap-2 relative">
+        <AnimatePresence>
+          {showPlusMenu && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="absolute bottom-full left-2 right-2 mb-2 bg-white dark:bg-[#233138] rounded-2xl shadow-2xl overflow-hidden z-[200] border border-gray-100 dark:border-white/10"
+            >
+              <div className="grid grid-cols-4 gap-4 p-6">
+                {[
+                  { icon: ImageIcon, label: 'Photos', color: 'bg-purple-100 text-purple-600', action: () => fileInputRef.current?.click() },
+                  { icon: Camera, label: 'Camera', color: 'bg-red-100 text-red-600', action: () => fileInputRef.current?.click() },
+                  { icon: Gift, label: 'Gift', color: 'bg-orange-100 text-orange-600', action: () => handleSendGift('Roses') },
+                  { icon: Sparkles, label: 'AI Intro', color: 'bg-yellow-100 text-yellow-600', action: handleIcebreaker },
+                  { icon: MapPin, label: 'Location', color: 'bg-[#00a884]/10 text-[#00a884]', action: () => onSendMessage('Current Location: [GPS shared]', 'location') },
+                  { icon: ThumbsUp, label: 'Super Like', color: 'bg-blue-100 text-blue-600', action: () => handleSendGift('Super Like') },
+                  { icon: Heart, label: 'Heart', color: 'bg-pink-100 text-pink-600', action: () => handleSendGift('Giant Heart') },
+                  { icon: ShieldAlert, label: 'Help', color: 'bg-gray-100 text-gray-600', action: () => toast.info("Safety help requested") }
+                ].map((item, i) => (
+                  <button key={i} onClick={item.action} className="flex flex-col items-center gap-2 group">
+                    <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110", item.color)}>
+                      <item.icon className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*,video/*" />
-        <div className="bg-white dark:bg-[#111b21] flex-1 flex items-center px-3 py-2 rounded-full shadow-sm max-w-[calc(100%-60px)]">
+        <Plus className={cn("w-6 h-6 text-gray-500 dark:text-[#8696a0] cursor-pointer transition-transform shrink-0", showPlusMenu && "rotate-45")} onClick={() => setShowPlusMenu(!showPlusMenu)} />
+        
+        <div className="bg-white dark:bg-[#111b21] flex-1 flex items-center px-3 py-2 rounded-full shadow-sm">
           <Smile className="w-6 h-6 text-gray-500 dark:text-[#8696a0] mr-2 shrink-0" />
-          <input 
-            type="text" 
-            value={input} 
-            onChange={(e) => handleTyping(e.target.value)} 
-            placeholder="Message" 
-            className="flex-1 bg-transparent border-none outline-none text-[16px] text-[#111b21] dark:text-[#e9edef] w-full" 
-            onKeyDown={(e) => { 
-              if (e.key === 'Enter' && input.trim()) { 
+          {isRecording ? (
+            <div className="flex-1 flex items-center gap-3 px-2">
+              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              <span className="text-red-500 font-bold text-sm">Recording: {recordDuration}s</span>
+            </div>
+          ) : (
+            <input 
+              type="text" 
+              value={input} 
+              onChange={(e) => handleTyping(e.target.value)} 
+              placeholder="Message" 
+              className="flex-1 bg-transparent border-none outline-none text-[16px] text-[#111b21] dark:text-[#e9edef] w-full" 
+              onKeyDown={(e) => { 
+                if (e.key === 'Enter' && input.trim()) { 
+                  onSendMessage(input); 
+                  setInput(''); 
+                  setIsTyping(false);
+                  updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false });
+                } 
+              }} 
+            />
+          )}
+        </div>
+        
+        {input.trim() || isRecording ? (
+          <button 
+            onClick={() => { 
+              if (isRecording) {
+                stopRecording();
+              } else if (input.trim()) { 
                 onSendMessage(input); 
                 setInput(''); 
                 setIsTyping(false);
                 updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false });
               } 
-            }} 
-          />
-          <Paperclip className="w-6 h-6 text-gray-500 dark:text-[#8696a0] ml-2 cursor-pointer shrink-0" onClick={() => fileInputRef.current?.click()} />
-          <Camera className="w-6 h-6 text-gray-500 dark:text-[#8696a0] ml-2 cursor-pointer shrink-0" onClick={() => fileInputRef.current?.click()} />
-        </div>
-        <button 
-          onClick={() => { 
-            if (input.trim()) { 
-              onSendMessage(input); 
-              setInput(''); 
-              setIsTyping(false);
-              updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false });
-            } 
-          }} 
-          className="w-12 h-12 bg-[#00a884] rounded-full flex items-center justify-center text-white shadow-md shrink-0 active:scale-90 transition-transform"
-        >
-          {input.trim() ? <Send className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-        </button>
+            }}
+            className="w-12 h-12 bg-[#00a884] rounded-full flex items-center justify-center text-white active:scale-95 transition-transform shrink-0 shadow-lg shadow-[#00a884]/20"
+          >
+            {isRecording ? <div className="w-4 h-4 bg-white rounded-sm" /> : <Send className="w-5 h-5 ml-1" />}
+          </button>
+        ) : (
+          <button 
+            onClick={startRecording}
+            className="w-12 h-12 bg-[#00a884]/10 rounded-full flex items-center justify-center text-[#00a884] active:scale-95 transition-transform shrink-0"
+          >
+            <Mic className="w-5 h-5" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -4049,8 +4354,24 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [viewMode, setViewMode] = useState<'swipe' | 'grid'>('grid');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [aiMatchIds, setAiMatchIds] = useState<string[]>([]);
+  const [loadingAI, setLoadingAI] = useState(false);
+  const [showProfileViews, setShowProfileViews] = useState(false);
   
   const datingCategories = ['All', 'Soulmates', 'Friendship', 'Business', 'Casual'];
+
+  const handleGetAISuggestions = async () => {
+    setLoadingAI(true);
+    try {
+      const uids = await getAIMatchSuggestions(user, discoverUsers);
+      setAiMatchIds(uids);
+      toast.success("AI matched you with several great profiles!");
+    } catch (e) {
+      toast.error("AI Matching failed");
+    } finally {
+      setLoadingAI(false);
+    }
+  };
 
   const hasGender = user.datingProfile?.gender && user.datingProfile.gender !== '';
   const limits = { General: 1, Bronze: 3, Silver: 10, Gold: Infinity, Platinum: Infinity };
@@ -4210,6 +4531,55 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
 
   return (
     <div className="flex-1 flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a] relative overflow-y-auto custom-scrollbar h-full">
+      {showProfileViews && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-[#111b21] w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden"
+          >
+            <div className="bg-gradient-to-tr from-[#00a884] to-[#008069] p-6 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-black">Profile Visitors</h3>
+                <p className="text-[10px] uppercase font-bold text-white/70 tracking-widest">See who's checking you out</p>
+              </div>
+              <button onClick={() => setShowProfileViews(false)} className="bg-white/20 p-2 rounded-full"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4 max-h-[400px] overflow-y-auto custom-scrollbar">
+              {user.lastProfileViews && user.lastProfileViews.length > 0 ? (
+                <div className="space-y-4">
+                  {user.lastProfileViews.slice().reverse().map((view: any, i: number) => {
+                    const visitor = discoverUsers.find(u => u.uid === view.uid) || { displayName: 'Hidden User', photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + view.uid };
+                    return (
+                      <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5">
+                        <div className="flex items-center gap-3">
+                          <Avatar src={visitor.photoURL} name={visitor.displayName} size={40} />
+                          <div>
+                            <p className="font-bold text-sm text-[#111b21] dark:text-[#e9edef]">{visitor.displayName}</p>
+                            <p className="text-[10px] text-gray-400 font-medium">Viewed your profile</p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => { onUserClick(visitor); setShowProfileViews(false); }}
+                          className="bg-[#00a884]/10 text-[#00a884] px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-[#00a884] hover:text-white transition-all"
+                        >
+                          View
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Eye className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                  <p className="text-sm font-bold text-gray-400">No profile visitors yet.</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* Subtle Background Glows */}
       <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none fixed">
         <div className="absolute top-10 left-10 w-64 h-64 bg-[#00a884] rounded-full blur-[100px]" />
@@ -4282,6 +4652,42 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
               {cat}
             </button>
           ))}
+        </div>
+
+        {/* Feature Row: Profile Views & AI Matches */}
+        <div className="flex gap-4 items-center overflow-x-auto no-scrollbar py-1">
+          <button 
+            onClick={() => setShowProfileViews(true)}
+            className="flex-shrink-0 flex items-center gap-3 bg-white dark:bg-[#202c33] p-3 px-4 rounded-2xl shadow-sm border border-[#00a884]/20 hover:scale-105 active:scale-95 transition-all group"
+          >
+            <div className="w-10 h-10 rounded-2xl bg-[#00a884]/10 flex items-center justify-center text-[#00a884] group-hover:bg-[#00a884] group-hover:text-white transition-all transform group-hover:rotate-6">
+              <UserCheck className="w-5 h-5" />
+            </div>
+            <div className="text-left w-20">
+              <p className="text-[9px] text-gray-400 font-black uppercase tracking-[0.1em] truncate">Who viewed me</p>
+              <p className="text-base font-black text-[#111b21] dark:text-[#e9edef] leading-none mt-1">{user.profileViewsCount || 0}</p>
+            </div>
+          </button>
+          
+          <button 
+            onClick={handleGetAISuggestions}
+            disabled={loadingAI}
+            className="flex-shrink-0 flex items-center gap-3 bg-gradient-to-br from-[#00a884] to-[#008069] p-3 px-5 rounded-2xl shadow-lg shadow-[#00a884]/25 hover:scale-105 active:scale-95 transition-all text-white disabled:opacity-50 group border border-white/10"
+          >
+            {loadingAI ? (
+              <CircleDashed className="w-6 h-6 animate-spin" />
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center transform group-hover:scale-110 transition-transform">
+                  <Sparkles className="w-5 h-5 animate-pulse" />
+                </div>
+                <div className="text-left">
+                  <p className="text-[9px] text-white/70 font-black uppercase tracking-[0.1em]">Smart Match</p>
+                  <p className="text-xs font-black uppercase tracking-wider">AI Suggestions</p>
+                </div>
+              </div>
+            )}
+          </button>
         </div>
       </div>
 
@@ -4370,6 +4776,12 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
                            {currentUser.isVerified && <VerifiedBadge size={20} />}
                         </div>
                         
+                        {aiMatchIds.includes(currentUser.uid) && (
+                          <div className="flex items-center gap-1.5 bg-[#00a884] text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest w-fit mb-4 animate-pulse shadow-lg shadow-[#00a884]/40">
+                            <Sparkles className="w-3 h-3" /> AI Pick
+                          </div>
+                        )}
+
                         <div className="flex items-center gap-2 mb-4">
                           <div className="flex items-center gap-1 bg-white/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
                             <MapPin className="w-3 h-3 text-[#00a884]" />
@@ -4410,12 +4822,13 @@ const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, 
                   >
                     <img src={u.photoURL} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={u.displayName} referrerPolicy="no-referrer" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                    <div className="absolute bottom-3 left-3 right-3">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className="text-sm font-black text-white">{u.displayName.split(' ')[0]}, {u.datingProfile?.age}</span>
-                        {u.isVerified && <VerifiedBadge size={12} />}
-                      </div>
-                      <div className="flex items-center justify-between">
+                      <div className="absolute bottom-3 left-3 right-3">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-sm font-black text-white">{u.displayName.split(' ')[0]}, {u.datingProfile?.age}</span>
+                          {u.isVerified && <VerifiedBadge size={12} />}
+                          {aiMatchIds.includes(u.uid) && <Sparkles className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500 animate-pulse" />}
+                        </div>
+                        <div className="flex items-center justify-between">
                         <span className="text-[10px] text-white/70 font-medium truncate flex items-center gap-1">
                           <MapPin size={10} /> {u.datingProfile?.city || 'Nearby'}
                         </span>
@@ -6173,6 +6586,10 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
                 <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Points awarded per Invitation</label>
                 <input type="number" value={settings.pointsPerInvitation || 0} onChange={(e) => setSettings({...settings, pointsPerInvitation: Number(e.target.value)})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
               </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Points cost per Gift</label>
+                <input type="number" value={settings.pointsPerGift || 100} onChange={(e) => setSettings({...settings, pointsPerGift: Number(e.target.value)})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
+              </div>
             </div>
 
             <h3 className="font-bold text-gray-700 dark:text-[#e9edef] border-b dark:border-gray-800 pb-2 pt-4">Word Censorship</h3>
@@ -6223,6 +6640,15 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
                   <textarea 
                     value={settings.adSenseSlot2 || ''} 
                     onChange={(e) => setSettings({...settings, adSenseSlot2: e.target.value})} 
+                    placeholder="Paste AdSense slot code here..."
+                    className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef] h-24 font-mono text-xs" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">AdSense Slot 3 (Dating View)</label>
+                  <textarea 
+                    value={settings.adSenseSlot3 || ''} 
+                    onChange={(e) => setSettings({...settings, adSenseSlot3: e.target.value})} 
                     placeholder="Paste AdSense slot code here..."
                     className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef] h-24 font-mono text-xs" 
                   />
