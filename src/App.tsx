@@ -894,6 +894,10 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showWelcomeMessage, setShowWelcomeMessage] = useState(() => {
+    return localStorage.getItem('hc_welcome_dismissed') !== 'true';
+  });
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showCreateAd, setShowCreateAd] = useState(false);
   const [showCreateJob, setShowCreateJob] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
@@ -1331,6 +1335,11 @@ export default function App() {
       setDeferredPrompt(null);
       setIsInstalled(true);
     }
+  };
+
+  const handleDismissWelcome = () => {
+    setShowWelcomeMessage(false);
+    localStorage.setItem('hc_welcome_dismissed', 'true');
   };
 
   const usersMap = useMemo(() => {
@@ -2560,8 +2569,48 @@ export default function App() {
               )}
             </AnimatePresence>
 
+            <AnimatePresence>
+              {showWelcomeModal && (
+                <WelcomeModal 
+                  isOpen={showWelcomeModal} 
+                  onClose={() => {
+                    setShowWelcomeModal(false);
+                    setShowWelcomeMessage(false);
+                  }} 
+                />
+              )}
+            </AnimatePresence>
+
             {activeTab === 'chats' && (
               <div className="flex flex-col min-h-full">
+                {/* Heart Connect Welcome Message in Inbox */}
+                {showWelcomeMessage && (
+                  <div 
+                    onClick={() => setShowWelcomeModal(true)} 
+                    className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-[#202c33] transition-colors cursor-pointer group border-b border-gray-100 dark:border-gray-800/50 bg-[#00a884]/5"
+                  >
+                    <div className="relative shrink-0">
+                      <div className="w-14 h-14 bg-[#00a884] rounded-full flex items-center justify-center shadow-lg rotate-3 group-hover:rotate-0 transition-transform">
+                        <Heart className="w-8 h-8 text-white fill-current" />
+                      </div>
+                      <div className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white dark:border-[#111b21]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center mb-1">
+                        <h3 className="font-bold text-[#111b21] dark:text-[#e9edef] truncate flex items-center gap-1 uppercase tracking-tight text-xs">
+                          Heart Connect <VerifiedBadge size={14} />
+                        </h3>
+                        <span className="text-[10px] font-black text-[#00a884] uppercase tracking-widest bg-white dark:bg-[#111b21] px-1.5 py-0.5 rounded shadow-sm">Official</span>
+                      </div>
+                      <div className="text-[13px] text-[#111b21] dark:text-[#e9edef] font-bold truncate">
+                        Welcome! Post photos, chat, date and find jobs now...
+                      </div>
+                      <div className="text-[11px] text-[#667781] dark:text-[#8696a0] mt-0.5 italic">
+                        No-reply message
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {/* Dashboard Featured Hearts Section */}
                 {users.filter(u => u.isFeaturedSingle).length > 0 && (
                   <div className="py-4 border-b border-gray-50 dark:border-gray-800/50 bg-[#00a884]/5 animate-in fade-in slide-in-from-top duration-700">
@@ -6902,6 +6951,89 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
 </div>
 );
 };
+const WelcomeModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        className="bg-white dark:bg-[#111b21] w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl border border-gray-100 dark:border-gray-800"
+      >
+        {/* Header Image/Gradient */}
+        <div className="h-32 bg-gradient-to-br from-[#00a884] to-[#008f6f] relative flex items-center justify-center">
+          <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-3xl flex items-center justify-center border border-white/30 rotate-6 shadow-xl">
+            <Heart className="w-10 h-10 text-white fill-current" />
+          </div>
+          <button 
+            onClick={onClose}
+            className="absolute top-4 right-4 p-2 bg-black/10 hover:bg-black/20 rounded-full transition-colors text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          <div className="text-center">
+            <h2 className="text-2xl font-black text-[#111b21] dark:text-[#e9edef] uppercase tracking-tighter mb-1">
+              Welcome to <span className="text-[#00a884]">Heart Connect</span>
+            </h2>
+            <p className="text-[10px] text-[#00a884] font-black uppercase tracking-[0.2em]">The Community for Love & Growth</p>
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600 dark:text-[#8696a0] text-center px-4 leading-relaxed font-medium">
+              We're excited to have you! Here's how to get the best results from our platform:
+            </p>
+            
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { icon: MessageCircle, title: 'Chat', color: 'bg-blue-500', desc: 'Connect 1-on-1' },
+                { icon: ImageIcon, title: 'Status', color: 'bg-green-500', desc: 'Post your photos' },
+                { icon: Heart, title: 'Date', color: 'bg-pink-500', desc: 'Find your match' },
+                { icon: Briefcase, title: 'Jobs', color: 'bg-purple-500', desc: 'Career growth' },
+              ].map((item, i) => (
+                <div key={i} className="flex flex-col items-center p-4 rounded-3xl bg-gray-50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-700/50 hover:border-[#00a884]/30 transition-colors group">
+                  <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center mb-2 shadow-lg transition-transform group-hover:scale-110", item.color)}>
+                    <item.icon className="w-5 h-5 text-white" />
+                  </div>
+                  <p className="text-[11px] font-black uppercase text-[#111b21] dark:text-[#e9edef] tracking-tight">{item.title}</p>
+                  <p className="text-[9px] text-gray-500 text-center mt-0.5">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-[#00a884]/5 p-4 rounded-2xl border border-[#00a884]/10 relative">
+            <p className="text-xs text-gray-700 dark:text-gray-300 italic text-center leading-relaxed">
+              "For maximum engagement, keep your Status updated with real photos and don't be shy to start a conversation!"
+            </p>
+            <div className="mt-3 flex items-center justify-center gap-2">
+              <div className="h-[1px] w-4 bg-[#00a884]/30"></div>
+              <p className="text-[9px] text-[#00a884] font-black uppercase tracking-widest">Team Heart Connect</p>
+              <div className="h-[1px] w-4 bg-[#00a884]/30"></div>
+            </div>
+          </div>
+
+          <button 
+            onClick={() => {
+              onClose();
+              localStorage.setItem('hc_welcome_dismissed', 'true');
+            }}
+            className="w-full py-4 bg-[#00a884] text-white rounded-2xl font-black uppercase text-xs tracking-[0.1em] shadow-[0_8px_20px_rgba(0,168,132,0.3)] hover:bg-[#008f6f] transition-all active:scale-[0.98]"
+          >
+            Start Exploring
+          </button>
+          
+          <p className="text-[8px] text-gray-400 text-center uppercase tracking-widest">This is a no-reply system message</p>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 // --- Promotional Components ---
 const SingleLadiesAds = ({ deferredPrompt, onInstall }: { deferredPrompt: any, onInstall: () => void }) => {
   const [showInstall, setShowInstall] = useState(true);
