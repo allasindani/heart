@@ -4,7 +4,8 @@ import {
   initializeFirestore, 
   doc, 
   getDocFromServer, 
-  memoryLocalCache
+  persistentLocalCache,
+  persistentMultipleTabManager
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -15,9 +16,11 @@ if (!firebaseConfig.firestoreDatabaseId) {
   console.warn("Firestore Database ID is missing in configuration. Defaulting to (default).");
 }
 
-// Initialize Firestore with memory cache for stability in sandbox
+// Initialize Firestore with persistent cache for stability and offline support
 const db = initializeFirestore(app, {
-  localCache: memoryLocalCache(),
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  }),
   experimentalForceLongPolling: true, // Improved reliability in restricted networks
 }, firebaseConfig.firestoreDatabaseId || '(default)');
 

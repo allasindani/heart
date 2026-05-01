@@ -109,8 +109,74 @@ import imageCompression from 'browser-image-compression';
 import { getAI } from './lib/gemini';
 import { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment, AppSettings, PaymentProof, Job, JobApplication, Call } from './types';
 
+// --- Constants ---
+const SUPPORT_UID = 'heart-connect-support';
+const SUPPORT_NAME = 'Heart Connect';
+const SUPPORT_PHOTO = 'https://ui-avatars.com/api/?name=Heart+Connect&background=00a884&color=fff';
+
 // --- Error Handling ---
 enum OperationType { CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LIST = 'list', GET = 'get', WRITE = 'write' }
+
+const sendWelcomeMessage = async (targetUserId: string, targetUserName: string) => {
+  try {
+    // 1. Ensure Support User exists
+    await setDoc(doc(db, 'users', SUPPORT_UID), {
+      uid: SUPPORT_UID,
+      displayName: SUPPORT_NAME,
+      photoURL: SUPPORT_PHOTO,
+      isOnline: true,
+      lastSeen: serverTimestamp(),
+      role: 'admin',
+      status: 'Official Heart Connect Support',
+      gender: 'other',
+      category: 'System'
+    }, { merge: true });
+
+    // 2. Check if chat already exists
+    const q = query(
+      collection(db, 'chats'),
+      where('participants', 'array-contains', targetUserId)
+    );
+    const snap = await getDocs(q);
+    let chatId = '';
+    
+    // Find chat with support
+    const existingChat = snap.docs.find(d => {
+      const data = d.data();
+      return data.participants && data.participants.includes(SUPPORT_UID);
+    });
+    
+    if (existingChat) {
+      chatId = existingChat.id;
+      return; // Already welcomed
+    } else {
+      const newChat = await addDoc(collection(db, 'chats'), {
+        participants: [SUPPORT_UID, targetUserId],
+        updatedAt: serverTimestamp(),
+        lastMessage: {
+          text: `Welcome to Heart Connect, ${targetUserName}!`,
+          senderId: SUPPORT_UID,
+          timestamp: serverTimestamp(),
+          type: 'text',
+          status: 'sent'
+        }
+      });
+      chatId = newChat.id;
+
+      // 3. Send the message
+      await addDoc(collection(db, `chats/${chatId}/messages`), {
+        senderId: SUPPORT_UID,
+        text: `Welcome to Heart Connect, ${targetUserName}! ❤️\n\nI am your official support assistant. Feel free to ask me anything about using the app, finding matches, or reporting issues.\n\nHappy connecting!`,
+        timestamp: serverTimestamp(),
+        type: 'text',
+        status: 'sent'
+      });
+    }
+
+  } catch (err) {
+    console.warn("Failed to send welcome message:", err);
+  }
+};
 let firestoreErrorHandler: ((error: string) => void) | null = null;
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
@@ -709,6 +775,7 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
           referralCount: 0,
         };
         await setDoc(userDocRef, userData);
+        await sendWelcomeMessage(userData.uid, userData.displayName);
 
         if (referredBy) {
           // Increment referral count for the referrer
@@ -1568,25 +1635,25 @@ export default function App() {
   }, [user?.uid]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setLoading(true); // Ensure loading is shown during state change
-      try {
-        if (firebaseUser) {
-          let userData: User | null = null;
-          const userDocRef = doc(db, 'users', firebaseUser.uid);
-          const { getDoc } = await import('firebase/firestore');
+    let unsubUserDoc: (() => void) | null = null;
 
+    const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Clean up previous user listener if any
+      if (unsubUserDoc) {
+        unsubUserDoc();
+        unsubUserDoc = null;
+      }
+
+      if (firebaseUser) {
+        setLoading(true);
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+
+        unsubUserDoc = onSnapshot(userDocRef, async (snapshot) => {
           try {
-            // Try to get from server first, but allow falling back to local cache or continuing
-            const userSnap = await getDoc(userDocRef).catch(err => {
-              console.warn("Firestore fetch failed, checking cache...", err);
-              return null; 
-            });
-            
-            if (userSnap && userSnap.exists()) {
-              const data = userSnap.data();
-              userData = { 
-                uid: firebaseUser.uid, 
+            if (snapshot.exists()) {
+              const data = snapshot.data();
+              const userData = {
+                uid: firebaseUser.uid,
                 ...data,
                 displayName: capitalizeName(data.displayName || '')
               } as User;
@@ -1596,12 +1663,30 @@ export default function App() {
                 setTimeout(() => setShowUpgrade(true), 1500);
               }
 
-              // Update online status (don't await strictly)
+              // Force generate affiliate code if missing
+              if (!userData.affiliateCode) {
+                const code = generateAffiliateCode(userData.uid);
+                await updateDoc(userDocRef, { affiliateCode: code }).catch(e => console.warn("Failed to set affiliate code:", e));
+                userData.affiliateCode = code;
+              }
+
+              // Update online status (surgical update)
               updateDoc(userDocRef, { isOnline: true, lastSeen: serverTimestamp() }).catch(e => console.warn("Status update failed:", e));
               userData.isOnline = true;
+
+              setUser(userData);
+              
+              // Set dating filters based on user's looking-for preferences
+              if (userData.datingProfile?.gender) {
+                setDatingFilters(prev => ({
+                  ...prev,
+                  gender: userData.datingProfile?.gender === 'male' ? 'female' : 'male'
+                }));
+              }
             } else {
+              // Create default user profile if it doesn't exist
               const rawName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous';
-              userData = {
+              const newUserData = {
                 uid: firebaseUser.uid,
                 displayName: capitalizeName(rawName),
                 photoURL: firebaseUser.photoURL || null,
@@ -1611,58 +1696,50 @@ export default function App() {
                 isOnline: true,
                 lastSeen: serverTimestamp(),
                 status: "Hey there! I am using Heart Connect.",
+                affiliateCode: generateAffiliateCode(firebaseUser.uid),
               };
-              try { 
-                await setDoc(userDocRef, userData, { merge: true }); 
-              } catch (e) { 
-                handleFirestoreError(e, OperationType.WRITE, `users/${firebaseUser.uid}`); 
-              }
+              await setDoc(userDocRef, newUserData, { merge: true }).catch(err => {
+                handleFirestoreError(err, OperationType.WRITE, `users/${firebaseUser.uid}`);
+              });
+              await sendWelcomeMessage(firebaseUser.uid, newUserData.displayName);
             }
-
-            // Sync with OneSignal
-            try {
-              if (Capacitor.isNativePlatform()) {
-                OneSignal.login(firebaseUser.uid);
-              } else {
-                (window as any).OneSignalDeferred?.push(async (OS: any) => {
-                  await OS.login(firebaseUser.uid);
-                });
-              }
-            } catch (e) {
-              console.warn("OneSignal login sync failed:", e);
-            }
-
-            // Force generate affiliate code if missing
-            if (!userData.affiliateCode) {
-              const code = generateAffiliateCode(userData.uid);
-              await updateDoc(userDocRef, { affiliateCode: code }).catch(e => console.warn("Failed to set affiliate code:", e));
-              userData.affiliateCode = code;
-            }
-
-            setUser(userData);
-          } catch (innerErr) {
-            console.error("Error in auth data fetching:", innerErr);
-            // Fallback: use basic auth info if firestore is totally dead
-            setUser({
-              uid: firebaseUser.uid,
-              displayName: firebaseUser.displayName || 'User',
-              photoURL: firebaseUser.photoURL,
-              role: firebaseUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user'
-            } as User);
+          } catch (err) {
+            console.error("Error in user snapshot listener:", err);
+          } finally {
+            setLoading(false);
           }
-        } else {
-          setUser(null);
+        }, (error) => {
+          console.error("Firestore user listener error:", error);
+          // If we have an existing user state, don't clear it immediately to avoid 'reverts'
+          setLoading(false);
+        });
+
+        // Sync with OneSignal
+        try {
+          if (Capacitor.isNativePlatform()) {
+            OneSignal.login(firebaseUser.uid);
+          } else {
+            (window as any).OneSignalDeferred?.push(async (OS: any) => {
+              await OS.login(firebaseUser.uid);
+            });
+          }
+        } catch (e) {
+          console.warn("OneSignal login sync failed:", e);
         }
-      } catch (err) {
-        console.error("Critical error in onAuthStateChanged:", err);
-      } finally {
+
+      } else {
+        setUser(null);
         setLoading(false);
       }
     }, (error) => {
-      console.error("Auth state error:", error);
+      console.error("Auth state change error:", error);
       setLoading(false);
     });
-    return unsubscribe;
+
+    return () => {
+      unsubAuth();
+      if (unsubUserDoc) unsubUserDoc();
+    };
   }, []);
 
   useEffect(() => {
