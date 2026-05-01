@@ -68,6 +68,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AdMob, BannerAdSize, BannerAdPosition, BannerAdPluginEvents, AdMobBannerSize } from '@capacitor-community/admob';
+
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
@@ -2442,7 +2443,13 @@ export default function App() {
       </AnimatePresence>
 
       <Toaster position="top-center" richColors />
-      {user && <AdMobBanner />}
+      {/* AdMob Banner - Fixed at bottom */}
+      {user && (
+        <React.Suspense fallback={null}>
+          <AdMobBanner />
+        </React.Suspense>
+      )}
+
       {uploading && (
         <div className="fixed top-0 left-0 right-0 z-[1000] h-1 bg-gray-100 dark:bg-gray-800">
           <motion.div 
@@ -8411,11 +8418,11 @@ const AdMobBanner = () => {
 
     const showBanner = async () => {
       const options = {
-        adId: 'ca-app-pub-3940256099942544/6300978111', // Test Banner ID
+        adId: 'ca-app-pub-8271489359179610/3349353147', // User's Banner ID
         adSize: BannerAdSize.BANNER,
         position: BannerAdPosition.BOTTOM_CENTER,
         margin: 0,
-        isTesting: true,
+        isTesting: false,
       };
 
       try {

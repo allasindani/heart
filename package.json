@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "NODE_OPTIONS=--max-old-space-size=1024 tsx server.ts",
     "start": "NODE_ENV=production NODE_OPTIONS=--max-old-space-size=1024 tsx server.ts",
-    "build": "vite build",
+    "build": "NODE_OPTIONS=--max-old-space-size=1024 vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
