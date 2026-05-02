@@ -101,7 +101,8 @@ import {
   getDocs,
   getDoc,
   writeBatch,
-  deleteField
+  deleteField,
+  increment
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { cn, formatWhatsAppTime, formatLastSeen } from './lib/utils';
@@ -712,12 +713,15 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
   const handleGoogleLogin = async () => {
     setIsAuthLoading(true);
     setError('');
+    console.log("Auth: Google login initiated");
     try {
       await signInWithPopup(auth, new GoogleAuthProvider());
     } catch (err: any) {
       console.error("Google login error:", err);
       if (err.code === 'auth/popup-blocked') {
-        setError('Google login popup was blocked. Please enable popups or try opening the site in a new tab.');
+        setError('Login popup blocked. Please allow popups for this site.');
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        // Just reset, user closed it
       } else {
         setError(err.message || 'Failed to sign in with Google');
       }
@@ -730,14 +734,17 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
     e.preventDefault();
     setError('');
     setIsAuthLoading(true);
+    console.log("Auth: Email auth initiated", isLogin ? "Login" : "Signup");
     
     if (!isLogin && (!firstName.trim() || !lastName.trim())) {
       setError('Please provide Name and Surname');
+      setIsAuthLoading(false);
       return;
     }
 
     if (!isLogin && !acceptedTerms) {
       setError('You must accept the terms and conditions to sign up.');
+      setIsAuthLoading(false);
       return;
     }
 
@@ -779,7 +786,6 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
           if (!snap.empty) {
             const referrer = snap.docs[0];
             const bonusPoints = settings?.pointsPerInvitation || 50;
-            const { increment } = await import('firebase/firestore');
             await updateDoc(referrer.ref, { 
               referralCount: increment(1),
               points: increment(bonusPoints)
@@ -1578,37 +1584,25 @@ export default function App() {
     
     const initTimer = setTimeout(async () => {
       if (loadingRef.current) {
-        console.warn("App: Safety timeout (15s) reached - attempting emergency load");
+        console.warn("App: Safety timeout (5s) reached.");
         
         if (auth.currentUser && !userRef.current) {
-          console.log("App: Auth user exists but no profile. Fetching manually...");
-          try {
-            const { getDoc, doc } = await import('firebase/firestore');
-            const snap = await getDoc(doc(db, 'users', auth.currentUser.uid)).catch(() => null);
-            if (snap && snap.exists()) {
-              const data = snap.data();
-              setUser({
-                uid: auth.currentUser.uid,
-                ...data,
-                displayName: capitalizeName(data.displayName || auth.currentUser.displayName || 'User')
-              } as User);
-            } else {
-              // Creating a temporary minimal user object to get past splash
-              setUser({
-                uid: auth.currentUser.uid,
-                displayName: capitalizeName(auth.currentUser.displayName || 'User'),
-                role: 'user',
-                category: 'General'
-              } as any);
-            }
-          } catch (e) {
-            console.error("Emergency profile fetch failed:", e);
-          }
+          console.log("App: Profile still missing after 5s. Forcing entry with default profile.");
+          const fallbackUser = {
+            uid: auth.currentUser.uid,
+            displayName: capitalizeName(auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'User'),
+            photoURL: auth.currentUser.photoURL,
+            role: auth.currentUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
+            category: 'General',
+            points: 0,
+            isOnline: true
+          } as any;
+          setUser(fallbackUser);
         }
         
         setLoading(false);
       }
-    }, 15000);
+    }, 5000); // reduced further for snappiness
     return () => clearTimeout(initTimer);
   }, []);
 
@@ -1648,7 +1642,6 @@ export default function App() {
     if (!user || !user.isVerified) return;
     try {
       const userRef = doc(db, 'users', user.uid);
-      const { increment } = await import('firebase/firestore');
       await updateDoc(userRef, { points: increment(amount) });
       setUser({ ...user, points: (user.points || 0) + amount });
     } catch (e) {
@@ -2392,7 +2385,7 @@ export default function App() {
     processDelivered();
   }, [chats, user?.uid]);
 
-  if (loading) return (
+  if (loading || (auth.currentUser && !user)) return (
     <SplashScreen 
       siteName={appSettings?.siteName} 
       logoUrl={appSettings?.logoUrl} 
