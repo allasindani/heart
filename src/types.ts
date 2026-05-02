@@ -231,3 +231,18 @@ export interface Call {
   channelId: string;
   timestamp: any;
 }
+
+export interface SupportTicket {
+  id?: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  subject: string;
+  description: string;
+  urgency: 'low' | 'medium' | 'high' | 'urgent';
+  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  createdAt: any;
+  updatedAt: any;
+  assignedTo?: string;
+  adminComment?: string;
+}

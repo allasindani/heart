@@ -131,6 +131,25 @@
         "timestamp": { "type": "string", "format": "date-time" },
         "coverLetter": { "type": "string" }
       }
+    },
+    "SupportTicket": {
+      "title": "Support Ticket",
+      "description": "A help & support request from a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "subject": { "type": "string" },
+        "description": { "type": "string" },
+        "urgency": { "type": "string", "enum": ["low", "medium", "high", "urgent"] },
+        "status": { "type": "string", "enum": ["open", "in_progress", "resolved", "closed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "assignedTo": { "type": "string" },
+        "adminComment": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -141,6 +160,7 @@
     "/posts/{postId}": { "schema": "Post", "description": "Wall/Feed posts" },
     "/matches/{matchId}": { "schema": "Match", "description": "Dating matches" },
     "/jobs/{jobId}": { "schema": "Job", "description": "Job postings" },
-    "/applications/{applicationId}": { "schema": "Application", "description": "Job applications" }
+    "/applications/{applicationId}": { "schema": "Application", "description": "Job applications" },
+    "/support_tickets/{ticketId}": { "schema": "SupportTicket", "description": "Support requests" }
   }
 }

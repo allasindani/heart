@@ -109,7 +109,7 @@ import { cn, formatWhatsAppTime, formatLastSeen } from './lib/utils';
 import { COUNTRIES } from './constants';
 import imageCompression from 'browser-image-compression';
 import { getAI } from './lib/gemini';
-import { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment, AppSettings, PaymentProof, Job, JobApplication, Call } from './types';
+import { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment, AppSettings, PaymentProof, Job, JobApplication, Call, SupportTicket } from './types';
 
 // --- Constants ---
 const SUPPORT_UID = 'heart-connect-support';
@@ -1093,6 +1093,8 @@ export default function App() {
   const [backPressCount, setBackPressCount] = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showAffiliate, setShowAffiliate] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const exitTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -1519,6 +1521,163 @@ export default function App() {
       setDeferredPrompt(null);
       setIsInstalled(true);
     }
+  };
+
+  // --- Components ---
+  const SupportTicketModal = ({ isOpen, onClose, user }: { isOpen: boolean, onClose: () => void, user: User }) => {
+    const [subject, setSubject] = useState('');
+    const [description, setDescription] = useState('');
+    const [urgency, setUrgency] = useState<SupportTicket['urgency']>('medium');
+    const [submitting, setSubmitting] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!subject || !description) return;
+      setSubmitting(true);
+      try {
+        const ticketData: SupportTicket = {
+          userId: user.uid,
+          userName: user.displayName,
+          userEmail: (user as any).email || 'No email',
+          subject,
+          description,
+          urgency,
+          status: 'open',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+        const docRef = await addDoc(collection(db, 'support_tickets'), ticketData);
+        
+        // Also create/find chat
+        const adminQuery = query(collection(db, 'users'), where('email', '==', 'alasindani2020@gmail.com'), limit(1));
+        const adminSnap = await getDocs(adminQuery);
+        let targetSupportUid = SUPPORT_UID;
+        if (!adminSnap.empty) {
+          targetSupportUid = adminSnap.docs[0].id;
+        }
+
+        const qChat = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
+        const chatSnap = await getDocs(qChat);
+        const existingChat = chatSnap.docs.find(d => (d.data() as any).participants.includes(targetSupportUid));
+
+        if (!existingChat) {
+          await addDoc(collection(db, 'chats'), {
+            participants: [user.uid, targetSupportUid].sort(),
+            type: 'private',
+            updatedAt: serverTimestamp(),
+            lastMessage: {
+              text: `[NEW TICKET: ${subject}] - ${description}`,
+              senderId: user.uid,
+              timestamp: serverTimestamp(),
+              status: 'sent'
+            }
+          });
+        } else {
+           await addDoc(collection(db, `chats/${existingChat.id}/messages`), {
+            text: `[NEW TICKET: ${subject}]\nUrgency: ${urgency.toUpperCase()}\n\n${description}`,
+            senderId: user.uid,
+            timestamp: serverTimestamp(),
+            type: 'text',
+            status: 'sent'
+          });
+          await updateDoc(doc(db, 'chats', existingChat.id), {
+            updatedAt: serverTimestamp(),
+            lastMessage: {
+              text: `[NEW TICKET: ${subject}]`,
+              senderId: user.uid,
+              timestamp: serverTimestamp(),
+              status: 'sent'
+            }
+          });
+        }
+
+        toast.success("Support Ticket Submitted!", { description: "An admin will get back to you shortly." });
+        onClose();
+      } catch (err) {
+        console.error("Error submitting ticket:", err);
+        toast.error("Failed to submit ticket.");
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white dark:bg-[#111b21] w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+        >
+          <div className="p-6 bg-[#00a884] text-white flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <LifeBuoy className="w-6 h-6" />
+              <h2 className="text-xl font-bold">Help & Support</h2>
+            </div>
+            <button onClick={onClose}><X className="w-6 h-6" /></button>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
+            <div className="space-y-1">
+              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Subject</label>
+              <input 
+                value={subject}
+                onChange={e => setSubject(e.target.value)}
+                placeholder="Brief summary of the issue"
+                className="w-full p-3 bg-gray-50 dark:bg-[#202c33] border-none rounded-xl focus:ring-2 focus:ring-[#00a884] transition-all dark:text-white"
+                required
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Urgency</label>
+              <div className="grid grid-cols-4 gap-2">
+                {(['low', 'medium', 'high', 'urgent'] as const).map(u => (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => setUrgency(u)}
+                    className={cn(
+                      "py-2 rounded-lg text-xs font-bold uppercase transition-all",
+                      urgency === u 
+                        ? (u === 'urgent' ? 'bg-red-500 text-white shadow-md' : 'bg-[#00a884] text-white shadow-md')
+                        : 'bg-gray-100 dark:bg-[#202c33] text-gray-500 dark:text-gray-400'
+                    )}
+                  >
+                    {u}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Description</label>
+              <textarea 
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                placeholder="Please provide as much detail as possible..."
+                rows={5}
+                className="w-full p-3 bg-gray-50 dark:bg-[#202c33] border-none rounded-xl focus:ring-2 focus:ring-[#00a884] transition-all dark:text-white resize-none"
+                required
+              />
+            </div>
+
+            <button 
+              disabled={submitting}
+              className="w-full py-4 bg-[#00a884] text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#008f6f] active:scale-95 transition-all shadow-lg disabled:opacity-50"
+            >
+              {submitting ? <CircleDashed className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              Submit Support Ticket
+            </button>
+
+            <p className="text-[10px] text-center text-gray-400">
+              Your ticket will be reviewed by our team. You can check the progress in your messages.
+            </p>
+          </form>
+        </motion.div>
+      </div>
+    );
   };
 
   const handleDismissWelcome = () => {
@@ -2014,99 +2173,8 @@ export default function App() {
 
   const handleContactSupport = async () => {
     if (!user) return;
-    try {
-      // 1. Find the actual admin user (alasindani2020@gmail.com)
-      const adminPath = 'users';
-      const adminQuery = query(collection(db, adminPath), where('email', '==', 'alasindani2020@gmail.com'), limit(1));
-      let adminSnap;
-      try {
-        adminSnap = await getDocs(adminQuery);
-      } catch (e) {
-        handleFirestoreError(e, OperationType.GET, adminPath);
-        return;
-      }
-      
-      let targetSupportUid = SUPPORT_UID;
-      let targetSupportName = SUPPORT_NAME;
-      let targetSupportPhoto = SUPPORT_PHOTO;
-
-      if (!adminSnap.empty) {
-        const adminDoc = adminSnap.docs[0].data() as User;
-        targetSupportUid = adminSnap.docs[0].id;
-        targetSupportName = adminDoc.displayName || SUPPORT_NAME;
-        targetSupportPhoto = adminDoc.photoURL || SUPPORT_PHOTO;
-      } else {
-        // Fallback: Ensure virtual Support User exists (only if current user is admin)
-        const isCurrentUserAdmin = user.role === 'admin' || user.email === 'alasindani2020@gmail.com';
-        const virtualSupportPath = `users/${SUPPORT_UID}`;
-        let supportDoc;
-        try {
-          supportDoc = await getDoc(doc(db, 'users', SUPPORT_UID));
-        } catch (e) {
-          handleFirestoreError(e, OperationType.GET, virtualSupportPath);
-          return;
-        }
-
-        if (!supportDoc.exists() && isCurrentUserAdmin) {
-          try {
-            await setDoc(doc(db, 'users', SUPPORT_UID), {
-              uid: SUPPORT_UID,
-              displayName: SUPPORT_NAME,
-              photoURL: SUPPORT_PHOTO,
-              isOnline: true,
-              role: 'admin',
-              category: 'System',
-              status: 'Heart Connect Support',
-              points: 0
-            });
-          } catch (e) {
-            handleFirestoreError(e, OperationType.WRITE, virtualSupportPath);
-            return;
-          }
-        }
-      }
-
-      // 2. Find or create chat between user and support (admin)
-      const chatsPath = 'chats';
-      const q = query(collection(db, chatsPath), where('participants', 'array-contains', user.uid));
-      let snap;
-      try {
-        snap = await getDocs(q);
-      } catch (e) {
-        handleFirestoreError(e, OperationType.GET, chatsPath);
-        return;
-      }
-
-      const existing = snap.docs.find(d => (d.data() as any).participants.includes(targetSupportUid));
-      
-      if (existing) {
-        handleSelectChat({ id: existing.id, ...existing.data() } as Chat);
-      } else {
-        try {
-          const newChat = await addDoc(collection(db, 'chats'), {
-            participants: [user.uid, targetSupportUid].sort(),
-            type: 'private',
-            updatedAt: serverTimestamp(),
-            lastMessage: {
-              text: "Hello! How can we help you today?",
-              senderId: targetSupportUid,
-              timestamp: serverTimestamp(),
-              status: 'sent'
-            }
-          });
-          handleSelectChat({ id: newChat.id, participants: [user.uid, targetSupportUid].sort(), type: 'private' } as any);
-        } catch (e) {
-          handleFirestoreError(e, OperationType.WRITE, chatsPath);
-          return;
-        }
-      }
-      setShowMenu(false);
-      localStorage.setItem('hc_welcome_dismissed', 'true');
-      setShowWelcomeMessage(false);
-    } catch (e) {
-      console.error("Error contacting support:", e);
-      toast.error("Could not reach support. Please try again.");
-    }
+    setShowSupportModal(true);
+    setShowMenu(false);
   };
 
   const handleApplyJob = (job: Job) => {
@@ -2765,7 +2833,7 @@ export default function App() {
         </div>
       ) : showAdmin ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col h-screen overflow-hidden">
-          <AdminDashboard user={user} onBack={() => setShowAdmin(false)} appSettings={appSettings} />
+          <AdminDashboard user={user} onBack={() => setShowAdmin(false)} appSettings={appSettings} onSelectChat={handleSelectChat} />
         </div>
       ) : viewingUser ? (
         <div className="absolute inset-0 z-50 bg-[#f0f2f5] dark:bg-[#111b21] flex flex-col">
@@ -3295,6 +3363,14 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {user && (
+        <SupportTicketModal 
+          isOpen={showSupportModal} 
+          onClose={() => setShowSupportModal(false)} 
+          user={user} 
+        />
+      )}
     </div>
   );
 }
@@ -6762,7 +6838,7 @@ const AdminUserRow = ({ u, users, setUsers, setEditingUser, setUserCategory, tog
   );
 };
 
-const AdminDashboard = ({ user, onBack, appSettings }: any) => {
+const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
   const [users, setUsers] = useState<User[]>([]);
   const usersMap = useMemo(() => {
     const map: Record<string, User> = {};
@@ -6772,8 +6848,9 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
   const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, activeAds: 0, totalPoints: 0 });
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'featured' | 'ads' | 'config' | 'branding' | 'payments' | 'vacancies' | 'notifications'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'featured' | 'ads' | 'config' | 'branding' | 'payments' | 'vacancies' | 'notifications' | 'tickets'>('users');
   const [ads, setAds] = useState<Post[]>([]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [paymentProofs, setPaymentProofs] = useState<PaymentProof[]>([]);
@@ -6793,12 +6870,13 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [uSnap, pSnap, sSnap, paySnap, jSnap] = await Promise.all([
+        const [uSnap, pSnap, sSnap, paySnap, jSnap, tSnap] = await Promise.all([
           getDocs(collection(db, 'users')),
           getDocs(collection(db, 'posts')),
           getDocs(collection(db, 'settings')),
           getDocs(collection(db, 'payment_proofs')),
-          getDocs(collection(db, 'jobs'))
+          getDocs(collection(db, 'jobs')),
+          getDocs(collection(db, 'support_tickets'))
         ]);
 
         const uList = uSnap.docs
@@ -6813,6 +6891,7 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
         setUsers(uList);
         setAds(pList.filter(p => p.isAd));
         setJobs(jSnap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
+        setTickets(tSnap.docs.map(d => ({ id: d.id, ...d.data() } as SupportTicket)).sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)));
         if (!sSnap.empty) setSettings(sSnap.docs[0].data() as AppSettings);
         setPaymentProofs(paySnap.docs.map(d => ({ id: d.id, ...d.data() } as PaymentProof)));
 
@@ -7003,7 +7082,7 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
       </div>
       
       <div className="flex bg-white dark:bg-[#111b21] border-b border-gray-100 dark:border-gray-800 overflow-x-auto flex-shrink-0 no-scrollbar">
-        {['users', 'featured', 'ads', 'config', 'branding', 'payments', 'vacancies', 'notifications'].map((t) => (
+        {['users', 'featured', 'ads', 'config', 'branding', 'payments', 'vacancies', 'notifications', 'tickets'].map((t) => (
           <button 
             key={t}
             onClick={() => setActiveTab(t as any)}
@@ -7014,7 +7093,7 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
                 : "border-transparent text-gray-400 dark:text-[#8696a0]"
             )}
           >
-            {t === 'featured' ? '★ Featured' : t === 'vacancies' ? 'Jobs' : t === 'users' ? 'Admin List' : t}
+            {t === 'featured' ? '★ Featured' : t === 'vacancies' ? 'Jobs' : t === 'users' ? 'Admin List' : t === 'tickets' ? 'Support' : t}
           </button>
         ))}
       </div>
@@ -7411,6 +7490,133 @@ const AdminDashboard = ({ user, onBack, appSettings }: any) => {
                 Save Branding Changes
               </button>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'tickets' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+               <h3 className="font-bold text-gray-700 dark:text-[#e9edef] flex items-center gap-2">
+                <LifeBuoy className="w-5 h-5 text-[#00a884]" />
+                Support Ticket Management
+              </h3>
+              <div className="flex gap-2">
+                <span className="text-[10px] font-bold px-2 py-1 bg-green-50 text-green-600 rounded-full">{tickets.filter(t => t.status === 'open').length} Open</span>
+                <span className="text-[10px] font-bold px-2 py-1 bg-blue-50 text-blue-600 rounded-full">{tickets.filter(t => t.status === 'in_progress').length} Active</span>
+              </div>
+            </div>
+
+            {tickets.length === 0 ? (
+              <div className="bg-white dark:bg-[#111b21] p-8 rounded-2xl text-center text-gray-500">No support tickets found.</div>
+            ) : (
+              <div className="space-y-3">
+                {tickets.map(ticket => (
+                  <div key={ticket.id} className="bg-white dark:bg-[#111b21] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col gap-3">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center text-white font-bold",
+                          ticket.urgency === 'urgent' ? 'bg-red-500' : ticket.urgency === 'high' ? 'bg-orange-500' : 'bg-blue-500'
+                        )}>
+                          {ticket.userName.charAt(0)}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-sm dark:text-white">{ticket.subject}</h4>
+                          <p className="text-[10px] text-gray-400">By {ticket.userName} ({ticket.userEmail}) • {new Date(ticket.createdAt?.toMillis?.()).toLocaleString()}</p>
+                        </div>
+                      </div>
+                      <span className={cn(
+                        "text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-widest",
+                        ticket.status === 'open' ? 'bg-green-100 text-green-600' : 
+                        ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-600' : 
+                        'bg-gray-100 text-gray-600'
+                      )}>
+                        {ticket.status.replace('_', ' ')}
+                      </span>
+                    </div>
+
+                    <div className="bg-gray-50 dark:bg-[#202c33] p-3 rounded-xl text-sm text-gray-700 dark:text-gray-300">
+                      {ticket.description}
+                    </div>
+
+                    {ticket.adminComment && (
+                      <div className="bg-blue-50/50 dark:bg-blue-900/10 p-3 rounded-xl text-sm border border-blue-100/50 dark:border-blue-800/30">
+                        <div className="text-[10px] font-bold text-blue-500 uppercase mb-1">Admin Response</div>
+                        <p className="dark:text-gray-300 italic">"{ticket.adminComment}"</p>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2 pt-2">
+                       <select 
+                        value={ticket.status}
+                        onChange={async (e) => {
+                          const newStatus = e.target.value as any;
+                          await updateDoc(doc(db, 'support_tickets', ticket.id!), { status: newStatus, updatedAt: serverTimestamp() });
+                          setTickets(tickets.map(t => t.id === ticket.id ? { ...t, status: newStatus } : t));
+                          toast.success("Status updated to " + newStatus);
+                        }}
+                        className="bg-gray-50 dark:bg-[#202c33] text-[10px] font-bold uppercase p-2 rounded-lg border-none dark:text-white"
+                      >
+                        <option value="open">Open</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="closed">Closed</option>
+                      </select>
+
+                      <button 
+                        onClick={async () => {
+                          const comment = prompt("Enter your response:", ticket.adminComment || "");
+                          if (comment === null) return;
+                          await updateDoc(doc(db, 'support_tickets', ticket.id!), { adminComment: comment, updatedAt: serverTimestamp() });
+                          setTickets(tickets.map(t => t.id === ticket.id ? { ...t, adminComment: comment } : t));
+                          
+                          // Notify user
+                          await notifyUser({
+                            userId: ticket.userId,
+                            fromId: user.uid,
+                            fromName: 'Heart Connect Support',
+                            type: 'broadcast',
+                            text: `Support Response: ${comment}`,
+                            title: `Update on: ${ticket.subject}`
+                          });
+                          
+                          toast.success("Response added and user notified!");
+                        }}
+                        className="bg-[#00a884] text-white text-[10px] font-bold uppercase px-3 py-2 rounded-lg"
+                      >
+                        {ticket.adminComment ? "Edit Response" : "Respond"}
+                      </button>
+
+                      <button 
+                        onClick={async () => {
+                          // Open chat with user
+                          const participants = [user.uid, ticket.userId].sort();
+                          const q = query(collection(db, 'chats'), where('participants', '==', participants), limit(1));
+                          const snap = await getDocs(q);
+                          let chat: Chat;
+                          if (snap.empty) {
+                            const newChatRef = await addDoc(collection(db, 'chats'), {
+                              participants,
+                              updatedAt: serverTimestamp(),
+                              lastMessage: { text: "Regarding your ticket: " + ticket.subject, senderId: user.uid, timestamp: serverTimestamp(), status: 'sent' }
+                            });
+                            chat = { id: newChatRef.id, participants } as any;
+                          } else {
+                            chat = { id: snap.docs[0].id, ...snap.docs[0].data() } as Chat;
+                          }
+                          onBack(); // Close admin
+                          onSelectChat(chat);
+                        }}
+                        className="bg-blue-500 text-white text-[10px] font-bold uppercase px-3 py-2 rounded-lg flex items-center gap-2"
+                      >
+                        <MessageCircle size={12} />
+                        Chat with User
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

@@ -213,6 +213,29 @@ service cloud.firestore {
              data.status in ['open', 'closed'];
     }
 
+    match /support_tickets/{ticketId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidSupportTicket(request.resource.data);
+      allow update: if isAdmin() || (
+        isAuthenticated() && 
+        resource.data.userId == request.auth.uid && 
+        resource.data.status == 'open' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['description', 'updatedAt'])
+      );
+    }
+
+    function isValidSupportTicket(data) {
+      return data.userId == request.auth.uid &&
+             data.userName is string &&
+             data.subject is string && data.subject.size() > 0 && data.subject.size() < 200 &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 2000 &&
+             data.urgency in ['low', 'medium', 'high', 'urgent'] &&
+             data.status in ['open', 'in_progress', 'resolved', 'closed'] &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp &&
+             (!('adminComment' in data) || data.adminComment is string);
+    }
+
     function isValidApplication(data) {
       return data.keys().hasAll(['jobId', 'seekerId', 'employerId', 'status', 'timestamp', 'seekerName']) &&
              data.keys().size() <= 8 && // Allow for optional seekerPhoto and qualifications
