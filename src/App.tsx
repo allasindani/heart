@@ -513,18 +513,7 @@ const ProfileReminder = ({ user, onClick }: { user: User, onClick: () => void })
   );
 };
 
-const SplashScreen = ({ siteName, logoUrl, onForceLoad }: { siteName?: string, logoUrl?: string, onForceLoad?: () => void }) => {
-  const [showBypass, setShowBypass] = useState(false);
-  
-  useEffect(() => {
-    // Show bypass button after 3 seconds instead of 4
-    const timer = setTimeout(() => {
-      console.log("SplashScreen: showing bypass button");
-      setShowBypass(true);
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, []);
-
+const SplashScreen = ({ siteName, logoUrl }: { siteName?: string, logoUrl?: string }) => {
   return (
     <div className="fixed inset-0 z-[1000] bg-white dark:bg-[#111b21] flex flex-col items-center justify-center overflow-hidden">
       {/* Background decoration */}
@@ -582,28 +571,6 @@ const SplashScreen = ({ siteName, logoUrl, onForceLoad }: { siteName?: string, l
             End-to-End Encrypted
           </div>
         </div>
-        
-        {showBypass && onForceLoad && (
-          <div className="flex flex-col gap-2 w-full px-8">
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              onClick={onForceLoad}
-              className="w-full py-4 bg-[#00a884] shadow-xl shadow-[#00a884]/20 text-white text-sm font-black rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest"
-            >
-              Enter App Now
-            </motion.button>
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              onClick={() => window.location.reload()}
-              className="w-full py-3 bg-gray-100 dark:bg-[#202c33] text-gray-500 dark:text-[#8696a0] text-xs font-bold rounded-2xl hover:bg-gray-200 dark:hover:bg-[#2a3942] transition-all uppercase tracking-widest"
-            >
-              Refresh Site
-            </motion.button>
-          </div>
-        )}
       </motion.div>
 
       <div className="absolute bottom-12 flex flex-col items-center gap-1.5">
@@ -1607,16 +1574,12 @@ export default function App() {
     const initTimer = setTimeout(() => {
       setLoading(prev => {
         if (prev) {
-          if (auth.currentUser) {
-            console.log("App: Auth in progress, allowing more time...");
-            return true;
-          }
-          console.warn("App: 15s safety timeout reached - forcing load");
+          console.warn("App: Safety timeout reached - forcing load");
           return false;
         }
         return false;
       });
-    }, 15000);
+    }, 8000);
     return () => clearTimeout(initTimer);
   }, []);
 
@@ -2400,29 +2363,14 @@ export default function App() {
     processDelivered();
   }, [chats, user?.uid]);
 
-  if (loading) return (
+  if (loading || (!user && auth.currentUser)) return (
     <SplashScreen 
       siteName={appSettings?.siteName} 
       logoUrl={appSettings?.logoUrl} 
-      onForceLoad={() => {
-        console.warn("Emergency bypass triggered.");
-        setLoading(false);
-      }}
     />
   );
 
-  if (!user && !auth.currentUser) return <AuthScreen settings={appSettings} />;
-  
-  if (!user && auth.currentUser) return (
-    <SplashScreen 
-      siteName={appSettings?.siteName} 
-      logoUrl={appSettings?.logoUrl} 
-      onForceLoad={() => {
-        console.warn("Emergency bypass triggered (Auth).");
-        setLoading(false);
-      }}
-    />
-  );
+  if (!user) return <AuthScreen settings={appSettings} />;
 
   if (user.suspended) return (
     <div className="h-screen flex flex-col items-center justify-center bg-white dark:bg-[#0b141a] p-8 text-center">
