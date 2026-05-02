@@ -2086,20 +2086,16 @@ export default function App() {
   }, [backPressCount]);
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const docSnap = await getDocs(collection(db, 'settings'));
-        if (!docSnap.empty) {
-          setAppSettings(docSnap.docs[0].data() as AppSettings);
-        } else {
-          // Initialize settings if they don't exist
-          await addDoc(collection(db, 'settings'), appSettings);
-        }
-      } catch (e) {
-        handleFirestoreError(e, OperationType.GET, 'settings');
+    const q = collection(db, 'settings');
+    const unsub = onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        setAppSettings(snap.docs[0].data() as AppSettings);
+      } else {
+        // Initialize settings if they don't exist
+        addDoc(collection(db, 'settings'), appSettings).catch(e => console.error("Error creating default settings:", e));
       }
-    };
-    fetchSettings();
+    }, (e) => handleFirestoreError(e, OperationType.LIST, 'settings'));
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -2233,14 +2229,10 @@ export default function App() {
   }, [selectedChat]);
 
   useEffect(() => {
-    if (!user || activeTab !== 'status') return;
+    if (!user) return;
     const qPosts = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(50));
-    const qStatus = query(
-      collection(db, 'statuses'), 
-      where('expiresAt', '>', new Date()),
-      orderBy('expiresAt', 'asc'),
-      limit(100)
-    );
+    const qStatus = query(collection(db, 'statuses'), orderBy('createdAt', 'desc'), limit(50));
+    
     const unsubPosts = onSnapshot(qPosts, (snap) => setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Post))), (e) => handleFirestoreError(e, OperationType.LIST, 'posts'));
     const unsubStatus = onSnapshot(qStatus, (snap) => setStatuses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Status))), (e) => handleFirestoreError(e, OperationType.LIST, 'statuses'));
     
@@ -2249,7 +2241,7 @@ export default function App() {
     const unsubNotif = onSnapshot(qNotif, (snap) => setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification))), (e) => handleFirestoreError(e, OperationType.LIST, 'notifications'));
 
     return () => { unsubPosts(); unsubStatus(); unsubNotif(); };
-  }, [user, activeTab]);
+  }, [user]);
 
   // Browser Push Notifications
   useEffect(() => {
@@ -3705,6 +3697,27 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
   const [viewingStatus, setViewingStatus] = useState<any>(null);
+
+  const activeStatuses = useMemo(() => {
+    return (statuses || []).filter((s: any) => {
+      if (!s || !s.userId) return false;
+      let expiryValid = false;
+      try {
+        if (s.expiresAt?.toDate) {
+          expiryValid = s.expiresAt.toDate() > new Date();
+        } else if (s.expiresAt instanceof Date) {
+          expiryValid = s.expiresAt > new Date();
+        } else if (s.expiresAt && typeof s.expiresAt === 'object' && s.expiresAt.seconds) {
+          expiryValid = (s.expiresAt.seconds * 1000) > Date.now();
+        } else {
+          expiryValid = true; 
+        }
+      } catch (e) {
+        expiryValid = true;
+      }
+      return expiryValid;
+    });
+  }, [statuses]);
   const [statusText, setStatusText] = useState('');
   const [statusCaption, setStatusCaption] = useState('');
   const [statusDuration, setStatusDuration] = useState('24h');
@@ -4020,12 +4033,18 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
     }
   };
 
-  const handleViewStatus = async (status: any) => {
+  const handleViewStatus = (status: any) => {
     if (!status) return;
     setViewingStatus(status);
     if (status.userId !== user?.uid) {
-      const { increment } = await import('firebase/firestore');
-      await updateDoc(doc(db, 'statuses', status.id), { views: increment(1) });
+      (async () => {
+        try {
+          const { increment } = await import('firebase/firestore');
+          await updateDoc(doc(db, 'statuses', status.id), { views: increment(1) });
+        } catch (e) {
+          console.warn("View counter failed:", e);
+        }
+      })();
     }
   };
 
@@ -4050,77 +4069,35 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
             </Avatar>
             <span className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase tracking-tighter mt-1">My Status</span>
           </div>
-          {(() => {
-            const activeStatuses = (statuses || []).filter((s: any) => {
-              if (!s || !s.userId) return false;
-              let expiryValid = false;
-              try {
-                if (s.expiresAt?.toDate) {
-                  expiryValid = s.expiresAt.toDate() > new Date();
-                } else if (s.expiresAt instanceof Date) {
-                  expiryValid = s.expiresAt > new Date();
-                } else if (s.expiresAt && typeof s.expiresAt === 'object' && s.expiresAt.seconds) {
-                  expiryValid = (s.expiresAt.seconds * 1000) > Date.now();
-                } else {
-                  expiryValid = true; // Default to showing if no valid expiry found
-                }
-              } catch (e) {
-                console.warn("Expiry check error:", e);
-                expiryValid = true;
-              }
-              return expiryValid;
-            });
-            if (activeStatuses.length === 0) {
-              return (
-                <div className="flex flex-col items-center justify-center min-w-[100px] opacity-40">
-                  <div className="w-16 h-16 rounded-full border-2 border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center">
-                    <CircleDashed className="w-6 h-6" />
-                  </div>
-                  <span className="text-[10px] mt-1">No Updates</span>
-                </div>
-              );
-            }
-            return activeStatuses.map((s: any) => {
+          {activeStatuses.length === 0 ? (
+            <div className="flex flex-col items-center justify-center min-w-[100px] opacity-40">
+              <div className="w-16 h-16 rounded-full border-2 border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center">
+                <CircleDashed className="w-6 h-6" />
+              </div>
+              <span className="text-[10px] mt-1">No Updates</span>
+            </div>
+          ) : (
+            activeStatuses.map((s: any) => {
               const statusUser = usersMap[s.userId];
               return (
-                    <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer" onClick={() => handleViewStatus(s)}>
-                      <div className="p-0.5 rounded-full border-2 border-[#00a884] ring-2 ring-white dark:ring-[#111b21]">
-                        <Avatar src={statusUser?.photoURL} name={statusUser?.displayName} size={56} />
-                      </div>
-                      <span className="text-[10px] text-gray-600 dark:text-[#8696a0] truncate w-16 text-center flex items-center justify-center gap-0.5 font-bold">
-                        {statusUser?.uid === user?.uid ? 'Me' : (statusUser?.displayName?.split(' ')[0] || "User")}
-                        <TierBadge tier={statusUser?.category} size={10} />
-                        {statusUser?.isVerified && <VerifiedBadge size={10} />}
-                      </span>
-                    </div>
+                <div key={s.id} className="flex flex-col items-center gap-1 min-w-[70px] cursor-pointer group" onClick={() => handleViewStatus(s)}>
+                  <div className="p-0.5 rounded-full border-2 border-[#00a884] ring-2 ring-white dark:ring-[#111b21] group-active:scale-95 transition-transform">
+                    <Avatar src={statusUser?.photoURL} name={statusUser?.displayName} size={56} />
+                  </div>
+                  <span className="text-[10px] text-gray-600 dark:text-[#8696a0] truncate w-16 text-center flex items-center justify-center gap-0.5 font-bold">
+                    {statusUser?.uid === user?.uid ? 'Me' : (statusUser?.displayName?.split(' ')[0] || "User")}
+                    <TierBadge tier={statusUser?.category} size={10} />
+                    {statusUser?.isVerified && <VerifiedBadge size={10} />}
+                  </span>
+                </div>
               );
-            });
-          })()}
+            })
+          )}
         </div>
       </div>
 
-      {/* Status Viewer Modal */}
       <AnimatePresence>
         {viewingStatus && (() => {
-          const activeStatuses = (statuses || []).filter((s: any) => {
-            if (!s || !s.userId) return false;
-            let expiryValid = false;
-            try {
-              if (s.expiresAt?.toDate) {
-                expiryValid = s.expiresAt.toDate() > new Date();
-              } else if (s.expiresAt instanceof Date) {
-                expiryValid = s.expiresAt > new Date();
-              } else if (s.expiresAt && typeof s.expiresAt === 'object' && s.expiresAt.seconds) {
-                expiryValid = (s.expiresAt.seconds * 1000) > Date.now();
-              } else {
-                expiryValid = true; // Default to showing if no valid expiry found
-              }
-            } catch (e) {
-              console.warn("Expiry check error in modal:", e);
-              expiryValid = true;
-            }
-            return expiryValid;
-          });
           const currentIndex = activeStatuses.findIndex((s: any) => s.id === viewingStatus.id);
           const statusUser = usersMap[viewingStatus.userId];
 
@@ -4133,13 +4110,28 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
             }
           };
 
+          if (currentIndex === -1) {
+             // Fallback if status was removed but modal still open
+             return (
+               <motion.div 
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 exit={{ opacity: 0 }}
+                 className="fixed inset-0 z-[200] bg-black flex flex-col items-center justify-center p-6 text-white"
+               >
+                 <button onClick={() => setViewingStatus(null)} className="absolute top-4 left-4 p-2"><X className="w-6 h-6" /></button>
+                 <p className="text-center opacity-70">This status is no longer available.</p>
+               </motion.div>
+             );
+          }
+
           return (
             <motion.div 
               key="status-viewer"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[200] bg-black flex flex-col"
+              className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col"
             >
               <div className="absolute top-0 left-0 right-0 p-4 z-10 bg-gradient-to-b from-black/80 to-transparent">
                 <div className="flex gap-1 mb-4">
@@ -4152,16 +4144,16 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
                         onAnimationComplete={() => {
                           if (i === currentIndex) navigateStatus('next');
                         }}
-                        className="h-full bg-white"
+                        className="h-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.5)]"
                       />
                     </div>
                   ))}
                 </div>
                 <div className="flex items-center gap-3">
-                  <button onClick={() => setViewingStatus(null)} className="p-1"><ChevronLeft className="w-6 h-6 text-white" /></button>
+                  <button onClick={() => setViewingStatus(null)} className="p-1 hover:bg-white/10 rounded-full transition-colors"><ChevronLeft className="w-6 h-6 text-white" /></button>
                   <img 
                     src={statusUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStatus.userId}`} 
-                    className="w-10 h-10 rounded-full border border-white/20" 
+                    className="w-10 h-10 rounded-full border border-white/20 shadow-lg object-cover" 
                     alt="User" 
                     referrerPolicy="no-referrer" 
                     onError={handleImageError}
@@ -4170,9 +4162,19 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
                     <h4 className="text-white font-bold text-sm flex items-center gap-1">
                       {statusUser?.displayName || "User"}
                       {statusUser?.isVerified && <VerifiedBadge size={14} />}
+                      <TierBadge tier={statusUser?.category} size={12} />
                     </h4>
-                    <p className="text-white/60 text-[10px]">{viewingStatus.createdAt?.toDate ? formatWhatsAppTime(viewingStatus.createdAt.toDate()) : ''}</p>
+                    <p className="text-white/60 text-[10px] uppercase tracking-widest font-black">
+                      {viewingStatus.createdAt?.toDate 
+                        ? formatWhatsAppTime(viewingStatus.createdAt.toDate()) 
+                        : viewingStatus.createdAt instanceof Date 
+                          ? formatWhatsAppTime(viewingStatus.createdAt)
+                          : viewingStatus.createdAt?.seconds
+                            ? formatWhatsAppTime(new Date(viewingStatus.createdAt.seconds * 1000))
+                            : 'Just now'}
+                    </p>
                   </div>
+                  <button onClick={() => setViewingStatus(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X className="w-6 h-6 text-white/50" /></button>
                 </div>
               </div>
 
@@ -4187,11 +4189,28 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
                 className="flex-1 flex flex-col items-center justify-center p-4 relative"
               >
                 {viewingStatus.type === 'text' ? (
-                  <div className="text-white text-2xl font-bold text-center px-6">{viewingStatus.content}</div>
+                  <div className="text-white text-3xl font-black text-center px-8 leading-tight max-w-full break-words [text-shadow:0_4px_12px_rgba(0,0,0,0.3)]">{viewingStatus.content}</div>
                 ) : viewingStatus.type === 'image' ? (
-                  <img src={viewingStatus.content || undefined} className="max-w-full max-h-full object-contain rounded-xl" alt="Status" referrerPolicy="no-referrer" />
+                  <div className="relative group">
+                    <img 
+                      src={viewingStatus.content || undefined} 
+                      className="max-w-full max-h-[80vh] object-contain rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/10" 
+                      alt="Status" 
+                      referrerPolicy="no-referrer" 
+                      loading="eager"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x600?text=Image+Load+Error';
+                      }}
+                    />
+                  </div>
                 ) : (
-                  <video src={viewingStatus.content || undefined} className="max-w-full max-h-full object-contain rounded-xl" autoPlay controls />
+                  <video 
+                    src={viewingStatus.content || undefined} 
+                    className="max-w-full max-h-[80vh] object-contain rounded-3xl shadow-2xl" 
+                    autoPlay 
+                    controls 
+                    playsInline
+                  />
                 )}
 
                 {viewingStatus.caption && (
