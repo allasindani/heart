@@ -135,12 +135,16 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "alasindani2020@gmail.com" && request.auth.token.email_verified == true));
+        (
+         (request.auth.token.email == "alasindani2020@gmail.com") ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+        );
     }
 
     function isParticipant(chatId) {
-      return isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/chats/$(chatId)) &&
+             request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
     }
 
     function isValidUser(data) {
@@ -151,6 +155,7 @@ service cloud.firestore {
              data.role in ['user', 'admin'] &&
              data.category in ['General', 'Bronze', 'Silver', 'Gold', 'Platinum'] &&
              data.points is number &&
+             (!('email' in data) || data.email is string) &&
              (!('photoURL' in data) || data.photoURL == null || data.photoURL is string) &&
              (!('firstName' in data) || data.firstName is string) &&
              (!('lastName' in data) || data.lastName is string) &&

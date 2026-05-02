@@ -113,8 +113,8 @@ import { User, Chat, Message, Post, Status, Notification as AppNotification, Pos
 
 // --- Constants ---
 const SUPPORT_UID = 'heart-connect-support';
-const SUPPORT_NAME = 'Heart Connect';
-const SUPPORT_PHOTO = 'https://ui-avatars.com/api/?name=Heart+Connect&background=00a884&color=fff';
+const SUPPORT_NAME = 'Admin Support (Mugebe)';
+const SUPPORT_PHOTO = 'https://ui-avatars.com/api/?name=Admin+Support&background=00a884&color=fff';
 
 // --- Error Handling ---
 enum OperationType { CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LIST = 'list', GET = 'get', WRITE = 'write' }
@@ -131,8 +131,9 @@ const sendWelcomeMessage = async (targetUserId: string, targetUserName: string) 
       role: 'admin',
       status: 'Official Heart Connect Support',
       gender: 'other',
-      category: 'System'
-    }, { merge: true });
+      category: 'System',
+      points: 0
+    }, { merge: true }).catch(e => console.warn("Failed to create/update support user:", e));
 
     // 2. Check if chat already exists
     const q = query(
@@ -763,6 +764,7 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
         const capLast = capitalizeName(lastName);
         const userData = {
           uid: userCredential.user.uid,
+          email: userCredential.user.email,
           displayName: `${capFirst} ${capLast}`,
           firstName: capFirst,
           lastName: capLast,
@@ -1540,8 +1542,8 @@ export default function App() {
     adPricePerDay: 2,
     minAdDuration: 3,
     paymentMethods: [
-      { type: 'Eco Cash', details: '0771234567' },
-      { type: 'Inbucks', details: '0771234567' }
+      { type: 'Eco Cash', details: '0771490167 - Name Mugebe' },
+      { type: 'Inbucks', details: '0771490167 - Name Mugebe' }
     ]
   });
   const [darkMode, setDarkMode] = useState(() => {
@@ -1763,6 +1765,7 @@ export default function App() {
               const rawName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous';
               const newUserData = {
                 uid: firebaseUser.uid,
+                email: firebaseUser.email,
                 displayName: capitalizeName(rawName),
                 photoURL: firebaseUser.photoURL || null,
                 role: firebaseUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
@@ -2012,39 +2015,90 @@ export default function App() {
   const handleContactSupport = async () => {
     if (!user) return;
     try {
-      // 1. Ensure Support User exists (minimal check)
-      const supportDoc = await getDoc(doc(db, 'users', SUPPORT_UID));
-      if (!supportDoc.exists()) {
-        await setDoc(doc(db, 'users', SUPPORT_UID), {
-          uid: SUPPORT_UID,
-          displayName: SUPPORT_NAME,
-          photoURL: SUPPORT_PHOTO,
-          isOnline: true,
-          role: 'admin',
-          category: 'System',
-          status: 'Heart Connect Support'
-        });
+      // 1. Find the actual admin user (alasindani2020@gmail.com)
+      const adminPath = 'users';
+      const adminQuery = query(collection(db, adminPath), where('email', '==', 'alasindani2020@gmail.com'), limit(1));
+      let adminSnap;
+      try {
+        adminSnap = await getDocs(adminQuery);
+      } catch (e) {
+        handleFirestoreError(e, OperationType.GET, adminPath);
+        return;
+      }
+      
+      let targetSupportUid = SUPPORT_UID;
+      let targetSupportName = SUPPORT_NAME;
+      let targetSupportPhoto = SUPPORT_PHOTO;
+
+      if (!adminSnap.empty) {
+        const adminDoc = adminSnap.docs[0].data() as User;
+        targetSupportUid = adminSnap.docs[0].id;
+        targetSupportName = adminDoc.displayName || SUPPORT_NAME;
+        targetSupportPhoto = adminDoc.photoURL || SUPPORT_PHOTO;
+      } else {
+        // Fallback: Ensure virtual Support User exists (only if current user is admin)
+        const isCurrentUserAdmin = user.role === 'admin' || user.email === 'alasindani2020@gmail.com';
+        const virtualSupportPath = `users/${SUPPORT_UID}`;
+        let supportDoc;
+        try {
+          supportDoc = await getDoc(doc(db, 'users', SUPPORT_UID));
+        } catch (e) {
+          handleFirestoreError(e, OperationType.GET, virtualSupportPath);
+          return;
+        }
+
+        if (!supportDoc.exists() && isCurrentUserAdmin) {
+          try {
+            await setDoc(doc(db, 'users', SUPPORT_UID), {
+              uid: SUPPORT_UID,
+              displayName: SUPPORT_NAME,
+              photoURL: SUPPORT_PHOTO,
+              isOnline: true,
+              role: 'admin',
+              category: 'System',
+              status: 'Heart Connect Support',
+              points: 0
+            });
+          } catch (e) {
+            handleFirestoreError(e, OperationType.WRITE, virtualSupportPath);
+            return;
+          }
+        }
       }
 
-      // 2. Find or create chat
-      const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
-      const snap = await getDocs(q);
-      const existing = snap.docs.find(d => (d.data() as any).participants.includes(SUPPORT_UID));
+      // 2. Find or create chat between user and support (admin)
+      const chatsPath = 'chats';
+      const q = query(collection(db, chatsPath), where('participants', 'array-contains', user.uid));
+      let snap;
+      try {
+        snap = await getDocs(q);
+      } catch (e) {
+        handleFirestoreError(e, OperationType.GET, chatsPath);
+        return;
+      }
+
+      const existing = snap.docs.find(d => (d.data() as any).participants.includes(targetSupportUid));
       
       if (existing) {
         handleSelectChat({ id: existing.id, ...existing.data() } as Chat);
       } else {
-        const newChat = await addDoc(collection(db, 'chats'), {
-          participants: [user.uid, SUPPORT_UID],
-          updatedAt: serverTimestamp(),
-          lastMessage: {
-            text: "Hello! How can we help you today?",
-            senderId: SUPPORT_UID,
-            timestamp: serverTimestamp(),
-            status: 'sent'
-          }
-        });
-        handleSelectChat({ id: newChat.id, participants: [user.uid, SUPPORT_UID], type: 'private' } as any);
+        try {
+          const newChat = await addDoc(collection(db, 'chats'), {
+            participants: [user.uid, targetSupportUid].sort(),
+            type: 'private',
+            updatedAt: serverTimestamp(),
+            lastMessage: {
+              text: "Hello! How can we help you today?",
+              senderId: targetSupportUid,
+              timestamp: serverTimestamp(),
+              status: 'sent'
+            }
+          });
+          handleSelectChat({ id: newChat.id, participants: [user.uid, targetSupportUid].sort(), type: 'private' } as any);
+        } catch (e) {
+          handleFirestoreError(e, OperationType.WRITE, chatsPath);
+          return;
+        }
       }
       setShowMenu(false);
       localStorage.setItem('hc_welcome_dismissed', 'true');
@@ -2395,14 +2449,59 @@ export default function App() {
     processDelivered();
   }, [chats, user?.uid]);
 
-  if (loading || (auth.currentUser && !user)) return (
-    <SplashScreen 
-      siteName={appSettings?.siteName} 
-      logoUrl={appSettings?.logoUrl} 
-    />
-  );
+  // Error Boundary State
+  const [hasError, setHasError] = useState(false);
+  useEffect(() => {
+    const handleError = (e: ErrorEvent) => {
+      console.error("Uncaught error:", e.error);
+      setHasError(true);
+    };
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
 
-  if (!user) return <AuthScreen settings={appSettings} />;
+  if (hasError) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center p-8 text-center bg-gray-50 dark:bg-[#111b21]">
+        <Heart className="w-16 h-16 text-red-500 mb-4" />
+        <h1 className="text-xl font-bold mb-2">Something went wrong</h1>
+        <p className="text-sm text-gray-500 mb-6">The app encountered an error and couldn't recover.</p>
+        <button 
+          onClick={() => window.location.reload()} 
+          className="bg-[#00a884] text-white px-8 py-3 rounded-xl font-bold"
+        >
+          Reload App
+        </button>
+      </div>
+    );
+  }
+
+  if (loading) {
+    console.log("App: Still loading...");
+    return (
+      <SplashScreen 
+        siteName={appSettings?.siteName} 
+        logoUrl={appSettings?.logoUrl} 
+      />
+    );
+  }
+
+  if (auth.currentUser && !user) {
+    console.log("App: Auth active but user profile null - showing splash...");
+    return (
+      <SplashScreen 
+        siteName={appSettings?.siteName} 
+        logoUrl={appSettings?.logoUrl} 
+      />
+    );
+  }
+
+  if (!user) {
+    console.log("App: No user - rendering AuthScreen");
+    return <AuthScreen settings={appSettings} />;
+  }
+
+  console.log("App: Rendering main layout for", user.displayName);
 
   if (user.suspended) return (
     <div className="h-screen flex flex-col items-center justify-center bg-white dark:bg-[#0b141a] p-8 text-center">
@@ -2550,6 +2649,9 @@ export default function App() {
 
   return (
     <div className="h-screen bg-white dark:bg-[#111b21] flex flex-col overflow-hidden max-w-md mx-auto shadow-2xl border-x border-gray-200 dark:border-gray-800 relative transition-colors duration-300">
+      {/* Root level visibility check */}
+      <div className="sr-only">App Rendered: {user?.displayName}</div>
+      
       {/* Overlays */}
       <AnimatePresence>
         {callState.isActive && (
@@ -2997,14 +3099,21 @@ export default function App() {
                     {[1, 2, 3, 4, 5, 6].map(i => <SkeletonChat key={i} />)}
                   </div>
                 ) : chats.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-4">
-                    <div className="w-20 h-20 bg-gray-50 dark:bg-[#111b21] rounded-full flex items-center justify-center">
-                      <MessageCircle className="w-10 h-10 text-gray-200 dark:text-gray-800" />
+                  <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-6">
+                    <div className="w-20 h-20 bg-[#00a884]/10 rounded-full flex items-center justify-center animate-pulse">
+                      <MessageSquare className="w-10 h-10 text-[#00a884]" />
                     </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900 dark:text-[#e9edef]">No chats yet</h3>
-                      <p className="text-sm text-gray-500 dark:text-[#8696a0] max-w-[200px] mx-auto">Start a conversation with someone from the dating or status tab!</p>
+                    <div className="space-y-2">
+                       <h3 className="text-xl font-bold text-gray-900 dark:text-[#e9edef]">Ready to Connect?</h3>
+                       <p className="text-sm text-gray-500 dark:text-[#8696a0] max-w-[240px] mx-auto">Start searching for matches in the Dating tab or post an update in Status!</p>
                     </div>
+                    <button 
+                      onClick={handleContactSupport}
+                      className="px-8 py-3 bg-[#00a884] text-white rounded-full font-bold shadow-lg hover:shadow-xl active:scale-95 transition-all flex items-center gap-2"
+                    >
+                      <LifeBuoy className="w-5 h-5" />
+                      Contact Help & Support
+                    </button>
                   </div>
                 ) : chats.filter(c => {
                   if (c.participants.includes(SUPPORT_UID)) return false;
@@ -7682,14 +7791,24 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
       };
       await updateDoc(userDoc, updatedData);
 
-      // Update existing posts and statuses for consistency
+      // Update existing posts, statuses, and applications for consistency
       try {
         const postsQuery = query(collection(db, 'posts'), where('userId', '==', user.uid));
         const statusesQuery = query(collection(db, 'statuses'), where('userId', '==', user.uid));
-        const [postsSnap, statusesSnap] = await Promise.all([getDocs(postsQuery), getDocs(statusesQuery)]);
+        const applicationsQuery = query(collection(db, 'applications'), where('seekerId', '==', user.uid));
+        
+        const [postsSnap, statusesSnap, appsSnap] = await Promise.all([
+          getDocs(postsQuery), 
+          getDocs(statusesQuery),
+          getDocs(applicationsQuery)
+        ]);
+        
         const batch = writeBatch(db);
+        
         postsSnap.docs.forEach(d => batch.update(d.ref, { 'user.displayName': displayName, 'user.photoURL': photoURL }));
         statusesSnap.docs.forEach(d => batch.update(d.ref, { 'user.displayName': displayName, 'user.photoURL': photoURL }));
+        appsSnap.docs.forEach(d => batch.update(d.ref, { seekerName: displayName, seekerPhoto: photoURL }));
+        
         await batch.commit();
       } catch (e) {
         console.error("Error updating related documents:", e);
