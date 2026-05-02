@@ -1566,20 +1566,49 @@ export default function App() {
     setStartY(null);
   };
 
+  const loadingRef = useRef(loading);
+  const userRef = useRef(user);
+  useEffect(() => { loadingRef.current = loading; }, [loading]);
+  useEffect(() => { userRef.current = user; }, [user]);
+
   useEffect(() => {
     console.log("App: Component mounted accurately");
     const debugEl = document.getElementById('debug-boot');
     if (debugEl) debugEl.innerText = 'App Rendered';
     
-    const initTimer = setTimeout(() => {
-      setLoading(prev => {
-        if (prev) {
-          console.warn("App: Safety timeout reached - forcing load");
-          return false;
+    const initTimer = setTimeout(async () => {
+      if (loadingRef.current) {
+        console.warn("App: Safety timeout (15s) reached - attempting emergency load");
+        
+        if (auth.currentUser && !userRef.current) {
+          console.log("App: Auth user exists but no profile. Fetching manually...");
+          try {
+            const { getDoc, doc } = await import('firebase/firestore');
+            const snap = await getDoc(doc(db, 'users', auth.currentUser.uid)).catch(() => null);
+            if (snap && snap.exists()) {
+              const data = snap.data();
+              setUser({
+                uid: auth.currentUser.uid,
+                ...data,
+                displayName: capitalizeName(data.displayName || auth.currentUser.displayName || 'User')
+              } as User);
+            } else {
+              // Creating a temporary minimal user object to get past splash
+              setUser({
+                uid: auth.currentUser.uid,
+                displayName: capitalizeName(auth.currentUser.displayName || 'User'),
+                role: 'user',
+                category: 'General'
+              } as any);
+            }
+          } catch (e) {
+            console.error("Emergency profile fetch failed:", e);
+          }
         }
-        return false;
-      });
-    }, 8000);
+        
+        setLoading(false);
+      }
+    }, 15000);
     return () => clearTimeout(initTimer);
   }, []);
 
@@ -2363,7 +2392,7 @@ export default function App() {
     processDelivered();
   }, [chats, user?.uid]);
 
-  if (loading || (!user && auth.currentUser)) return (
+  if (loading) return (
     <SplashScreen 
       siteName={appSettings?.siteName} 
       logoUrl={appSettings?.logoUrl} 
