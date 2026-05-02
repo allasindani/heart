@@ -18,6 +18,7 @@ import {
   Trash2,
   User as UserIcon,
   LogOut,
+  LifeBuoy,
   Plus,
   Image as ImageIcon,
   ImagePlus,
@@ -154,7 +155,7 @@ const sendWelcomeMessage = async (targetUserId: string, targetUserName: string) 
         participants: [SUPPORT_UID, targetUserId],
         updatedAt: serverTimestamp(),
         lastMessage: {
-          text: `Welcome to Heart Connect, ${targetUserName}!`,
+          text: `Hi ${targetUserName}! 👋 Welcome to Heart Connect. We're thrilled to have you! ❤️\n\nI'm Heart Connect Support, here to help you find your perfect match, post updates, or find jobs. If you have any questions or need assistance, just reply to this message. Happy connecting!`,
           senderId: SUPPORT_UID,
           timestamp: serverTimestamp(),
           type: 'text',
@@ -162,11 +163,10 @@ const sendWelcomeMessage = async (targetUserId: string, targetUserName: string) 
         }
       });
       chatId = newChat.id;
-
-      // 3. Send the message
+      // Also add the actual message to the subcollection
       await addDoc(collection(db, `chats/${chatId}/messages`), {
+        text: `Hi ${targetUserName}! 👋 Welcome to Heart Connect. We're thrilled to have you! ❤️\n\nI'm Heart Connect Support, here to help you find your perfect match, post updates, or find jobs. If you have any questions or need assistance, just reply to this message. Happy connecting!`,
         senderId: SUPPORT_UID,
-        text: `Welcome to Heart Connect, ${targetUserName}! ❤️\n\nI am your official support assistant. Feel free to ask me anything about using the app, finding matches, or reporting issues.\n\nHappy connecting!`,
         timestamp: serverTimestamp(),
         type: 'text',
         status: 'sent'
@@ -1659,7 +1659,7 @@ export default function App() {
               } as User;
 
               // Check if user has exceeded free message limit
-              if (userData.gender === 'male' && userData.category === 'General' && (userData.messageCount || 0) >= 1) {
+              if (userData.gender === 'male' && userData.category === 'General' && (userData.messageCount || 0) >= 3) {
                 setTimeout(() => setShowUpgrade(true), 1500);
               }
 
@@ -1670,12 +1670,29 @@ export default function App() {
                 userData.affiliateCode = code;
               }
 
-              // Update online status (surgical update)
-              updateDoc(userDocRef, { isOnline: true, lastSeen: serverTimestamp() }).catch(e => console.warn("Status update failed:", e));
-              userData.isOnline = true;
+              // Surgical online status update - only if status actually changed
+              if (data.isOnline !== true) {
+                updateDoc(userDocRef, { isOnline: true, lastSeen: serverTimestamp() }).catch(e => console.warn("Status update failed:", e));
+                userData.isOnline = true;
+              }
 
               setUser(userData);
               
+              // Ensure support chat exists for every user
+              const supportChatCheck = async () => {
+                const q = query(collection(db, 'chats'), where('participants', 'array-contains', firebaseUser.uid));
+                const chatSnap = await getDocs(q);
+                const hasSupport = chatSnap.docs.some(d => (d.data() as any).participants.includes(SUPPORT_UID));
+                if (!hasSupport) {
+                  await sendWelcomeMessage(firebaseUser.uid, userData.displayName);
+                }
+              };
+              // Only check support periodically or once per session
+              if (!sessionStorage.getItem('support_checked')) {
+                supportChatCheck();
+                sessionStorage.setItem('support_checked', 'true');
+              }
+
               // Set dating filters based on user's looking-for preferences
               if (userData.datingProfile?.gender) {
                 setDatingFilters(prev => ({
@@ -1931,6 +1948,52 @@ export default function App() {
       }));
     } catch (e) {
       console.error("Follow error:", e);
+    }
+  };
+
+  const handleContactSupport = async () => {
+    if (!user) return;
+    try {
+      // 1. Ensure Support User exists (minimal check)
+      const supportDoc = await getDoc(doc(db, 'users', SUPPORT_UID));
+      if (!supportDoc.exists()) {
+        await setDoc(doc(db, 'users', SUPPORT_UID), {
+          uid: SUPPORT_UID,
+          displayName: SUPPORT_NAME,
+          photoURL: SUPPORT_PHOTO,
+          isOnline: true,
+          role: 'admin',
+          category: 'System',
+          status: 'Heart Connect Support'
+        });
+      }
+
+      // 2. Find or create chat
+      const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
+      const snap = await getDocs(q);
+      const existing = snap.docs.find(d => (d.data() as any).participants.includes(SUPPORT_UID));
+      
+      if (existing) {
+        handleSelectChat({ id: existing.id, ...existing.data() } as Chat);
+      } else {
+        const newChat = await addDoc(collection(db, 'chats'), {
+          participants: [user.uid, SUPPORT_UID],
+          updatedAt: serverTimestamp(),
+          lastMessage: {
+            text: "Hello! How can we help you today?",
+            senderId: SUPPORT_UID,
+            timestamp: serverTimestamp(),
+            status: 'sent'
+          }
+        });
+        handleSelectChat({ id: newChat.id, participants: [user.uid, SUPPORT_UID], type: 'private' } as any);
+      }
+      setShowMenu(false);
+      localStorage.setItem('hc_welcome_dismissed', 'true');
+      setShowWelcomeMessage(false);
+    } catch (e) {
+      console.error("Error contacting support:", e);
+      toast.error("Could not reach support. Please try again.");
     }
   };
 
@@ -2681,6 +2744,9 @@ export default function App() {
                           <Crown className="w-4 h-4 text-purple-600" /> Upgrade
                         </button>
                       )}
+                      <button onClick={() => { handleContactSupport(); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
+                        <LifeBuoy className="w-4 h-4 text-green-600" /> Help & Support
+                      </button>
                       {user.role === 'admin' && (
                         <button onClick={() => { setShowAdmin(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-[#00a884] hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
                           <Shield className="w-4 h-4" /> Admin Panel
@@ -2772,34 +2838,75 @@ export default function App() {
 
             {activeTab === 'chats' && (
               <div className="flex flex-col min-h-full">
-                {/* Heart Connect Welcome Message in Inbox */}
-                {showWelcomeMessage && (
-                  <div 
-                    onClick={() => setShowWelcomeModal(true)} 
-                    className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-[#202c33] transition-colors cursor-pointer group border-b border-gray-100 dark:border-gray-800/50 bg-[#00a884]/5"
-                  >
-                    <div className="relative shrink-0">
-                      <div className="w-14 h-14 bg-[#00a884] rounded-full flex items-center justify-center shadow-lg rotate-3 group-hover:rotate-0 transition-transform">
-                        <Heart className="w-8 h-8 text-white fill-current" />
+                {/* Unified Support / Welcome Section */}
+                {(() => {
+                  const supportChat = chats.find(c => c.participants.includes(SUPPORT_UID));
+                  
+                  if (supportChat) {
+                    const lastMsg = supportChat.lastMessage;
+                    return (
+                      <div 
+                        onClick={() => handleSelectChat(supportChat)} 
+                        className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-[#202c33] transition-colors cursor-pointer group border-b border-gray-100 dark:border-gray-800/50 bg-[#00a884]/5"
+                      >
+                        <div className="relative shrink-0">
+                          <div className="w-14 h-14 bg-[#00a884] rounded-full flex items-center justify-center shadow-lg rotate-3 group-hover:rotate-0 transition-transform">
+                            <Heart className="w-8 h-8 text-white fill-current" />
+                          </div>
+                          <div className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white dark:border-[#111b21]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-center mb-1">
+                            <h3 className="font-bold text-[#111b21] dark:text-[#e9edef] truncate flex items-center gap-1 uppercase tracking-tight text-xs">
+                              Heart Connect Support <VerifiedBadge size={14} />
+                            </h3>
+                            <span className="text-[10px] font-black text-[#00a884] uppercase tracking-widest bg-white dark:bg-[#111b21] px-1.5 py-0.5 rounded shadow-sm">Official Support</span>
+                          </div>
+                          <div className={cn("text-[13px] truncate", (supportChat.unreadCount?.[user.uid] || 0) > 0 ? "text-[#111b21] dark:text-[#e9edef] font-bold" : "text-[#667781] dark:text-[#8696a0]")}>
+                            {lastMsg?.text || "Welcome to Heart Connect! How can we help?"}
+                          </div>
+                          <div className="text-[11px] text-[#00a884] mt-0.5 font-bold uppercase tracking-tighter">
+                            Active Support Agent
+                          </div>
+                        </div>
+                        {(supportChat.unreadCount?.[user.uid] || 0) > 0 && (
+                          <div className="bg-[#25d366] text-white text-[9px] h-[20px] min-w-[20px] px-1.5 rounded-full flex items-center justify-center font-black shadow-sm ring-2 ring-white dark:ring-[#111b21]">
+                            {supportChat.unreadCount![user.uid]}
+                          </div>
+                        )}
                       </div>
-                      <div className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white dark:border-[#111b21]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-center mb-1">
-                        <h3 className="font-bold text-[#111b21] dark:text-[#e9edef] truncate flex items-center gap-1 uppercase tracking-tight text-xs">
-                          Heart Connect <VerifiedBadge size={14} />
-                        </h3>
-                        <span className="text-[10px] font-black text-[#00a884] uppercase tracking-widest bg-white dark:bg-[#111b21] px-1.5 py-0.5 rounded shadow-sm">Official</span>
+                    );
+                  } else if (showWelcomeMessage) {
+                    return (
+                      <div 
+                        onClick={handleContactSupport} 
+                        className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-[#202c33] transition-colors cursor-pointer group border-b border-gray-100 dark:border-gray-800/50 bg-[#00a884]/5"
+                      >
+                        <div className="relative shrink-0">
+                          <div className="w-14 h-14 bg-[#00a884] rounded-full flex items-center justify-center shadow-lg rotate-3 group-hover:rotate-0 transition-transform">
+                            <Heart className="w-8 h-8 text-white fill-current" />
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-center mb-1">
+                            <h3 className="font-bold text-[#111b21] dark:text-[#e9edef] truncate flex items-center gap-1 uppercase tracking-tight text-xs">
+                              Heart Connect <VerifiedBadge size={14} />
+                            </h3>
+                            <span className="text-[10px] font-black text-[#00a884] uppercase tracking-widest bg-white dark:bg-[#111b21] px-1.5 py-0.5 rounded shadow-sm">Official</span>
+                          </div>
+                          <div className="text-[13px] text-[#111b21] dark:text-[#e9edef] font-bold truncate">
+                            Welcome! Post photos, chat, date and find jobs now...
+                          </div>
+                          <div className="text-[11px] text-[#667781] dark:text-[#8696a0] mt-0.5 italic">
+                            Click to start support chat
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-[13px] text-[#111b21] dark:text-[#e9edef] font-bold truncate">
-                        Welcome! Post photos, chat, date and find jobs now...
-                      </div>
-                      <div className="text-[11px] text-[#667781] dark:text-[#8696a0] mt-0.5 italic">
-                        No-reply message
-                      </div>
-                    </div>
-                  </div>
-                )}
+                    );
+                  }
+                  return null;
+                })()}
+
                 {/* Dashboard Featured Hearts Section */}
                 {users.filter(u => u.isFeaturedSingle).length > 0 && (
                   <div className="py-4 border-b border-gray-50 dark:border-gray-800/50 bg-[#00a884]/5 animate-in fade-in slide-in-from-top duration-700">
@@ -2853,6 +2960,7 @@ export default function App() {
                     </div>
                   </div>
                 ) : chats.filter(c => {
+                  if (c.participants.includes(SUPPORT_UID)) return false;
                   if (!searchQuery) return true;
                   const name = c.groupName || '';
                   return name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -2863,6 +2971,7 @@ export default function App() {
                   </div>
                 ) : (
                   chats.filter(c => {
+                    if (c.participants.includes(SUPPORT_UID)) return false;
                     if (!searchQuery) return true;
                     const name = c.groupName || '';
                     return name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -2932,6 +3041,9 @@ export default function App() {
               statuses={statuses} 
               posts={posts} 
               jobs={jobs} 
+              activeTab={activeTab}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
               onUserClick={(u: User) => handleViewUser(u)} 
               awardPoints={awardPoints} 
               appSettings={appSettings} 
@@ -2981,6 +3093,8 @@ export default function App() {
               onDeleteJob={handleDeleteJob}
               onEditJob={(j: Job) => { setEditingJob(j); setShowCreateJob(true); }}
               activeTab={activeTab} 
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
             />
           )}
         </div>
@@ -3586,7 +3700,7 @@ const SkeletonChat = () => (
   </div>
 );
 
-const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, showPostModal, setShowPostModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, uploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer, targetPostId, isRefreshing, deferredPrompt, handleInstallClick }: any) => {
+const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery, setSearchQuery, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, showPostModal, setShowPostModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, uploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer, targetPostId, isRefreshing, deferredPrompt, handleInstallClick }: any) => {
   const [newPost, setNewPost] = useState('');
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
@@ -3917,6 +4031,8 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
 
   return (
     <div className="bg-[#f0f2f5] dark:bg-[#0b141a] min-h-full">
+      {/* Search integrated with global header */}
+
       {/* Status Section */}
       <div className="bg-white dark:bg-[#111b21] p-4 mb-2 shadow-sm">
         <div className="flex justify-between items-center mb-4">
@@ -4298,13 +4414,26 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, onUserClick, awardPoin
 
         {(() => {
           const elements: React.ReactNode[] = [];
-          const feedPosts = posts.filter(p => !p.isAd);
+          const feedPosts = posts
+            .filter(p => !p.isAd)
+            .filter(p => {
+              if (!searchQuery.trim()) return true;
+              return p.content.toLowerCase().includes(searchQuery.toLowerCase());
+            });
           const userAds = posts.filter(p => p.isAd);
-          const jobItems = [...(jobs || [])].sort((a, b) => {
-            const timeA = a.createdAt?.toMillis?.() || 0;
-            const timeB = b.createdAt?.toMillis?.() || 0;
-            return timeB - timeA;
-          });
+          const jobItems = [...(jobs || [])]
+            .filter(j => {
+              if (!searchQuery.trim()) return true;
+              const search = searchQuery.toLowerCase();
+              return j.title.toLowerCase().includes(search) || 
+                     j.company.toLowerCase().includes(search) || 
+                     j.location.toLowerCase().includes(search);
+            })
+            .sort((a, b) => {
+              const timeA = a.createdAt?.toMillis?.() || 0;
+              const timeB = b.createdAt?.toMillis?.() || 0;
+              return timeB - timeA;
+            });
           let jobIdx = 0;
           let adIndex = 0;
 
@@ -7911,10 +8040,9 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
   );
 };
 
-const JobsView = ({ user, jobs, applications, onApply, onCreateClick, onSelectJob, activeTab, onUpdateStatus, onDeleteJob, onEditJob }: any) => {
+const JobsView = ({ user, jobs, applications, onApply, onCreateClick, onSelectJob, activeTab, searchQuery, onUpdateStatus, onDeleteJob, onEditJob }: any) => {
   const [jobSubTab, setJobSubTab] = useState<'find' | 'applications' | 'postings' | 'reviews'>('find');
   const [filterType, setFilterType] = useState<string>('All');
-  const [searchQuery, setSearchQuery] = useState('');
   
   const canManage = user?.isVerified;
 
@@ -7979,18 +8107,9 @@ const JobsView = ({ user, jobs, applications, onApply, onCreateClick, onSelectJo
         )}
         {jobSubTab === 'find' && (
           <>
-            {/* Search & Filters */}
+            {/* Filters (Search moved to global header) */}
             <div className="flex gap-2 sticky top-0 z-10 bg-[#f0f2f5] dark:bg-[#0b141a] py-2">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input 
-                  type="text" 
-                  placeholder="Titles, companies..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white dark:bg-[#202c33] border-none p-2 pl-10 rounded-xl text-sm outline-none shadow-sm dark:text-[#e9edef]"
-                />
-              </div>
+              <div className="flex-1"></div>
               <div className="relative">
                 <select 
                   value={filterType}
