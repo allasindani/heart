@@ -4302,7 +4302,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
       </AnimatePresence>
 
       {/* Wall Section */}
-      <div ref={wallRef} className="p-4 space-y-6 pb-24 h-full overflow-y-auto custom-scrollbar">
+      <div ref={wallRef} className="p-4 space-y-6 pb-24">
         <AdSenseSlot code={appSettings.adSenseSlot1} id="adsense-wall-top" className="mb-4 bg-white dark:bg-[#111b21] p-4 border border-gray-100 dark:border-gray-800" />
         {isRefreshing ? (
           <div className="space-y-6">
@@ -4418,16 +4418,20 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
             .filter(p => !p.isAd)
             .filter(p => {
               if (!searchQuery.trim()) return true;
-              return p.content.toLowerCase().includes(searchQuery.toLowerCase());
+              const content = p.content || '';
+              return content.toLowerCase().includes(searchQuery.toLowerCase());
             });
           const userAds = posts.filter(p => p.isAd);
           const jobItems = [...(jobs || [])]
             .filter(j => {
               if (!searchQuery.trim()) return true;
               const search = searchQuery.toLowerCase();
-              return j.title.toLowerCase().includes(search) || 
-                     j.company.toLowerCase().includes(search) || 
-                     j.location.toLowerCase().includes(search);
+              const title = j.title || '';
+              const company = j.company || '';
+              const location = j.location || '';
+              return title.toLowerCase().includes(search) || 
+                     company.toLowerCase().includes(search) || 
+                     location.toLowerCase().includes(search);
             })
             .sort((a, b) => {
               const timeA = a.createdAt?.toMillis?.() || 0;
