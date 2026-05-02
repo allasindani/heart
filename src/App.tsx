@@ -719,6 +719,7 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [referredBy, setReferredBy] = useState<string | null>(null);
   const [featuredSingles, setFeaturedSingles] = useState<any[]>([]);
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
 
   useEffect(() => {
     const fetchFeatured = async () => {
@@ -741,11 +742,27 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
     if (ref) setReferredBy(ref);
   }, []);
 
-  const handleGoogleLogin = () => signInWithPopup(auth, new GoogleAuthProvider());
+  const handleGoogleLogin = async () => {
+    setIsAuthLoading(true);
+    setError('');
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch (err: any) {
+      console.error("Google login error:", err);
+      if (err.code === 'auth/popup-blocked') {
+        setError('Google login popup was blocked. Please enable popups or try opening the site in a new tab.');
+      } else {
+        setError(err.message || 'Failed to sign in with Google');
+      }
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
   
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsAuthLoading(true);
     
     if (!isLogin && (!firstName.trim() || !lastName.trim())) {
       setError('Please provide Name and Surname');
@@ -839,7 +856,10 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
         }
       }
     } catch (err: any) {
+      console.error("Auth error:", err);
       setError(err.message);
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
@@ -978,9 +998,29 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
             </div>
           )}
 
-          {error && <p className="text-red-500 text-xs font-bold">{error}</p>}
-          <button type="submit" className="w-full bg-[#00a884] text-white font-black py-4 rounded-xl shadow-xl shadow-[#00a884]/30 active:scale-[0.98] transition-all text-lg uppercase tracking-wider">
-            {isLogin ? 'Explore Hearts' : 'Join Heart Connect'}
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }} 
+              animate={{ opacity: 1, height: 'auto' }}
+              className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 p-3 rounded-xl mb-4"
+            >
+              <p className="text-red-500 text-xs font-bold leading-tight">{error}</p>
+            </motion.div>
+          )}
+
+          <button 
+            type="submit" 
+            disabled={isAuthLoading}
+            className={cn(
+              "w-full bg-[#00a884] text-white font-black py-4 rounded-xl shadow-xl shadow-[#00a884]/30 active:scale-[0.98] transition-all text-lg uppercase tracking-wider flex items-center justify-center gap-2",
+              isAuthLoading && "opacity-70 cursor-not-allowed shadow-none"
+            )}
+          >
+            {isAuthLoading ? (
+              <CircleDashed className="w-5 h-5 animate-spin" />
+            ) : (
+              isLogin ? 'Explore Hearts' : 'Join Heart Connect'
+            )}
           </button>
         </form>
 
@@ -990,9 +1030,16 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
           <div className="flex-1 h-[1px] bg-gray-200 dark:bg-gray-800"></div>
         </div>
 
-        <button onClick={handleGoogleLogin} className="w-full bg-white dark:bg-[#202c33] border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-3 mb-4 hover:bg-gray-50 dark:hover:bg-gray-800">
+        <button 
+          onClick={handleGoogleLogin} 
+          disabled={isAuthLoading}
+          className={cn(
+            "w-full bg-white dark:bg-[#202c33] border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-3 mb-4 hover:bg-gray-50 dark:hover:bg-gray-800",
+            isAuthLoading && "opacity-50 cursor-not-allowed"
+          )}
+        >
           <img src="https://www.google.com/favicon.ico" className="w-5 h-5 bg-white rounded-full p-0.5" alt="Google" referrerPolicy="no-referrer" />
-          Continue with Google
+          {isAuthLoading ? 'Please wait...' : 'Continue with Google'}
         </button>
 
         <button 
@@ -1560,12 +1607,16 @@ export default function App() {
     const initTimer = setTimeout(() => {
       setLoading(prev => {
         if (prev) {
-          console.warn("App: 6s safety timeout reached - forcing load");
+          if (auth.currentUser) {
+            console.log("App: Auth in progress, allowing more time...");
+            return true;
+          }
+          console.warn("App: 15s safety timeout reached - forcing load");
           return false;
         }
         return false;
       });
-    }, 6000);
+    }, 15000);
     return () => clearTimeout(initTimer);
   }, []);
 
@@ -1649,6 +1700,7 @@ export default function App() {
     let unsubUserDoc: (() => void) | null = null;
 
     const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      console.log("onAuthStateChanged: firebaseUser =", firebaseUser?.uid || 'null');
       // Clean up previous user listener if any
       if (unsubUserDoc) {
         unsubUserDoc();
@@ -2358,7 +2410,19 @@ export default function App() {
       }}
     />
   );
-  if (!user) return <AuthScreen settings={appSettings} />;
+
+  if (!user && !auth.currentUser) return <AuthScreen settings={appSettings} />;
+  
+  if (!user && auth.currentUser) return (
+    <SplashScreen 
+      siteName={appSettings?.siteName} 
+      logoUrl={appSettings?.logoUrl} 
+      onForceLoad={() => {
+        console.warn("Emergency bypass triggered (Auth).");
+        setLoading(false);
+      }}
+    />
+  );
 
   if (user.suspended) return (
     <div className="h-screen flex flex-col items-center justify-center bg-white dark:bg-[#0b141a] p-8 text-center">
