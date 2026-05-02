@@ -412,22 +412,26 @@ const AdSenseSlot = ({ code, id, className }: { code?: string, id: string, class
   );
 };
 
-const Logo = ({ size = 40, className = "", url }: { size?: number, className?: string, url?: string }) => (
-  <div className={cn("relative flex items-center justify-center group", className)} style={{ width: size, height: size }}>
-    <div className="absolute inset-0 bg-[#00a884] rounded-[24%] rotate-12 opacity-20 group-hover:rotate-45 transition-transform duration-500" />
-    <div className="absolute inset-0 bg-[#00a884] rounded-[24%] -rotate-6 opacity-10 group-hover:-rotate-12 transition-transform duration-500" />
-    <div className="relative bg-gradient-to-br from-[#00a884] to-[#008069] rounded-[24%] flex items-center justify-center shadow-xl overflow-hidden ring-4 ring-white dark:ring-[#111b21]" style={{ width: size, height: size }}>
-      {url && url !== "" ? (
-        <img src={url} className="w-full h-full object-cover" alt="Logo" referrerPolicy="no-referrer" onError={handleImageError} />
-      ) : (
-        <div className="relative">
-          <Heart className="text-white fill-current drop-shadow-lg" style={{ width: size * 0.55, height: size * 0.55 }} />
-          <div className="absolute inset-0 bg-white opacity-20 blur-sm rounded-full -z-10 animate-pulse" />
-        </div>
-      )}
+const Logo = ({ size = 40, className = "", url }: { size?: number, className?: string, url?: string }) => {
+  const isValidUrl = url && typeof url === 'string' && url.length > 5 && url.startsWith('http') && url !== 'null' && url !== 'undefined';
+  
+  return (
+    <div className={cn("relative flex items-center justify-center group", className)} style={{ width: size, height: size }}>
+      <div className="absolute inset-0 bg-[#00a884] rounded-[24%] rotate-12 opacity-20 group-hover:rotate-45 transition-transform duration-500" />
+      <div className="absolute inset-0 bg-[#00a884] rounded-[24%] -rotate-6 opacity-10 group-hover:-rotate-12 transition-transform duration-500" />
+      <div className="relative bg-gradient-to-br from-[#00a884] to-[#008069] rounded-[24%] flex items-center justify-center shadow-xl overflow-hidden ring-4 ring-white dark:ring-[#111b21]" style={{ width: size, height: size }}>
+        {isValidUrl ? (
+          <img src={url} className="w-full h-full object-cover" alt="Logo" referrerPolicy="no-referrer" onError={handleImageError} />
+        ) : (
+          <div className="relative">
+            <Heart className="text-white fill-current drop-shadow-lg" style={{ width: size * 0.55, height: size * 0.55 }} />
+            <div className="absolute inset-0 bg-white opacity-20 blur-sm rounded-full -z-10 animate-pulse" />
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const Avatar = ({ src, name, size = 40, className = "", isOnline, children }: { src?: string | null, name?: string, size?: number, className?: string, isOnline?: boolean, children?: React.ReactNode }) => {
   const getInitials = (n?: string) => {
@@ -865,7 +869,7 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
                 key={s.uid || idx} 
                 whileHover={{ y: -5 }}
                 className="relative flex-shrink-0 w-32 snap-center group cursor-pointer" 
-                onClick={() => toast.info(settings.siteName || "Heart Connect", { description: "Sign up to chat with local singles!" })}
+                onClick={() => toast.info(settings?.siteName || "Heart Connect", { description: "Sign up to chat with local singles!" })}
               >
                 <div className="relative aspect-[3/4] rounded-2xl overflow-hidden shadow-md group-hover:shadow-xl transition-all border border-black/5 dark:border-white/5">
                   <img 
@@ -873,6 +877,7 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
                     alt={s.displayName} 
                     referrerPolicy="no-referrer"
+                    onError={handleImageError}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity"></div>
                   <div className="absolute bottom-2 left-2 right-2 text-left">
@@ -1578,17 +1583,14 @@ export default function App() {
   useEffect(() => { userRef.current = user; }, [user]);
 
   useEffect(() => {
-    console.log("App: Component mounted accurately");
-    const debugEl = document.getElementById('debug-boot');
-    if (debugEl) debugEl.innerText = 'App Rendered';
-    
-    const initTimer = setTimeout(async () => {
-      if (loadingRef.current) {
-        console.warn("App: Safety timeout (5s) reached.");
-        
+    let timer: any;
+    if (loading) {
+      timer = setTimeout(() => {
+        console.warn("App: Global safety timeout reached - forcing load");
+        setLoading(false);
+        // If we are stuck with auth user but no profile, force a fallback
         if (auth.currentUser && !userRef.current) {
-          console.log("App: Profile still missing after 5s. Forcing entry with default profile.");
-          const fallbackUser = {
+          setUser({
             uid: auth.currentUser.uid,
             displayName: capitalizeName(auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'User'),
             photoURL: auth.currentUser.photoURL,
@@ -1596,14 +1598,22 @@ export default function App() {
             category: 'General',
             points: 0,
             isOnline: true
-          } as any;
-          setUser(fallbackUser);
+          } as any);
         }
-        
-        setLoading(false);
-      }
-    }, 5000); // reduced further for snappiness
-    return () => clearTimeout(initTimer);
+      }, 8000);
+    }
+    return () => clearTimeout(timer);
+  }, [loading]);
+
+  useEffect(() => {
+    console.log("App: Component mounted accurately");
+    const debugEl = document.getElementById('debug-boot');
+    if (debugEl) debugEl.innerText = 'App Rendered';
+    
+    // Initial mount sync
+    if (Capacitor.isNativePlatform()) {
+      CapacitorUpdater.notifyAppReady().catch(e => console.warn("notifyAppReady failed:", e));
+    }
   }, []);
 
   const lastNotifRef = useRef<string | null>(null);
@@ -2408,7 +2418,7 @@ export default function App() {
     
     // Constraint: NO CHAT without profile photo
     if (!user.photoURL) {
-      toast.error(appSettings.siteName || "Heart Connect", {
+      toast.error(appSettings?.siteName || "Heart Connect", {
         description: "⚠️ Profile Photo Required! To ensure community safety and prevent fake accounts, you MUST upload a profile photo BEFORE you can start chatting. Please update your profile now."
       });
       setShowProfile(true);
@@ -2417,7 +2427,7 @@ export default function App() {
       await addDoc(collection(db, 'notifications'), {
         userId: user.uid,
         fromId: 'system',
-        fromName: appSettings.siteName || 'Heart Connect',
+        fromName: appSettings?.siteName || 'Heart Connect',
         type: 'broadcast',
         text: 'Action Required: You cannot send messages without a profile photo. Please upload one in your profile settings to unlock chatting!',
         title: 'Photo Required',
@@ -2430,7 +2440,7 @@ export default function App() {
     // New Robust Measure: 3 messages limit for General (free) users
     const isTierUser = user.category !== 'General';
     if (!isTierUser && !user.isVerified && (user.messageCount || 0) >= 3) {
-      toast.error(appSettings.siteName || "Heart Connect", {
+      toast.error(appSettings?.siteName || "Heart Connect", {
         description: "Free messaging limit reached! You are currently on the Free Tier and have reached your 3-message limit. Please upgrade to Bronze, Silver, Gold or Platinum to enjoy unlimited chatting."
       });
       setShowUpgrade(true);
@@ -2439,7 +2449,7 @@ export default function App() {
       await addDoc(collection(db, 'notifications'), {
         userId: user.uid,
         fromId: 'system',
-        fromName: appSettings.siteName || 'Heart Connect',
+        fromName: appSettings?.siteName || 'Heart Connect',
         type: 'broadcast',
         text: `Hi ${user.displayName?.split(' ')?.[0] || 'user'}, you have reached your free 3-message limit. Upgrade to a premium tier now to unlock unlimited chats and find your perfect match!`,
         title: 'Upgrade Required',
