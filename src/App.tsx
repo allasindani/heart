@@ -517,11 +517,11 @@ const SplashScreen = ({ siteName, logoUrl, onForceLoad }: { siteName?: string, l
   const [showBypass, setShowBypass] = useState(false);
   
   useEffect(() => {
-    // Show bypass button after 4 seconds instead of 6
+    // Show bypass button after 3 seconds instead of 4
     const timer = setTimeout(() => {
       console.log("SplashScreen: showing bypass button");
       setShowBypass(true);
-    }, 4000);
+    }, 3000);
     return () => clearTimeout(timer);
   }, []);
 
@@ -584,14 +584,25 @@ const SplashScreen = ({ siteName, logoUrl, onForceLoad }: { siteName?: string, l
         </div>
         
         {showBypass && onForceLoad && (
-          <motion.button
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            onClick={onForceLoad}
-            className="mt-4 px-8 py-3 bg-[#00a884]/10 text-[#00a884] text-xs font-black rounded-2xl hover:bg-[#00a884]/20 transition-all uppercase tracking-widest border border-[#00a884]/20 shadow-lg shadow-[#00a884]/5"
-          >
-            Entering App...
-          </motion.button>
+          <div className="flex flex-col gap-2 w-full px-8">
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              onClick={onForceLoad}
+              className="w-full py-4 bg-[#00a884] shadow-xl shadow-[#00a884]/20 text-white text-sm font-black rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest"
+            >
+              Enter App Now
+            </motion.button>
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              onClick={() => window.location.reload()}
+              className="w-full py-3 bg-gray-100 dark:bg-[#202c33] text-gray-500 dark:text-[#8696a0] text-xs font-bold rounded-2xl hover:bg-gray-200 dark:hover:bg-[#2a3942] transition-all uppercase tracking-widest"
+            >
+              Refresh Site
+            </motion.button>
+          </div>
         )}
       </motion.div>
 
@@ -1549,12 +1560,12 @@ export default function App() {
     const initTimer = setTimeout(() => {
       setLoading(prev => {
         if (prev) {
-          console.warn("App: 4s safety timeout reached - forcing load");
+          console.warn("App: 6s safety timeout reached - forcing load");
           return false;
         }
         return false;
       });
-    }, 4000);
+    }, 6000);
     return () => clearTimeout(initTimer);
   }, []);
 

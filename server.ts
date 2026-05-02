@@ -54,8 +54,17 @@ async function getAvailablePort(startPort: number): Promise<number> {
 
 async function startServer() {
   const app = express();
-  const requestedPort = Number(process.env.PORT) || 3000;
-  const PORT = await getAvailablePort(requestedPort);
+  const PORT = Number(process.env.PORT) || 3000;
+
+  // Check for NODE_ENV in .env which breaks Vite build
+  if (process.env.NODE_ENV && fs.existsSync('.env')) {
+    const envContent = fs.readFileSync('.env', 'utf-8');
+    if (envContent.includes('NODE_ENV=')) {
+      console.warn("\n⚠️  WARNING: 'NODE_ENV' detected in your .env file.");
+      console.warn("   This will cause Vite build errors on some servers.");
+      console.warn("   Please remove 'NODE_ENV' from .env and use the build script instead.\n");
+    }
+  }
 
   // Debug Middleware for Production/VPS issues
   app.use((req, res, next) => {
@@ -288,8 +297,9 @@ async function startServer() {
     // Fetch some users for the welcome page
     let featuredUsers: any[] = []
     try {
-      const projectId = "gen-lang-client-0473830905"
-      const dbId = "ai-studio-6ff02b76-2504-4b84-82d1-98a73de1f5a4"
+      const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8'));
+      const projectId = config.projectId;
+      const dbId = config.firestoreDatabaseId || "(default)";
       const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents/users?pageSize=10`
       const fRes = await fetch(url)
       const data: any = await fRes.json()

@@ -21,7 +21,7 @@ const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()
   }),
-  experimentalForceLongPolling: true, // Improved reliability in restricted networks
+  experimentalForceLongPolling: true
 }, firebaseConfig.firestoreDatabaseId || '(default)');
 
 export { db };
