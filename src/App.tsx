@@ -1523,163 +1523,6 @@ export default function App() {
     }
   };
 
-  // --- Components ---
-  const SupportTicketModal = ({ isOpen, onClose, user }: { isOpen: boolean, onClose: () => void, user: User }) => {
-    const [subject, setSubject] = useState('');
-    const [description, setDescription] = useState('');
-    const [urgency, setUrgency] = useState<SupportTicket['urgency']>('medium');
-    const [submitting, setSubmitting] = useState(false);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!subject || !description) return;
-      setSubmitting(true);
-      try {
-        const ticketData: SupportTicket = {
-          userId: user.uid,
-          userName: user.displayName,
-          userEmail: (user as any).email || 'No email',
-          subject,
-          description,
-          urgency,
-          status: 'open',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        };
-        const docRef = await addDoc(collection(db, 'support_tickets'), ticketData);
-        
-        // Also create/find chat
-        const adminQuery = query(collection(db, 'users'), where('email', '==', 'alasindani2020@gmail.com'), limit(1));
-        const adminSnap = await getDocs(adminQuery);
-        let targetSupportUid = SUPPORT_UID;
-        if (!adminSnap.empty) {
-          targetSupportUid = adminSnap.docs[0].id;
-        }
-
-        const qChat = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
-        const chatSnap = await getDocs(qChat);
-        const existingChat = chatSnap.docs.find(d => (d.data() as any).participants.includes(targetSupportUid));
-
-        if (!existingChat) {
-          await addDoc(collection(db, 'chats'), {
-            participants: [user.uid, targetSupportUid].sort(),
-            type: 'private',
-            updatedAt: serverTimestamp(),
-            lastMessage: {
-              text: `[NEW TICKET: ${subject}] - ${description}`,
-              senderId: user.uid,
-              timestamp: serverTimestamp(),
-              status: 'sent'
-            }
-          });
-        } else {
-           await addDoc(collection(db, `chats/${existingChat.id}/messages`), {
-            text: `[NEW TICKET: ${subject}]\nUrgency: ${urgency.toUpperCase()}\n\n${description}`,
-            senderId: user.uid,
-            timestamp: serverTimestamp(),
-            type: 'text',
-            status: 'sent'
-          });
-          await updateDoc(doc(db, 'chats', existingChat.id), {
-            updatedAt: serverTimestamp(),
-            lastMessage: {
-              text: `[NEW TICKET: ${subject}]`,
-              senderId: user.uid,
-              timestamp: serverTimestamp(),
-              status: 'sent'
-            }
-          });
-        }
-
-        toast.success("Support Ticket Submitted!", { description: "An admin will get back to you shortly." });
-        onClose();
-      } catch (err) {
-        console.error("Error submitting ticket:", err);
-        toast.error("Failed to submit ticket.");
-      } finally {
-        setSubmitting(false);
-      }
-    };
-
-    if (!isOpen) return null;
-
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white dark:bg-[#111b21] w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
-        >
-          <div className="p-6 bg-[#00a884] text-white flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <LifeBuoy className="w-6 h-6" />
-              <h2 className="text-xl font-bold">Help & Support</h2>
-            </div>
-            <button onClick={onClose}><X className="w-6 h-6" /></button>
-          </div>
-          
-          <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
-            <div className="space-y-1">
-              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Subject</label>
-              <input 
-                value={subject}
-                onChange={e => setSubject(e.target.value)}
-                placeholder="Brief summary of the issue"
-                className="w-full p-3 bg-gray-50 dark:bg-[#202c33] border-none rounded-xl focus:ring-2 focus:ring-[#00a884] transition-all dark:text-white"
-                required
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Urgency</label>
-              <div className="grid grid-cols-4 gap-2">
-                {(['low', 'medium', 'high', 'urgent'] as const).map(u => (
-                  <button
-                    key={u}
-                    type="button"
-                    onClick={() => setUrgency(u)}
-                    className={cn(
-                      "py-2 rounded-lg text-xs font-bold uppercase transition-all",
-                      urgency === u 
-                        ? (u === 'urgent' ? 'bg-red-500 text-white shadow-md' : 'bg-[#00a884] text-white shadow-md')
-                        : 'bg-gray-100 dark:bg-[#202c33] text-gray-500 dark:text-gray-400'
-                    )}
-                  >
-                    {u}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Description</label>
-              <textarea 
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                placeholder="Please provide as much detail as possible..."
-                rows={5}
-                className="w-full p-3 bg-gray-50 dark:bg-[#202c33] border-none rounded-xl focus:ring-2 focus:ring-[#00a884] transition-all dark:text-white resize-none"
-                required
-              />
-            </div>
-
-            <button 
-              disabled={submitting}
-              className="w-full py-4 bg-[#00a884] text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#008f6f] active:scale-95 transition-all shadow-lg disabled:opacity-50"
-            >
-              {submitting ? <CircleDashed className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-              Submit Support Ticket
-            </button>
-
-            <p className="text-[10px] text-center text-gray-400">
-              Your ticket will be reviewed by our team. You can check the progress in your messages.
-            </p>
-          </form>
-        </motion.div>
-      </div>
-    );
-  };
-
   const handleDismissWelcome = () => {
     setShowWelcomeMessage(false);
     localStorage.setItem('hc_welcome_dismissed', 'true');
@@ -3374,6 +3217,164 @@ export default function App() {
     </div>
   );
 }
+
+const SupportTicketModal = ({ isOpen, onClose, user }: { isOpen: boolean, onClose: () => void, user: User }) => {
+  const [subject, setSubject] = useState('');
+  const [description, setDescription] = useState('');
+  const [urgency, setUrgency] = useState<SupportTicket['urgency']>('medium');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subject || !description) return;
+    setSubmitting(true);
+    try {
+      const ticketData: SupportTicket = {
+        userId: user.uid,
+        userName: user.displayName || 'Anonymous',
+        userEmail: (user as any).email || 'No email',
+        subject,
+        description,
+        urgency,
+        status: 'open',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      await addDoc(collection(db, 'support_tickets'), ticketData);
+      
+      // Also create/find chat
+      const adminQuery = query(collection(db, 'users'), where('email', '==', 'alasindani2020@gmail.com'), limit(1));
+      const adminSnap = await getDocs(adminQuery);
+      let targetSupportUid = SUPPORT_UID;
+      if (!adminSnap.empty) {
+        targetSupportUid = adminSnap.docs[0].id;
+      }
+
+      const qChat = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
+      const chatSnap = await getDocs(qChat);
+      const existingChat = chatSnap.docs.find(d => (d.data() as any).participants.includes(targetSupportUid));
+
+      if (!existingChat) {
+        await addDoc(collection(db, 'chats'), {
+          participants: [user.uid, targetSupportUid].sort(),
+          type: 'private',
+          updatedAt: serverTimestamp(),
+          lastMessage: {
+            text: `[NEW TICKET: ${subject}] - ${description}`,
+            senderId: user.uid,
+            timestamp: serverTimestamp(),
+            status: 'sent'
+          }
+        });
+      } else {
+         await addDoc(collection(db, `chats/${existingChat.id}/messages`), {
+          text: `[NEW TICKET: ${subject}]\nUrgency: ${urgency.toUpperCase()}\n\n${description}`,
+          senderId: user.uid,
+          timestamp: serverTimestamp(),
+          type: 'text',
+          status: 'sent'
+        });
+        await updateDoc(doc(db, 'chats', existingChat.id), {
+          updatedAt: serverTimestamp(),
+          lastMessage: {
+            text: `[NEW TICKET: ${subject}]`,
+            senderId: user.uid,
+            timestamp: serverTimestamp(),
+            status: 'sent'
+          }
+        });
+      }
+
+      toast.success("Support Ticket Submitted!", { description: "An admin will get back to you shortly." });
+      setSubject('');
+      setDescription('');
+      onClose();
+    } catch (err) {
+      console.error("Error submitting ticket:", err);
+      toast.error("Failed to submit ticket.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white dark:bg-[#111b21] w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+      >
+        <div className="p-6 bg-[#00a884] text-white flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <LifeBuoy className="w-6 h-6" />
+            <h2 className="text-xl font-bold">Help & Support</h2>
+          </div>
+          <button onClick={onClose}><X className="w-6 h-6" /></button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
+          <div className="space-y-1">
+            <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Subject</label>
+            <input 
+              value={subject}
+              onChange={e => setSubject(e.target.value)}
+              placeholder="Brief summary of the issue"
+              className="w-full p-3 bg-gray-50 dark:bg-[#202c33] border-none rounded-xl focus:ring-2 focus:ring-[#00a884] transition-all dark:text-white"
+              required
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Urgency</label>
+            <div className="grid grid-cols-4 gap-2">
+              {(['low', 'medium', 'high', 'urgent'] as const).map(u => (
+                <button
+                  key={u}
+                  type="button"
+                  onClick={() => setUrgency(u)}
+                  className={cn(
+                    "py-2 rounded-lg text-xs font-bold uppercase transition-all",
+                    urgency === u 
+                      ? (u === 'urgent' ? 'bg-red-500 text-white shadow-md' : 'bg-[#00a884] text-white shadow-md')
+                      : 'bg-gray-100 dark:bg-[#202c33] text-gray-500 dark:text-gray-400'
+                  )}
+                >
+                  {u}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Description</label>
+            <textarea 
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Please provide as much detail as possible..."
+              rows={5}
+              className="w-full p-3 bg-gray-50 dark:bg-[#202c33] border-none rounded-xl focus:ring-2 focus:ring-[#00a884] transition-all dark:text-white resize-none"
+              required
+            />
+          </div>
+
+          <button 
+            disabled={submitting}
+            className="w-full py-4 bg-[#00a884] text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#008f6f] active:scale-95 transition-all shadow-lg disabled:opacity-50"
+          >
+            {submitting ? <CircleDashed className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+            Submit Support Ticket
+          </button>
+
+          <p className="text-[10px] text-center text-gray-400">
+            Your ticket will be reviewed by our team. You can check the progress in your messages.
+          </p>
+        </form>
+      </motion.div>
+    </div>
+  );
+};
 
 // --- Sub-Components ---
 
@@ -7518,11 +7519,11 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
                           "w-10 h-10 rounded-full flex items-center justify-center text-white font-bold",
                           ticket.urgency === 'urgent' ? 'bg-red-500' : ticket.urgency === 'high' ? 'bg-orange-500' : 'bg-blue-500'
                         )}>
-                          {ticket.userName.charAt(0)}
+                          {(ticket.userName || 'U').charAt(0)}
                         </div>
                         <div>
                           <h4 className="font-bold text-sm dark:text-white">{ticket.subject}</h4>
-                          <p className="text-[10px] text-gray-400">By {ticket.userName} ({ticket.userEmail}) • {new Date(ticket.createdAt?.toMillis?.()).toLocaleString()}</p>
+                          <p className="text-[10px] text-gray-400">By {ticket.userName} ({ticket.userEmail}) • {ticket.createdAt?.toMillis ? new Date(ticket.createdAt.toMillis()).toLocaleString() : 'Recently'}</p>
                         </div>
                       </div>
                       <span className={cn(
@@ -7531,7 +7532,7 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
                         ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-600' : 
                         'bg-gray-100 text-gray-600'
                       )}>
-                        {ticket.status.replace('_', ' ')}
+                        {(ticket.status || 'open').replace('_', ' ')}
                       </span>
                     </div>
 
