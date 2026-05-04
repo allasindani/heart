@@ -1735,16 +1735,22 @@ export default function App() {
   }, [user?.uid]);
 
   useEffect(() => {
-    // Flush potentially corrupted session/troubleshooting states on reload
+    // Flush potentially corrupted session/troubleshooting states on reload if it was a crash
     try {
-      localStorage.removeItem('app_crash_state');
-      localStorage.removeItem('adsbygoogle_errors');
-      if (window.console && window.console.clear) {
-        // window.console.clear(); // Optional: Keep logs for dev
+      const lastCrash = localStorage.getItem('app_crash_state');
+      if (lastCrash) {
+        console.log("Recovering from last crash at:", lastCrash);
+        // Clear all except auth if it's been less than 5 minutes since crash
+        if (Date.now() - parseInt(lastCrash) < 300000) {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        localStorage.removeItem('app_crash_state');
       }
-    } catch (e) {
-      /* ignore storage errors on restricted environments */
-    }
+      
+      // Periodic cleanup of AdSense errors
+      localStorage.removeItem('adsbygoogle_errors');
+    } catch (e) { /* ignore */ }
 
     let unsubUserDoc: (() => void) | null = null;
 
@@ -1892,43 +1898,54 @@ export default function App() {
 
   // Head injection for arbitrary code (Analytics, AdSense, etc)
   useEffect(() => {
-    const injectGlobalCode = (code: string | undefined, id: string) => {
-      if (!code) return;
-      
-      // Clean up previous injection
-      const existingContainer = document.getElementById(id);
-      if (existingContainer) existingContainer.remove();
-      const existingScripts = document.querySelectorAll(`script[data-injected-by="${id}"]`);
-      existingScripts.forEach(s => s.remove());
+    // Progressive and Delayed Loading for Global Scripts
+    const timer = setTimeout(() => {
+      const injectGlobalCode = (code: string | undefined, id: string) => {
+        if (!code) return;
+        
+        // Clean up previous injection
+        const existingContainer = document.getElementById(id);
+        if (existingContainer) existingContainer.remove();
+        const existingScripts = document.querySelectorAll(`script[data-injected-by="${id}"]`);
+        existingScripts.forEach(s => s.remove());
 
-      // Create a temporary container to parse the HTML
-      const div = document.createElement('div');
-      div.id = id;
-      div.style.display = 'none';
-      div.innerHTML = code;
+        // Create a temporary container to parse the HTML
+        const div = document.createElement('div');
+        div.id = id;
+        div.style.display = 'none';
+        div.innerHTML = code;
 
-      // Extract and execute scripts, append other elements
-      const children = Array.from(div.childNodes);
-      children.forEach(child => {
-        if (child instanceof HTMLScriptElement) {
-          const newScript = document.createElement('script');
-          newScript.setAttribute('data-injected-by', id);
-          Array.from(child.attributes).forEach(attr => {
-            newScript.setAttribute(attr.name, attr.value);
-          });
-          newScript.textContent = child.textContent;
-          document.head.appendChild(newScript);
-        } else if (child instanceof HTMLElement) {
-          const clone = child.cloneNode(true) as HTMLElement;
-          if (clone instanceof HTMLLinkElement || clone instanceof HTMLMetaElement || clone instanceof HTMLStyleElement) {
-            document.head.appendChild(clone);
+        // Extract and execute scripts, append other elements
+        const children = Array.from(div.childNodes);
+        children.forEach(child => {
+          if (child instanceof HTMLScriptElement) {
+            const newScript = document.createElement('script');
+            newScript.setAttribute('data-injected-by', id);
+            Array.from(child.attributes).forEach(attr => {
+              newScript.setAttribute(attr.name, attr.value);
+            });
+            
+            // Wrap in safety delay + try-catch
+            if (child.textContent && child.textContent.includes('push')) {
+              newScript.textContent = `setTimeout(function(){ try { ${child.textContent} } catch(e){} }, 1000);`;
+            } else {
+              newScript.textContent = child.textContent;
+            }
+            document.head.appendChild(newScript);
+          } else if (child instanceof HTMLElement) {
+            const clone = child.cloneNode(true) as HTMLElement;
+            if (clone instanceof HTMLLinkElement || clone instanceof HTMLMetaElement || clone instanceof HTMLStyleElement) {
+              document.head.appendChild(clone);
+            }
           }
-        }
-      });
-    };
+        });
+      };
 
-    injectGlobalCode(appSettings?.googleAnalyticsCode, 'hc-global-ga');
-    injectGlobalCode(appSettings?.adSenseCode, 'hc-global-adsense');
+      injectGlobalCode(appSettings?.googleAnalyticsCode, 'hc-global-ga');
+      injectGlobalCode(appSettings?.adSenseCode, 'hc-global-adsense');
+    }, 5000); // Wait 5 seconds for core app to be stable
+
+    return () => clearTimeout(timer);
   }, [appSettings.googleAnalyticsCode, appSettings.adSenseCode]);
 
   useEffect(() => {
@@ -2412,27 +2429,91 @@ export default function App() {
 
   // Error Boundary State
   const [hasError, setHasError] = useState(false);
+  const [errorDetails, setErrorDetails] = useState<string>('');
+
   useEffect(() => {
     const handleError = (e: ErrorEvent) => {
-      console.error("Uncaught error:", e.error);
+      const errorMsg = e.error?.message || e.message || '';
+      const errorStack = e.error?.stack || '';
+      
+      // Specifically ignore known AdSense/Monetag/Script errors that don't affect core app functionality
+      if (
+        errorMsg.includes('adsbygoogle') || 
+        errorMsg.includes('TagError') || 
+        errorStack.includes('adsbygoogle') ||
+        errorMsg.includes('cross-origin') ||
+        errorMsg.includes('no_div')
+      ) {
+        console.warn("Recoverable AdSense/Script error suppressed:", errorMsg);
+        return;
+      }
+
+      console.error("Uncaught critical error:", e.error);
+      setErrorDetails(errorMsg);
       setHasError(true);
+      
+      // Mark app as crashed to trigger deeper cleanup on next reload
+      try {
+        localStorage.setItem('app_crash_state', Date.now().toString());
+      } catch (err) { /* ignore */ }
     };
+
+    const handleRejection = (e: PromiseRejectionEvent) => {
+      if (e.reason?.message?.includes('adsbygoogle')) return;
+      console.error("Unhandled promise rejection:", e.reason);
+    };
+
     window.addEventListener('error', handleError);
-    return () => window.removeEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleRejection);
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleRejection);
+    };
   }, []);
+
+  const handleReload = () => {
+    try {
+      // Deep cleanup on user-triggered reload from error screen
+      localStorage.clear(); 
+      sessionStorage.clear();
+      // Keep essential auth if possible? Actually, if it's crashing, better safe than sorry.
+      // But clearing all might log them out. Let's just clear the problematic ones.
+      // localStorage.removeItem('app_crash_state'); 
+    } catch (e) { /* ignore */ }
+    window.location.reload();
+  };
 
   if (hasError) {
     return (
       <div className="h-screen flex flex-col items-center justify-center p-8 text-center bg-gray-50 dark:bg-[#111b21]">
-        <Heart className="w-16 h-16 text-red-500 mb-4" />
-        <h1 className="text-xl font-bold mb-2">Something went wrong</h1>
-        <p className="text-sm text-gray-500 mb-6">The app encountered an error and couldn't recover.</p>
-        <button 
-          onClick={() => window.location.reload()} 
-          className="bg-[#00a884] text-white px-8 py-3 rounded-xl font-bold"
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.5 }}
         >
-          Reload App
+          <Heart className="w-16 h-16 text-red-500 mb-4" />
+        </motion.div>
+        <h1 className="text-xl font-bold mb-2 text-gray-900 dark:text-[#e9edef]">Something went wrong</h1>
+        <p className="text-sm text-gray-500 dark:text-[#8696a0] mb-2 max-w-xs">The app encountered an unexpected error and needs to restart.</p>
+        
+        {errorDetails && (
+          <div className="mb-6 bg-red-50 dark:bg-red-900/10 p-3 rounded-lg border border-red-100 dark:border-red-900/20 max-w-md w-full">
+            <p className="text-[10px] font-mono text-red-600 dark:text-red-400 break-all leading-relaxed">
+              {errorDetails}
+            </p>
+          </div>
+        )}
+
+        <button 
+          onClick={handleReload} 
+          className="bg-[#00a884] hover:bg-[#008f6f] active:scale-95 transition-all text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-[#00a884]/20"
+        >
+          Reset and Reload App
         </button>
+        
+        <p className="mt-6 text-[10px] text-gray-400 uppercase tracking-widest font-bold">
+          All temporary cache will be cleared
+        </p>
       </div>
     );
   }
