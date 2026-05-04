@@ -1881,19 +1881,54 @@ export default function App() {
     };
   }, []);
 
+  // Reliable Online Status Tracking
   useEffect(() => {
     if (!user) return;
     const userDocRef = doc(db, 'users', user.uid);
+    
+    // Heartbeat to keep user 'Online' while tab is open and active
+    const heartbeat = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        updateDoc(userDocRef, { 
+          isOnline: true, 
+          lastSeen: serverTimestamp() 
+        }).catch(() => {});
+      }
+    }, 120000); // 2 minutes heartbeat
+
     const handleVisibilityChange = () => {
       const isOnline = document.visibilityState === 'visible';
-      updateDoc(userDocRef, { isOnline, lastSeen: serverTimestamp() });
+      // Immediate update when coming back or leaving
+      updateDoc(userDocRef, { isOnline, lastSeen: serverTimestamp() }).catch(() => {});
     };
+
+    const handleBlur = () => {
+      // Small delay for blur to avoid flicker when clicking between windows
+      setTimeout(() => {
+        if (!document.hasFocus()) {
+          updateDoc(userDocRef, { isOnline: false, lastSeen: serverTimestamp() }).catch(() => {});
+        }
+      }, 5000);
+    };
+
+    const handleFocus = () => {
+      updateDoc(userDocRef, { isOnline: true, lastSeen: serverTimestamp() }).catch(() => {});
+    };
+
     const handleUnload = () => {
-      updateDoc(userDocRef, { isOnline: false, lastSeen: serverTimestamp() });
+      // beforeunload update (experimental/best effort)
+      updateDoc(userDocRef, { isOnline: false, lastSeen: serverTimestamp() }).catch(() => {});
     };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('beforeunload', handleUnload);
+
     return () => {
+      clearInterval(heartbeat);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', handleUnload);
     };
@@ -2336,7 +2371,7 @@ export default function App() {
     return () => { unsubPosts(); unsubStatus(); unsubNotif(); };
   }, [user]);
 
-  // Browser Push Notifications
+  // Browser & In-App Pop-up Notifications
   useEffect(() => {
     if (!user || notifications.length === 0) return;
     
@@ -2346,20 +2381,44 @@ export default function App() {
       // Check if we've already notified for this ID to avoid duplication
       const lastNotifiedId = sessionStorage.getItem('lastNotifiedId');
       if (lastNotifiedId !== latest.id) {
+        // --- 1. In-App Toast (Immediate feedback for online users) ---
+        toast(latest.title || (latest.fromName ? `New from ${latest.fromName}` : (appSettings?.siteName || 'Heart Connect')), {
+          description: latest.text,
+          icon: <Bell className="w-4 h-4 text-[#00a884]" />,
+          duration: 5000,
+          action: {
+            label: 'View',
+            onClick: () => {
+              // Mark as read and potentially navigate to relevant tab
+              const notifRef = doc(db, 'notifications', latest.id);
+              updateDoc(notifRef, { read: true }).catch(() => {});
+              setShowNotifications(true);
+            }
+          }
+        });
+
+        // --- 2. System Browser Notification ---
         if ('Notification' in window && Notification.permission === 'granted') {
-          const n = new Notification(latest.title || (latest.fromName ? `New from ${latest.fromName}` : (appSettings.siteName || 'Heart Connect')), {
-            body: latest.text,
-            icon: appSettings.logoUrl || '/favicon.ico'
-          });
-          n.onclick = () => {
-            window.focus();
-            setShowNotifications(true);
-          };
-          sessionStorage.setItem('lastNotifiedId', latest.id);
+          try {
+            const n = new Notification(latest.title || (latest.fromName ? `New from ${latest.fromName}` : (appSettings?.siteName || 'Heart Connect')), {
+              body: latest.text,
+              icon: appSettings?.logoUrl || '/favicon.ico'
+            });
+            n.onclick = () => {
+              window.focus();
+              const notifRef = doc(db, 'notifications', latest.id);
+              updateDoc(notifRef, { read: true }).catch(() => {});
+              setShowNotifications(true);
+            };
+          } catch (e) {
+            console.warn("Notification error:", e);
+          }
         }
+        
+        sessionStorage.setItem('lastNotifiedId', latest.id);
       }
     }
-  }, [notifications, user?.uid, appSettings.logoUrl]);
+  }, [notifications, user, appSettings, setShowNotifications]);
 
   useEffect(() => {
     if (!user) return;
@@ -2664,6 +2723,8 @@ export default function App() {
 
     const otherId = selectedChat.participants.find(p => p !== user.uid);
     let notificationPromise: Promise<any> = Promise.resolve();
+    let unreadUpdatePromise: Promise<any> = Promise.resolve();
+    
     if (otherId) {
       // Increment unread count for recipient
       const unreadKey = `unreadCount.${otherId}`;
@@ -2695,7 +2756,7 @@ export default function App() {
     }
 
     try {
-      await Promise.all([messagePromise, chatUpdatePromise, notificationPromise]);
+      await Promise.all([messagePromise, userUpdatePromise, chatUpdatePromise, notificationPromise, unreadUpdatePromise].filter(Boolean));
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `chats/${selectedChat.id}/messages`);
     }
@@ -3205,7 +3266,13 @@ export default function App() {
                           <div className="flex justify-between items-center mb-1">
                             <h3 className="font-bold text-[#111b21] dark:text-[#e9edef] truncate flex items-center gap-1">
                               {chatName}
-                              {otherUser?.isOnline && <div className="w-1.5 h-1.5 bg-green-500 rounded-full shrink-0" />}
+                              {otherUser?.isOnline ? (
+                                <div className="w-1.5 h-1.5 bg-green-500 rounded-full shrink-0" />
+                              ) : (
+                                <span className="text-[9px] font-normal text-gray-400 normal-case">
+                                  {otherUser?.lastSeen?.toDate ? `seen ${formatLastSeen(otherUser.lastSeen.toDate())}` : 'offline'}
+                                </span>
+                              )}
                               <TierBadge tier={otherUser?.category} size={14} />
                               {otherUser?.isVerified && <VerifiedBadge size={14} />}
                             </h3>
@@ -4350,8 +4417,9 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
             fromName: user.displayName,
             type: 'status_update' as any,
             text: `updated their status`,
+            title: 'Friend Update',
             relatedId: user.uid
-          });
+          }).catch(() => {});
         });
       }
 
@@ -7163,23 +7231,27 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
         }
       });
 
-      // 2. Send Notifications to all users
-      const batch = writeBatch(db);
-      users.forEach(u => {
-        const notifRef = doc(collection(db, 'notifications'));
-        batch.set(notifRef, {
-          userId: u.uid,
-          fromId: user.uid,
-          fromName: user.displayName,
-          type: 'broadcast',
-          text: body,
-          title: title,
-          read: false,
-          timestamp: serverTimestamp(),
-          relatedId: postRef.id // Link to the post
+      // 2. Send Notifications to all users in batches of 500
+      const chunkSize = 500;
+      for (let i = 0; i < users.length; i += chunkSize) {
+        const batch = writeBatch(db);
+        const chunk = users.slice(i, i + chunkSize);
+        chunk.forEach(u => {
+          const notifRef = doc(collection(db, 'notifications'));
+          batch.set(notifRef, {
+            userId: u.uid,
+            fromId: user.uid,
+            fromName: user.displayName,
+            type: 'broadcast',
+            text: body,
+            title: title,
+            read: false,
+            timestamp: serverTimestamp(),
+            relatedId: postRef.id // Link to the post
+          });
         });
-      });
-      await batch.commit();
+        await batch.commit();
+      }
 
       // Send Push Notification via Server (OneSignal Broadcast)
       fetch('/api/broadcast-notification', {
