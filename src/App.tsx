@@ -847,26 +847,22 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
           }
         }
 
-        // --- NEW: Notify opposite sex users ---
-        try {
-          const oppositeGender = gender === 'male' ? 'female' : gender === 'female' ? 'male' : null;
-          if (oppositeGender) {
-            const oppQuery = query(collection(db, 'users'), where('gender', '==', oppositeGender), limit(50));
-            const oppSnap = await getDocs(oppQuery);
-            oppSnap.forEach(oppDoc => {
-              notifyUser({
-                userId: oppDoc.id,
-                fromId: userCredential.user.uid,
-                fromName: `${capFirst} ${capLast}`,
-                type: 'broadcast',
-                text: `A new ${gender === 'male' ? 'gentleman' : gender === 'female' ? 'lady' : 'member'} just joined Heart Connect! Come say hi to ${capFirst}! 👋`,
-                title: 'New Match Alert!'
-              });
-            });
-          }
-        } catch (e) {
-          console.error("Error notifying opposite sex users:", e);
-        }
+              // Opposite sex notification
+              const oppositeGender = gender === 'male' ? 'female' : gender === 'female' ? 'male' : null;
+              if (oppositeGender) {
+                const oppQuery = query(collection(db, 'users'), where('gender', '==', oppositeGender), limit(50));
+                const oppSnap = await getDocs(oppQuery);
+                oppSnap.forEach(oppDoc => {
+                  notifyUser({
+                    userId: oppDoc.id,
+                    fromId: userCredential.user.uid,
+                    fromName: `${capFirst} ${capLast}`,
+                    type: 'broadcast',
+                    text: `A new ${gender === 'male' ? 'gentleman' : gender === 'female' ? 'lady' : 'member'} just joined Heart Connect! Come say hi to ${capFirst}! 👋`,
+                    title: 'New Match Alert!'
+                  }).catch(() => {});
+                });
+              }
         
         // Request notification permission on browser if available
         if ('Notification' in window && Notification.permission === 'default') {
@@ -1766,84 +1762,91 @@ export default function App() {
         setLoading(true);
         const userDocRef = doc(db, 'users', firebaseUser.uid);
 
-        unsubUserDoc = onSnapshot(userDocRef, async (snapshot) => {
-          try {
-            if (snapshot.exists()) {
-              const data = snapshot.data();
-              const userData = {
-                uid: firebaseUser.uid,
-                ...data,
-                displayName: capitalizeName(data.displayName || '')
-              } as User;
+        unsubUserDoc = onSnapshot(userDocRef, (snapshot) => {
+          const loadUser = async () => {
+            try {
+              if (snapshot.exists()) {
+                const data = snapshot.data();
+                const userData = {
+                  uid: firebaseUser.uid,
+                  ...data,
+                  displayName: capitalizeName(data.displayName || '')
+                } as User;
 
-              // Check if user has exceeded free message limit
-              if (userData.gender === 'male' && userData.category === 'General' && (userData.messageCount || 0) >= 3) {
-                setTimeout(() => setShowUpgrade(true), 1500);
-              }
-
-              // Force generate affiliate code if missing
-              if (!userData.affiliateCode) {
-                const code = generateAffiliateCode(userData.uid);
-                await updateDoc(userDocRef, { affiliateCode: code }).catch(e => console.warn("Failed to set affiliate code:", e));
-                userData.affiliateCode = code;
-              }
-
-              // Surgical online status update - only if status actually changed
-              if (data.isOnline !== true) {
-                updateDoc(userDocRef, { isOnline: true, lastSeen: serverTimestamp() }).catch(e => console.warn("Status update failed:", e));
-                userData.isOnline = true;
-              }
-
-              setUser(userData);
-              
-              // Ensure support chat exists for every user
-              const supportChatCheck = async () => {
-                const q = query(collection(db, 'chats'), where('participants', 'array-contains', firebaseUser.uid));
-                const chatSnap = await getDocs(q);
-                const hasSupport = chatSnap.docs.some(d => (d.data() as any).participants.includes(SUPPORT_UID));
-                if (!hasSupport) {
-                  await sendWelcomeMessage(firebaseUser.uid, userData.displayName);
+                // Check if user has exceeded free message limit
+                if (userData.gender === 'male' && userData.category === 'General' && (userData.messageCount || 0) >= 3) {
+                  setTimeout(() => setShowUpgrade(true), 1500);
                 }
-              };
-              // Only check support periodically or once per session
-              if (!sessionStorage.getItem('support_checked')) {
-                supportChatCheck();
-                sessionStorage.setItem('support_checked', 'true');
-              }
 
-              // Set dating filters based on user's looking-for preferences
-              if (userData.datingProfile?.gender) {
-                setDatingFilters(prev => ({
-                  ...prev,
-                  gender: userData.datingProfile?.gender === 'male' ? 'female' : 'male'
-                }));
+                // Force generate affiliate code if missing
+                if (!userData.affiliateCode) {
+                  const code = generateAffiliateCode(userData.uid);
+                  await updateDoc(userDocRef, { affiliateCode: code }).catch(e => console.warn("Failed to set affiliate code:", e));
+                  userData.affiliateCode = code;
+                }
+
+                // Surgical online status update - only if status actually changed
+                if (data.isOnline !== true) {
+                  updateDoc(userDocRef, { isOnline: true, lastSeen: serverTimestamp() }).catch(e => console.warn("Status update failed:", e));
+                  userData.isOnline = true;
+                }
+
+                setUser(userData);
+                
+                // Ensure support chat exists for every user
+                const supportChatCheck = async () => {
+                  try {
+                    const q = query(collection(db, 'chats'), where('participants', 'array-contains', firebaseUser.uid));
+                    const chatSnap = await getDocs(q);
+                    const hasSupport = chatSnap.docs.some(d => (d.data() as any).participants.includes(SUPPORT_UID));
+                    if (!hasSupport) {
+                      await sendWelcomeMessage(firebaseUser.uid, userData.displayName);
+                    }
+                  } catch (e) {
+                    console.warn("Support check failed:", e);
+                  }
+                };
+                // Only check support periodically or once per session
+                if (!sessionStorage.getItem('support_checked')) {
+                  supportChatCheck();
+                  sessionStorage.setItem('support_checked', 'true');
+                }
+
+                // Set dating filters based on user's looking-for preferences
+                if (userData.datingProfile?.gender) {
+                  setDatingFilters(prev => ({
+                    ...prev,
+                    gender: userData.datingProfile?.gender === 'male' ? 'female' : 'male'
+                  }));
+                }
+              } else {
+                // Create default user profile if it doesn't exist
+                const rawName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous';
+                const newUserData = {
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email,
+                  displayName: capitalizeName(rawName),
+                  photoURL: firebaseUser.photoURL || null,
+                  role: firebaseUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
+                  category: 'General',
+                  points: 0,
+                  isOnline: true,
+                  lastSeen: serverTimestamp(),
+                  status: "Hey there! I am using Heart Connect.",
+                  affiliateCode: generateAffiliateCode(firebaseUser.uid),
+                };
+                await setDoc(userDocRef, newUserData, { merge: true }).catch(err => {
+                  handleFirestoreError(err, OperationType.WRITE, `users/${firebaseUser.uid}`);
+                });
+                await sendWelcomeMessage(firebaseUser.uid, newUserData.displayName);
               }
-            } else {
-              // Create default user profile if it doesn't exist
-              const rawName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous';
-              const newUserData = {
-                uid: firebaseUser.uid,
-                email: firebaseUser.email,
-                displayName: capitalizeName(rawName),
-                photoURL: firebaseUser.photoURL || null,
-                role: firebaseUser.email === 'alasindani2020@gmail.com' ? 'admin' : 'user',
-                category: 'General',
-                points: 0,
-                isOnline: true,
-                lastSeen: serverTimestamp(),
-                status: "Hey there! I am using Heart Connect.",
-                affiliateCode: generateAffiliateCode(firebaseUser.uid),
-              };
-              await setDoc(userDocRef, newUserData, { merge: true }).catch(err => {
-                handleFirestoreError(err, OperationType.WRITE, `users/${firebaseUser.uid}`);
-              });
-              await sendWelcomeMessage(firebaseUser.uid, newUserData.displayName);
+            } catch (err) {
+              console.error("Error in user snapshot processor:", err);
+            } finally {
+              setLoading(false);
             }
-          } catch (err) {
-            console.error("Error in user snapshot listener:", err);
-          } finally {
-            setLoading(false);
-          }
+          };
+          loadUser();
         }, (error) => {
           console.error("Firestore user listener error:", error);
           // If we have an existing user state, don't clear it immediately to avoid 'reverts'
@@ -2436,15 +2439,17 @@ export default function App() {
       const errorMsg = e.error?.message || e.message || '';
       const errorStack = e.error?.stack || '';
       
-      // Specifically ignore known AdSense/Monetag/Script errors that don't affect core app functionality
+      // Specifically ignore known AdSense/Monetag/Script/Firebase errors that don't affect core app functionality
       if (
         errorMsg.includes('adsbygoogle') || 
         errorMsg.includes('TagError') || 
         errorStack.includes('adsbygoogle') ||
         errorMsg.includes('cross-origin') ||
-        errorMsg.includes('no_div')
+        errorMsg.includes('no_div') ||
+        errorMsg.includes('permission-denied') ||
+        errorMsg.includes('OperationType')
       ) {
-        console.warn("Recoverable AdSense/Script error suppressed:", errorMsg);
+        console.warn("Recoverable or logged error suppressed:", errorMsg);
         return;
       }
 
@@ -2459,7 +2464,14 @@ export default function App() {
     };
 
     const handleRejection = (e: PromiseRejectionEvent) => {
-      if (e.reason?.message?.includes('adsbygoogle')) return;
+      const reason = e.reason?.message || String(e.reason || '');
+      if (
+        reason.includes('adsbygoogle') || 
+        reason.includes('permission-denied') ||
+        reason.includes('OperationType')
+      ) {
+        return;
+      }
       console.error("Unhandled promise rejection:", e.reason);
     };
 
@@ -2678,7 +2690,7 @@ export default function App() {
           type: 'message',
           title: 'Direct Contact Warning',
           text: 'Please Use Heart Connect for chats. Phone numbers are scrambled for your safety.'
-        });
+        }).catch(() => {});
       }
     }
 
