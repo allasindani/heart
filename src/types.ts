@@ -191,6 +191,7 @@ export interface AppSettings {
   logoUrl?: string;
   faviconUrl?: string;
   adSenseSlot3?: string;
+  adSenseInFeedCode?: string;
   pointsPerGift?: number;
   pointsPerInvitation?: number;
   sensoredWords?: string[];

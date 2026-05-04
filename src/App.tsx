@@ -380,36 +380,75 @@ const getAIMatchSuggestions = async (user: User, allUsers: User[]) => {
 
 const AdSenseSlot = ({ code, id, className }: { code?: string, id: string, className?: string }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [canLoad, setCanLoad] = useState(false);
 
   useEffect(() => {
-    if (code && containerRef.current) {
+    // Progressive loading: Wait 3.5 seconds after component mount before attempting to inject ad scripts
+    const timer = setTimeout(() => setCanLoad(true), 3500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (canLoad && code && containerRef.current) {
       const container = containerRef.current;
-      container.innerHTML = code;
+      // Clear previous content to ensure a fresh state
+      container.innerHTML = '';
       
-      const scripts = container.getElementsByTagName('script');
-      // Create an array to avoid live HTMLCollection issues while iterating
+      // Temporary div to parse the code string
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = code;
+      
+      const scripts = tempDiv.getElementsByTagName('script');
       const scriptList = Array.from(scripts);
+      
+      // Move hardware elements first
+      while (tempDiv.firstChild) {
+        container.appendChild(tempDiv.firstChild);
+      }
       
       scriptList.forEach(oldScript => {
         const newScript = document.createElement('script');
-        
-        // Copy all attributes
         Array.from(oldScript.attributes).forEach(attr => {
           newScript.setAttribute(attr.name, attr.value);
         });
         
-        // Copy inline script content
-        newScript.textContent = oldScript.textContent;
+        if (newScript.src && newScript.src.includes('adsbygoogle.js')) {
+          if (document.querySelector('script[src*="adsbygoogle.js"]')) {
+            return;
+          }
+        }
         
-        // Replace the old script with the new one to trigger execution
-        oldScript.parentNode?.replaceChild(newScript, oldScript);
+        if (oldScript.textContent && oldScript.textContent.includes('push')) {
+          // Double safety: Timeout + try/catch
+          newScript.textContent = `
+            setTimeout(function() {
+              try {
+                if (window.adsbygoogle) {
+                  ${oldScript.textContent}
+                }
+              } catch (e) {
+                if (window.console) console.info('Ad suppressed: ' + e.message);
+              }
+            }, 250);
+          `;
+        } else {
+          newScript.textContent = oldScript.textContent;
+        }
+        
+        container.appendChild(newScript);
       });
     }
-  }, [code]);
+
+    return () => {
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
+    };
+  }, [canLoad, code, id]);
 
   if (!code) return null;
   return (
-    <div ref={containerRef} id={id} className={cn("flex justify-center my-4 overflow-hidden rounded-xl bg-gray-50/10", className)} />
+    <div ref={containerRef} id={id} className={cn("flex justify-center min-h-[90px] overflow-hidden rounded-xl transition-opacity duration-700", canLoad ? "opacity-100" : "opacity-0", className)} />
   );
 };
 
@@ -1696,6 +1735,17 @@ export default function App() {
   }, [user?.uid]);
 
   useEffect(() => {
+    // Flush potentially corrupted session/troubleshooting states on reload
+    try {
+      localStorage.removeItem('app_crash_state');
+      localStorage.removeItem('adsbygoogle_errors');
+      if (window.console && window.console.clear) {
+        // window.console.clear(); // Optional: Keep logs for dev
+      }
+    } catch (e) {
+      /* ignore storage errors on restricted environments */
+    }
+
     let unsubUserDoc: (() => void) | null = null;
 
     const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -4761,7 +4811,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
                     <ThumbsUp className={cn("w-5 h-5", safeLikes.includes(user.uid) && "fill-current")} />
                     <span>{safeLikes.length || ''} Like</span>
                   </button>
-
+ 
                   <button 
                     onClick={() => setShowComments(post.id)}
                     className="flex flex-col items-center gap-1 py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -4844,6 +4894,21 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
                 </div>
               </div>
             );
+ 
+            // AdSense 728x90 In-Feed (After 1st Post)
+            if (index === 0 && appSettings?.adSenseInFeedCode) {
+              elements.push(
+                <div key="adsense-infeed-728" className="mb-4 mx-1 flex justify-center overflow-hidden">
+                  <div className="w-full bg-white dark:bg-[#111b21] p-3 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col items-center">
+                    <div className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase tracking-widest mb-2">Sponsored Advertisement</div>
+                    <div className="w-full max-w-[728px] overflow-hidden">
+                      <AdSenseSlot code={appSettings.adSenseInFeedCode} id="adsense-infeed-first" className="bg-transparent my-0" />
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
 
             // Featured Jobs Interleaving: After every 4 posts
             if ((index + 1) % 4 === 0 && jobIdx < jobItems.length) {
@@ -4929,9 +4994,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
                   ) : appSettings.adSenseSlot1 ? (
                     <AdSenseSlot code={appSettings.adSenseSlot1} id={`adsense-feed-res-${index}`} className="bg-white dark:bg-[#111b21] p-3 border border-gray-50 dark:border-gray-800 rounded-2xl" />
                   ) : appSettings.adSenseCode ? (
-                    <div className="bg-white dark:bg-[#111b21] p-3 border border-gray-50 dark:border-gray-800 rounded-2xl">
-                       <div dangerouslySetInnerHTML={{ __html: appSettings.adSenseCode }} />
-                    </div>
+                    <AdSenseSlot code={appSettings.adSenseCode} id={`adsense-legacy-${index}`} className="bg-white dark:bg-[#111b21] p-3 border border-gray-50 dark:border-gray-800 rounded-2xl" />
                   ) : (
                     <div className="p-8 bg-[#00a884]/5 rounded-2xl border border-dashed border-[#00a884]/20 flex flex-col items-center justify-center text-center">
                       <Megaphone className="w-8 h-8 text-[#00a884]/40 mb-2" />
@@ -4974,8 +5037,8 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
                 adIndex++;
               } else if (appSettings?.adSenseCode) {
                 elements.push(
-                  <div key={`adsense-${pos}`} className="bg-gray-50 dark:bg-[#111b21] rounded-xl p-2 flex items-center justify-center min-h-[100px] border border-dashed border-gray-200 dark:border-gray-800 mb-4 mx-1">
-                    <div dangerouslySetInnerHTML={{ __html: appSettings.adSenseCode }} />
+                  <div key={`adsense-${pos}`} className="bg-gray-50 dark:bg-[#111b21] rounded-xl p-2 mb-4 mx-1">
+                    <AdSenseSlot code={appSettings.adSenseCode} id={`adsense-pos-${pos}`} className="bg-transparent" />
                   </div>
                 );
               }
@@ -7343,6 +7406,20 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
                   className="w-full bg-white dark:bg-[#111b21] border border-gray-100 dark:border-gray-800 p-3 rounded-xl outline-none dark:text-[#e9edef] h-24 font-mono text-xs" 
                 />
                 <p className="text-[9px] text-gray-400 mt-1 italic">This ad will appear in the main feed every 6 posts.</p>
+              </div>
+              <div className="bg-[#00a884]/5 p-4 rounded-xl border border-[#00a884]/10">
+                <div className="flex items-center gap-2 mb-2">
+                  <Megaphone className="w-4 h-4 text-[#00a884]" />
+                  <span className="text-[10px] font-bold text-[#00a884] uppercase tracking-widest">728x90 In-Feed Ad</span>
+                </div>
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Google AdSense In-Feed Code</label>
+                <textarea 
+                  value={settings.adSenseInFeedCode || ''} 
+                  onChange={(e) => setSettings({...settings, adSenseInFeedCode: e.target.value})} 
+                  placeholder="Paste AdSense 728x90 slot code here..."
+                  className="w-full bg-white dark:bg-[#111b21] border border-gray-100 dark:border-gray-800 p-3 rounded-xl outline-none dark:text-[#e9edef] h-24 font-mono text-xs" 
+                />
+                <p className="text-[9px] text-gray-400 mt-1 italic">This ad will appear immediately after the first post in the feed.</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
