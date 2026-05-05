@@ -385,8 +385,8 @@ const AdSenseSlot = ({ code, id, className }: { code?: string, id: string, class
   const [canLoad, setCanLoad] = useState(false);
 
   useEffect(() => {
-    // Progressive loading: Wait 3.5 seconds after component mount before attempting to inject ad scripts
-    const timer = setTimeout(() => setCanLoad(true), 3500);
+    // Progressive loading: Wait 1 second after component mount before attempting to inject ad scripts
+    const timer = setTimeout(() => setCanLoad(true), 1000);
     return () => clearTimeout(timer);
   }, []);
 
@@ -403,9 +403,13 @@ const AdSenseSlot = ({ code, id, className }: { code?: string, id: string, class
       const scripts = tempDiv.getElementsByTagName('script');
       const scriptList = Array.from(scripts);
       
-      // Move hardware elements first
+      // Move non-script elements first (ins tags, etc)
       while (tempDiv.firstChild) {
-        container.appendChild(tempDiv.firstChild);
+        if (!(tempDiv.firstChild instanceof HTMLScriptElement)) {
+          container.appendChild(tempDiv.firstChild);
+        } else {
+          tempDiv.removeChild(tempDiv.firstChild);
+        }
       }
       
       scriptList.forEach(oldScript => {
@@ -414,24 +418,36 @@ const AdSenseSlot = ({ code, id, className }: { code?: string, id: string, class
           newScript.setAttribute(attr.name, attr.value);
         });
         
+        // Handle external script loading
         if (newScript.src && newScript.src.includes('adsbygoogle.js')) {
           if (document.querySelector('script[src*="adsbygoogle.js"]')) {
-            return;
+            return; // Already in page
           }
+          newScript.async = true;
+          newScript.crossOrigin = "anonymous";
         }
         
         if (oldScript.textContent && oldScript.textContent.includes('push')) {
           // Double safety: Timeout + try/catch
           newScript.textContent = `
-            setTimeout(function() {
-              try {
-                if (window.adsbygoogle) {
-                  ${oldScript.textContent}
+            (function() {
+              var attempts = 0;
+              var maxAttempts = 10;
+              function tryPush() {
+                try {
+                  if (window.adsbygoogle && typeof window.adsbygoogle.push === 'function') {
+                    ${oldScript.textContent}
+                    console.log('AdSense Slot [${id}]: push successful');
+                  } else if (attempts < maxAttempts) {
+                    attempts++;
+                    setTimeout(tryPush, 500);
+                  }
+                } catch (e) {
+                  if (window.console) console.info('AdSense Slot [${id}] suppressed: ' + e.message);
                 }
-              } catch (e) {
-                if (window.console) console.info('Ad suppressed: ' + e.message);
               }
-            }, 250);
+              tryPush();
+            })();
           `;
         } else {
           newScript.textContent = oldScript.textContent;
@@ -442,9 +458,8 @@ const AdSenseSlot = ({ code, id, className }: { code?: string, id: string, class
     }
 
     return () => {
-      if (containerRef.current) {
-        containerRef.current.innerHTML = '';
-      }
+      // Don't fully clear on unmount if it's a quick toggle, but for safety in SPA we usually do
+      // However, AdSense doesn't like same-id re-injection too fast
     };
   }, [canLoad, code, id]);
 
@@ -1991,7 +2006,7 @@ export default function App() {
             
             // Wrap in safety delay + try-catch
             if (child.textContent && child.textContent.includes('push')) {
-              newScript.textContent = `setTimeout(function(){ try { ${child.textContent} } catch(e){} }, 1000);`;
+              newScript.textContent = `setTimeout(function(){ try { ${child.textContent} } catch(e){} }, 500);`;
             } else {
               newScript.textContent = child.textContent;
             }
@@ -2007,7 +2022,7 @@ export default function App() {
 
       injectGlobalCode(appSettings?.googleAnalyticsCode, 'hc-global-ga');
       injectGlobalCode(appSettings?.adSenseCode, 'hc-global-adsense');
-    }, 5000); // Wait 5 seconds for core app to be stable
+    }, 1500); // Wait 1.5 seconds for core app to be stable
 
     return () => clearTimeout(timer);
   }, [appSettings.googleAnalyticsCode, appSettings.adSenseCode]);
