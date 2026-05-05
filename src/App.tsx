@@ -1139,6 +1139,15 @@ export default function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
 
+  const clearCacheAndReload = () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    // Cache busting reload
+    const url = new URL(window.location.href);
+    url.searchParams.set('reload', Date.now().toString());
+    window.location.href = url.toString();
+  };
+
   const handleViewUser = async (targetUser: User | null) => {
     setViewingUser(targetUser);
     if (targetUser && user && targetUser.uid !== user.uid) {
@@ -3052,11 +3061,14 @@ export default function App() {
                       <button onClick={() => { setShowCreateAd(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
                         <Megaphone className="w-4 h-4 text-blue-600" /> Create Ad
                       </button>
-                      {user.category === 'General' && (
+                      {user.category !== 'Platinum' && (
                         <button onClick={() => { setShowUpgrade(true); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
                           <Crown className="w-4 h-4 text-purple-600" /> Upgrade
                         </button>
                       )}
+                      <button onClick={() => { clearCacheAndReload(); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
+                        <RefreshCw className="w-4 h-4 text-blue-500 hover:animate-spin" /> Refresh App
+                      </button>
                       <button onClick={() => { handleContactSupport(); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3">
                         <LifeBuoy className="w-4 h-4 text-green-600" /> Help & Support
                       </button>
@@ -3392,6 +3404,7 @@ export default function App() {
               isRefreshing={isRefreshing}
               deferredPrompt={deferredPrompt}
               handleInstallClick={handleInstallClick}
+              onSupportClick={handleContactSupport}
             />}
           {activeTab === 'dating' && (
             <DatingView 
@@ -3405,6 +3418,7 @@ export default function App() {
               appSettings={appSettings}
               deferredPrompt={deferredPrompt}
               handleInstallClick={handleInstallClick}
+              onSupportClick={handleContactSupport}
             />
           )}
           {activeTab === 'jobs' && (
@@ -3761,14 +3775,14 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
     
     const unsubUser = onSnapshot(doc(db, 'users', otherId), (snap) => {
       if (snap.exists()) setOtherUser({ uid: snap.id, ...snap.data() });
-    });
+    }, (e) => handleFirestoreError(e, OperationType.GET, `users/${otherId}`));
 
     const unsubChat = onSnapshot(doc(db, 'chats', chat.id), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
         setOtherUserTyping(!!data.typing?.[otherId]);
       }
-    });
+    }, (e) => handleFirestoreError(e, OperationType.GET, `chats/${chat.id}`));
 
     return () => {
       unsubUser();
@@ -4192,7 +4206,7 @@ const SkeletonChat = () => (
   </div>
 );
 
-const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery, setSearchQuery, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, showPostModal, setShowPostModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, uploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer, targetPostId, isRefreshing, deferredPrompt, handleInstallClick }: any) => {
+const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery, setSearchQuery, onUserClick, awardPoints, appSettings, showStatusModal, setShowStatusModal, showPostModal, setShowPostModal, setShowCreateAd, setAdContent, setAdMediaUrl, setUploading, setUploadProgress, uploadProgress, setUser, uploading, usersMap, onSelectJob, onFollowEmployer, targetPostId, isRefreshing, deferredPrompt, handleInstallClick, onSupportClick }: any) => {
   const [newPost, setNewPost] = useState('');
   const [postMedia, setPostMedia] = useState<string | null>(null);
   const [postMediaType, setPostMediaType] = useState<'image' | 'video' | null>(null);
@@ -4323,73 +4337,91 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
     const q = query(collection(db, `posts/${showComments}/comments`), orderBy('createdAt', 'desc'));
     return onSnapshot(q, (snap) => {
       setComments(snap.docs.map(d => ({ id: d.id, ...d.data() } as PostComment)));
-    });
+    }, (e) => handleFirestoreError(e, OperationType.LIST, `posts/${showComments}/comments`));
   }, [showComments]);
 
   const handleAddComment = async () => {
     if (!commentInput.trim() || !showComments) return;
-    const postRef = doc(db, 'posts', showComments);
-    const { increment } = await import('firebase/firestore');
-    
-    await addDoc(collection(db, `posts/${showComments}/comments`), {
-      postId: showComments,
-      userId: user.uid,
-      userName: user.displayName,
-      userPhoto: user.photoURL,
-      text: commentInput,
-      createdAt: serverTimestamp()
-    });
+    try {
+      const postRef = doc(db, 'posts', showComments);
+      const { increment } = await import('firebase/firestore');
+      
+      await addDoc(collection(db, `posts/${showComments}/comments`), {
+        postId: showComments,
+        userId: user.uid,
+        userName: user.displayName,
+        userPhoto: user.photoURL,
+        text: commentInput,
+        createdAt: serverTimestamp()
+      });
 
-    await updateDoc(postRef, { commentCount: increment(1) });
-    setCommentInput('');
-    awardPoints(appSettings?.pointsPerComment || 0);
+      await updateDoc(postRef, { commentCount: increment(1) });
+      setCommentInput('');
+      awardPoints(appSettings?.pointsPerComment || 0);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `posts/${showComments}/comments`);
+    }
   };
 
   const handlePost = async () => {
-    if (!newPost.trim() && !postMedia) return;
-    
-    const hashtags = newPost.match(/#\w+/g) || [];
-    const isReel = postMediaType === 'video';
-    
-    let censoredContent = newPost;
-    if (appSettings.sensoredWords?.length) {
-      censoredContent = censorText(newPost, appSettings.sensoredWords);
+    if (!newPost.trim() && !postMedia) {
+      toast.error("Please enter a message or upload media");
+      return;
     }
+    
+    setUploading(true);
+    setUploadProgress(10); // Simulated progress for UX
+    try {
+      const hashtags = newPost.match(/#\w+/g) || [];
+      const isReel = postMediaType === 'video';
+      
+      let censoredContent = newPost;
+      if (appSettings.sensoredWords?.length) {
+        censoredContent = censorText(newPost, appSettings.sensoredWords);
+      }
 
-    await addDoc(collection(db, 'posts'), { 
-      userId: user.uid, 
-      content: censoredContent, 
-      media: postMedia ? [postMedia] : [],
-      mediaType: postMediaType,
-      likes: [], 
-      hashtags,
-      isReel,
-      commentCount: 0,
-      createdAt: serverTimestamp(), 
-      isAd: false, 
-      user: { 
-        displayName: user.displayName, 
-        photoURL: user.photoURL,
-        isVerified: user.isVerified || false
-      } 
-    });
+      await addDoc(collection(db, 'posts'), { 
+        userId: user.uid, 
+        content: censoredContent, 
+        media: postMedia ? [postMedia] : [],
+        mediaType: postMediaType,
+        likes: [], 
+        hashtags,
+        isReel,
+        commentCount: 0,
+        createdAt: serverTimestamp(), 
+        isAd: false, 
+        user: { 
+          displayName: user.displayName, 
+          photoURL: user.photoURL,
+          isVerified: user.isVerified || false
+        } 
+      });
 
-    if (user.role === 'admin') {
-      fetch('/api/broadcast-notification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: `Announcement from ${user.displayName}`,
-          message: censoredContent.substring(0, 100) || "New post from admin",
-          data: { type: 'broadcast' }
-        })
-      }).catch(e => console.warn("Broadcast failed:", e));
+      if (user.role === 'admin') {
+        fetch('/api/broadcast-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: `Announcement from ${user.displayName}`,
+            message: censoredContent.substring(0, 100) || "New post from admin",
+            data: { type: 'broadcast' }
+          })
+        }).catch(e => console.warn("Broadcast failed:", e));
+      }
+
+      setNewPost('');
+      setPostMedia(null);
+      setPostMediaType(null);
+      setUploadProgress(100);
+      awardPoints(appSettings?.pointsPerPost || 0);
+      toast.success("Posted successfully!");
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'posts');
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
     }
-
-    setNewPost('');
-    setPostMedia(null);
-    setPostMediaType(null);
-    awardPoints(appSettings?.pointsPerPost || 0);
   };
 
   const handlePostFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -5188,13 +5220,15 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
               jobIdx++;
             }
 
-            // Single Ladies Ad Injection: after index 3 (4th post) and 9 (10th post)
+            // Header Rotating Banner Injection: after index 3 (4th post) and 9 (10th post)
             if (index === 3 || index === 9) {
               elements.push(
-                <SingleLadiesAds 
-                  key={`single-ladies-ad-${index}`}
+                <HeaderRotatingBanner 
+                  key={`header-banner-${index}`}
                   deferredPrompt={deferredPrompt} 
-                  onInstall={handleInstallClick} 
+                  onInstall={handleInstallClick}
+                  appSettings={appSettings}
+                  onSupportClick={onSupportClick}
                 />
               );
             }
@@ -5325,7 +5359,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
     </div>
   );
 };
-const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, onOpenProfile, setUser, appSettings, deferredPrompt, handleInstallClick }: any) => {
+const DatingView = ({ user, filters, onUpdateFilters, onUserClick, searchQuery, onOpenProfile, setUser, appSettings, deferredPrompt, handleInstallClick, onSupportClick }: any) => {
   const [discoverUsers, setDiscoverUsers] = useState<User[]>([]);
   const [featuredSingles, setFeaturedSingles] = useState<User[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -6956,7 +6990,7 @@ const PointsLeaderboard = ({ onBack }: any) => {
         const filtered = s.docs.map(d => ({ uid: d.id, ...d.data() } as User)).filter(u => u.isVerified);
         setLeaders(filtered.slice(0, 20));
         setLoading(false);
-      });
+      }, (e) => handleFirestoreError(e, OperationType.LIST, 'users/fallback'));
     });
     return unsub;
   }, []);
@@ -7696,6 +7730,20 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
                 />
                 <p className="text-[9px] text-gray-400 mt-1 italic">This ad will appear immediately after the first post in the feed.</p>
               </div>
+              <div className="bg-[#00a884]/5 p-4 rounded-xl border border-[#00a884]/10">
+                <div className="flex items-center gap-2 mb-2">
+                  <Megaphone className="w-4 h-4 text-[#00a884]" />
+                  <span className="text-[10px] font-bold text-[#00a884] uppercase tracking-widest">Header Rotating AdSense</span>
+                </div>
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Google AdSense Header Banner Code</label>
+                <textarea 
+                  value={settings.headerBannerAdSense || ''} 
+                  onChange={(e) => setSettings({...settings, headerBannerAdSense: e.target.value})} 
+                  placeholder="Paste AdSense slot code for rotating banner here..."
+                  className="w-full bg-white dark:bg-[#111b21] border border-gray-100 dark:border-gray-800 p-3 rounded-xl outline-none dark:text-[#e9edef] h-24 font-mono text-xs" 
+                />
+                <p className="text-[9px] text-gray-400 mt-1 italic">This ad will rotate with Support and Install prompts in the header.</p>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">AdSense Slot 1 (Dashboard/Side)</label>
@@ -8150,113 +8198,87 @@ const WelcomeModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => voi
 };
 
 // --- Promotional Components ---
-const SingleLadiesAds = ({ deferredPrompt, onInstall }: { deferredPrompt: any, onInstall: () => void }) => {
-  const [showInstall, setShowInstall] = useState(true);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+const HeaderRotatingBanner = ({ deferredPrompt, onInstall, appSettings, onSupportClick }: { deferredPrompt: any, onInstall: () => void, appSettings: AppSettings | null, onSupportClick: () => void }) => {
+  const [rotationIndex, setRotationIndex] = useState(0); // 0: Support, 1: AdSense, 2: Install
   
-  const ladiesImages = [
-    "https://images.unsplash.com/photo-1523824921871-d6f1a15151f1?q=80&w=800&auto=format&fit=crop", 
-    "https://images.unsplash.com/photo-1542345812-d9e0e3f42230?q=80&w=800&auto=format&fit=crop", 
-    "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?q=80&w=800&auto=format&fit=crop", 
-    "https://images.unsplash.com/photo-1526080652727-5e77c2f07f9c?q=80&w=800&auto=format&fit=crop", 
-    "https://images.unsplash.com/photo-1509631179647-0177331693ae?q=80&w=800&auto=format&fit=crop"
-  ];
-
   useEffect(() => {
-    const toggleTimer = setInterval(() => {
-      setShowInstall(prev => !prev);
-    }, 5000);
-
-    const imageTimer = setInterval(() => {
-      setCurrentImageIndex(prev => (prev + 1) % ladiesImages.length);
-    }, 3000);
-
-    return () => {
-      clearInterval(toggleTimer);
-      clearInterval(imageTimer);
-    };
+    const interval = setInterval(() => {
+      setRotationIndex(prev => (prev + 1) % 3);
+    }, 8000); // Rotate every 8 seconds
+    return () => clearInterval(interval);
   }, []);
 
-  const handleClick = () => {
-    window.open("https://omg10.com/4/6130375", "_blank");
-  };
-
   return (
-    <div className="flex flex-col gap-2 p-3 bg-white dark:bg-[#111b21] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 mb-4 mx-1">
-      {/* Alternating Button */}
-      <div className="relative h-[48px]">
-        <AnimatePresence mode="wait">
-          {showInstall && deferredPrompt ? (
-            <motion.button
-              key="install"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.05 }}
-              onClick={onInstall}
-              className="absolute inset-0 w-full bg-[#00a884] text-white rounded-xl font-black flex items-center justify-center gap-2 shadow-sm hover:bg-[#008f6f] transition-all active:scale-95"
-            >
-              <Download className="w-5 h-5" />
-              <span className="uppercase tracking-tight text-xs">Install Heart Connect</span>
-            </motion.button>
-          ) : (
-            <motion.button
-              key="ads"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.05 }}
-              onClick={handleClick}
-              className="absolute inset-0 w-full bg-[#ff2d75] text-white rounded-xl font-black flex items-center justify-center gap-2 shadow-sm hover:bg-[#e62969] transition-all active:scale-95 border-2 border-white/10"
-            >
-              <Heart className="w-5 h-5 fill-current" />
-              <span className="uppercase tracking-tight text-xs">Meet Single African Ladies Now</span>
-            </motion.button>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Full Banner - High Quality Realistic African Ladies */}
-      <div 
-        onClick={handleClick}
-        className="relative h-64 w-full rounded-xl overflow-hidden cursor-pointer group border border-gray-100 dark:border-gray-800 shadow-md"
-      >
-        <AnimatePresence mode="wait">
-          <motion.img
-            key={currentImageIndex}
-            src={ladiesImages[currentImageIndex]}
-            initial={{ opacity: 0, scale: 1.05 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.8 }}
-            className="w-full h-full object-cover"
-            alt="Beautiful African Single"
-          />
-        </AnimatePresence>
-        
-        {/* Gradient Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
-        
-        {/* Ad Tag */}
-        <div className="absolute top-2 right-2 bg-[#00a884] px-2 py-0.5 rounded text-[8px] font-black text-white uppercase tracking-widest shadow-lg">
-          AD
-        </div>
-
-        <div className="absolute bottom-0 left-0 right-0 p-4">
-          <div className="flex flex-col gap-1">
-            <p className="text-white text-xl font-black leading-tight drop-shadow-2xl uppercase italic tracking-tighter">
-              Real <span className="text-[#00a884] not-italic">Beautiful</span> Ladies Near You
-            </p>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-200 font-bold flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#00a884]" />
-                100% Verified African Profiles
-              </span>
-              <div className="bg-[#00a884] p-2 rounded-full group-hover:scale-110 transition-transform shadow-xl">
-                <ArrowRight className="w-4 h-4 text-white" />
+    <div className="mb-4 mx-1 overflow-hidden rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#111b21]">
+      <AnimatePresence mode="wait">
+        {rotationIndex === 0 && (
+          <motion.div
+            key="support-banner"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            onClick={onSupportClick}
+            className="p-4 bg-gradient-to-r from-[#00a884] to-[#05cd99] text-white cursor-pointer group flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm group-hover:scale-110 transition-transform">
+                <LifeBuoy className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h4 className="font-black text-sm uppercase tracking-tighter">Need Help?</h4>
+                <p className="text-[10px] font-bold opacity-90 uppercase tracking-widest">Chat with Support (Mugebe)</p>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
+            <ArrowRight className="w-5 h-5 opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+          </motion.div>
+        )}
+
+        {rotationIndex === 1 && (
+          <motion.div
+            key="adsense-banner"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="min-h-[64px] flex items-center justify-center bg-gray-50 dark:bg-[#202c33]"
+          >
+            {appSettings?.headerBannerAdSense ? (
+              <AdSenseSlot code={appSettings.headerBannerAdSense} id="header-rotating-ads" className="w-full flex justify-center" />
+            ) : (
+              <div className="flex flex-col items-center p-3 opacity-40">
+                <Megaphone className="w-5 h-5 mb-1" />
+                <span className="text-[9px] font-black uppercase tracking-[0.2em]">Advertise With Us</span>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {rotationIndex === 2 && (
+          <motion.div
+            key="install-banner"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            onClick={deferredPrompt ? onInstall : undefined}
+            className={cn(
+              "p-4 flex items-center justify-between cursor-pointer group",
+              deferredPrompt ? "bg-gradient-to-r from-[#ff2d75] to-[#ff5d9e] text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-400"
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-black/10 rounded-xl flex items-center justify-center group-hover:rotate-12 transition-transform">
+                <Smartphone className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-black text-sm uppercase tracking-tighter">Better on App</h4>
+                <p className="text-[10px] font-bold opacity-90 uppercase tracking-widest">
+                  {deferredPrompt ? "Install Heart Connect Now" : "PWA Compatible Site"}
+                </p>
+              </div>
+            </div>
+            {deferredPrompt && <Download className="w-5 h-5 opacity-50 group-hover:opacity-100 animate-bounce" />}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
