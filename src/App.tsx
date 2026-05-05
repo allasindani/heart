@@ -15,6 +15,7 @@ import {
   Check,
   CheckCheck,
   ShieldAlert,
+  AlertTriangle,
   Trash2,
   User as UserIcon,
   LogOut,
@@ -112,6 +113,7 @@ import { getAI } from './lib/gemini';
 import { User, Chat, Message, Post, Status, Notification as AppNotification, PostComment, AppSettings, PaymentProof, Job, JobApplication, Call, SupportTicket } from './types';
 
 // --- Constants ---
+const APP_VERSION = "1.0.3";
 const SUPPORT_UID = 'heart-connect-support';
 const SUPPORT_NAME = 'Admin Support (Mugebe)';
 const SUPPORT_PHOTO = 'https://ui-avatars.com/api/?name=Admin+Support&background=00a884&color=fff';
@@ -1221,20 +1223,35 @@ export default function App() {
 
   const handleAcceptCall = async () => {
     if (!callState.callId) return;
-    await updateDoc(doc(db, 'calls', callState.callId), { status: 'accepted' });
-    setCallState(prev => ({ ...prev, status: 'ongoing' }));
+    try {
+      await updateDoc(doc(db, 'calls', callState.callId), { status: 'accepted' });
+      setCallState(prev => ({ ...prev, status: 'ongoing' }));
+    } catch (e) {
+      console.error("Accept call error:", e);
+      setCallState({ isActive: false, type: 'voice', status: 'idle', callId: null, otherUser: null });
+    }
   };
 
   const handleRejectCall = async () => {
     if (!callState.callId) return;
-    await updateDoc(doc(db, 'calls', callState.callId), { status: 'rejected' });
-    setCallState({ isActive: false, type: 'voice', status: 'idle', callId: null, otherUser: null });
+    try {
+      await updateDoc(doc(db, 'calls', callState.callId), { status: 'rejected' });
+    } catch (e) {
+      console.warn("Reject call Firestore update failed:", e);
+    } finally {
+      setCallState({ isActive: false, type: 'voice', status: 'idle', callId: null, otherUser: null });
+    }
   };
 
   const handleEndCall = async () => {
     if (!callState.callId) return;
-    await updateDoc(doc(db, 'calls', callState.callId), { status: 'ended' });
-    setCallState({ isActive: false, type: 'voice', status: 'idle', callId: null, otherUser: null });
+    try {
+      await updateDoc(doc(db, 'calls', callState.callId), { status: 'ended' });
+    } catch (e) {
+      console.warn("End call Firestore update failed:", e);
+    } finally {
+      setCallState({ isActive: false, type: 'voice', status: 'idle', callId: null, otherUser: null });
+    }
   };
 
   useEffect(() => {
@@ -1251,7 +1268,7 @@ export default function App() {
         console.warn("AdMob already initialized or failed:", e);
       }
     };
-    initAdMob();
+    initAdMob().catch(e => console.warn("initAdMob failed:", e));
 
     // OneSignal Initialization
     const initOneSignal = async () => {
@@ -1284,7 +1301,7 @@ export default function App() {
         // Web initialization is in index.html, but we can ensure it's logged in later
       }
     };
-    initOneSignal();
+    initOneSignal().catch(e => console.warn("initOneSignal failed:", e));
 
     // Auto-update check for Capacitor
     const checkUpdates = async () => {
@@ -1321,7 +1338,7 @@ export default function App() {
         }
       }
     };
-    checkUpdates();
+    checkUpdates().catch(e => console.warn("checkUpdates failed:", e));
   }, []); // Run once on mount
 
   useEffect(() => {
@@ -1808,7 +1825,7 @@ export default function App() {
                 };
                 // Only check support periodically or once per session
                 if (!sessionStorage.getItem('support_checked')) {
-                  supportChatCheck();
+                  supportChatCheck().catch(e => console.warn("Support check failed:", e));
                   sessionStorage.setItem('support_checked', 'true');
                 }
 
@@ -2217,7 +2234,23 @@ export default function App() {
     const q = collection(db, 'settings');
     const unsub = onSnapshot(q, (snap) => {
       if (!snap.empty) {
-        setAppSettings(snap.docs[0].data() as AppSettings);
+        const data = snap.docs[0].data() as AppSettings;
+        setAppSettings(data);
+        
+        // Version check for auto-update
+        if (data.minAppVersion && data.minAppVersion > APP_VERSION) {
+          console.log("New version available, reloading...");
+          // Clear any potential cache issues
+          if ('caches' in window) {
+              caches.keys().then(names => {
+                  for (let name of names) caches.delete(name);
+              });
+          }
+          // Hard reload from server
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        }
       } else {
         // Initialize settings if they don't exist
         addDoc(collection(db, 'settings'), appSettings).catch(e => console.error("Error creating default settings:", e));
@@ -2242,7 +2275,7 @@ export default function App() {
         await updateDoc(doc(db, 'users', user.uid), { hasSeenAffiliateWelcome: true });
         setUser((prev: any) => prev ? { ...prev, hasSeenAffiliateWelcome: true } : null);
       };
-      sendAffiliateWelcome();
+      sendAffiliateWelcome().catch(e => console.error("Error sending affiliate welcome:", e));
     }
   }, [user?.uid, user?.hasSeenAffiliateWelcome]);
 
@@ -2347,7 +2380,7 @@ export default function App() {
       }
     };
     
-    resetUnread();
+    resetUnread().catch(e => console.error("Error in resetUnread background task:", e));
   }, [selectedChat?.id, user?.uid, messages.length]); // Added messages.length to trigger when new messages arrive while chat is open
 
   useEffect(() => {
@@ -2486,7 +2519,7 @@ export default function App() {
       }
     };
 
-    processDelivered();
+    processDelivered().catch(e => console.error("Error in processDelivered background task:", e));
   }, [chats, user?.uid]);
 
   // Error Boundary State
@@ -2616,12 +2649,25 @@ export default function App() {
 
   console.log("App: Rendering main layout for", user.displayName);
 
+  const handleSignOut = async () => {
+    if (user) {
+      try {
+        await updateDoc(doc(db, 'users', user.uid), { 
+          isOnline: false, 
+          lastSeen: serverTimestamp() 
+        }).catch(() => {});
+      } catch (e) { /* ignore cleanup errors */ }
+    }
+    signOut(auth);
+    setShowMenu(false);
+  };
+
   if (user.suspended) return (
     <div className="h-screen flex flex-col items-center justify-center bg-white dark:bg-[#0b141a] p-8 text-center">
       <ShieldAlert className="w-16 h-16 text-red-500 mb-6" />
       <h1 className="text-2xl font-bold text-gray-900 dark:text-[#e9edef] mb-2">Account Suspended</h1>
       <p className="text-gray-500 dark:text-[#8696a0] mb-8">Your account has been suspended for violating our terms of service. If you believe this is a mistake, please contact support.</p>
-      <button onClick={() => auth.signOut()} className="bg-[#00a884] text-white px-8 py-3 rounded-full font-bold shadow-lg">Sign Out</button>
+      <button onClick={handleSignOut} className="bg-[#00a884] text-white px-8 py-3 rounded-full font-bold shadow-lg">Sign Out</button>
     </div>
   );
 
@@ -2721,7 +2767,7 @@ export default function App() {
       updatedAt: serverTimestamp() 
     });
 
-    const otherId = selectedChat.participants.find(p => p !== user.uid);
+      const otherId = selectedChat.participants.find(p => p !== user.uid);
     let notificationPromise: Promise<any> = Promise.resolve();
     let unreadUpdatePromise: Promise<any> = Promise.resolve();
     
@@ -2729,7 +2775,7 @@ export default function App() {
       // Increment unread count for recipient
       const unreadKey = `unreadCount.${otherId}`;
       
-      const unreadUpdatePromise = updateDoc(doc(db, 'chats', selectedChat.id), {
+      unreadUpdatePromise = updateDoc(doc(db, 'chats', selectedChat.id), {
         [unreadKey]: increment(1)
       });
       
@@ -2740,6 +2786,9 @@ export default function App() {
         type: 'message',
         text: `${processedText.substring(0, 30)}${processedText.length > 30 ? '...' : ''}`,
         relatedId: selectedChat.id
+      }).catch(e => {
+        console.warn("Notification failed:", e);
+        return null;
       });
       
       // If phone number or sensitive word was detected, send warning notification
@@ -3016,7 +3065,7 @@ export default function App() {
                           <Shield className="w-4 h-4" /> Admin Panel
                         </button>
                       )}
-                      <button onClick={() => { signOut(auth); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3">
+                      <button onClick={handleSignOut} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3">
                         <LogOut className="w-4 h-4" /> Log out
                       </button>
                     </div>
@@ -3269,7 +3318,7 @@ export default function App() {
                               {otherUser?.isOnline ? (
                                 <div className="w-1.5 h-1.5 bg-green-500 rounded-full shrink-0" />
                               ) : (
-                                <span className="text-[9px] font-normal text-gray-400 normal-case">
+                                <span className="text-[10px] font-normal text-gray-400 normal-case italic">
                                   {otherUser?.lastSeen?.toDate ? `seen ${formatLastSeen(otherUser.lastSeen.toDate())}` : 'offline'}
                                 </span>
                               )}
@@ -3828,12 +3877,12 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
             <TierBadge tier={otherUser?.category} size={14} />
             {otherUser?.isVerified && <VerifiedBadge size={14} />}
           </h3>
-          <p className="text-[10px] opacity-80 flex items-center gap-1">
+          <p className="text-[11px] opacity-90 flex items-center gap-1 font-medium italic">
             {otherUserTyping ? (
-              <span className="text-white font-bold animate-pulse">typing...</span>
+              <span className="text-white font-bold animate-pulse non-italic">typing...</span>
             ) : otherUser?.isOnline ? (
               <>
-                <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                <span className="w-2 h-2 bg-white rounded-full animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
                 online
               </>
             ) : (
@@ -7522,6 +7571,27 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
               <div>
                 <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Points cost per Gift</label>
                 <input type="number" value={settings.pointsPerGift || 100} onChange={(e) => setSettings({...settings, pointsPerGift: Number(e.target.value)})} className="w-full bg-gray-50 dark:bg-[#2a3942] border-none p-3 rounded-xl outline-none dark:text-[#e9edef]" />
+              </div>
+            </div>
+
+            <h3 className="font-bold text-gray-700 dark:text-[#e9edef] border-b dark:border-gray-800 pb-2 pt-4">App Version Management</h3>
+            <div className="grid grid-cols-1 gap-4">
+              <div className="bg-red-50 dark:bg-red-900/10 p-4 rounded-xl border border-red-100 dark:border-red-900/20">
+                <div className="flex items-center gap-2 mb-2 text-red-600 dark:text-red-400">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Update Force Trigger</span>
+                </div>
+                <label className="text-[10px] font-bold text-gray-400 dark:text-[#8696a0] uppercase block mb-1">Minimum App Version (Current: {APP_VERSION})</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={settings.minAppVersion || ""} 
+                    onChange={(e) => setSettings({...settings, minAppVersion: e.target.value})} 
+                    placeholder="e.g. 1.0.4"
+                    className="flex-1 bg-white dark:bg-[#111b21] border border-gray-200 dark:border-gray-800 p-3 rounded-xl outline-none dark:text-[#e9edef] font-mono" 
+                  />
+                </div>
+                <p className="text-[9px] text-gray-500 mt-2 italic">If site version is less than this value, all users will be forced to hard-reload. USE WITH CAUTION.</p>
               </div>
             </div>
 

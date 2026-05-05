@@ -195,6 +195,7 @@ export interface AppSettings {
   pointsPerGift?: number;
   pointsPerInvitation?: number;
   sensoredWords?: string[];
+  minAppVersion?: string;
 }
 
 export interface PaymentProof {
