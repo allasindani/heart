@@ -1287,7 +1287,7 @@ export default function App() {
           OneSignal.initialize(appId);
           OneSignal.Notifications.requestPermission(true).then((success) => {
             console.log("Notification permission status:", success);
-          });
+          }).catch(e => console.warn("OneSignal permission request failed:", e));
 
           OneSignal.Notifications.addEventListener('click', (event) => {
             console.log('OneSignal notification clicked:', event);
@@ -2141,7 +2141,7 @@ export default function App() {
           : [...(prev.followingEmployers || []), employerId]
       }));
     } catch (e) {
-      console.error("Follow error:", e);
+      handleFirestoreError(e, OperationType.WRITE, 'users/followingEmployers');
     }
   };
 
@@ -2752,69 +2752,69 @@ export default function App() {
       status: 'sent' 
     };
 
-    // Parallelize writes for better performance and reduced latency
-    const messagePromise = addDoc(collection(db, `chats/${selectedChat.id}/messages`), msgData);
-    const { increment } = await import('firebase/firestore');
-    
-    // Increment counts for tracking limits
-    const updateData: any = {
-      messageCount: increment(1)
-    };
-    if (type === 'image') {
-      updateData.chatPhotoCount = increment(1);
-    }
+    try {
+      // Parallelize writes for better performance and reduced latency
+      const messagePromise = addDoc(collection(db, `chats/${selectedChat.id}/messages`), msgData);
+      const { increment } = await import('firebase/firestore');
+      
+      // Increment counts for tracking limits
+      const updateData: any = {
+        messageCount: increment(1)
+      };
+      if (type === 'image') {
+        updateData.chatPhotoCount = increment(1);
+      }
 
-    const userUpdatePromise = updateDoc(doc(db, 'users', user.uid), updateData);
+      const userUpdatePromise = updateDoc(doc(db, 'users', user.uid), updateData);
 
-    const chatUpdatePromise = updateDoc(doc(db, 'chats', selectedChat.id), { 
-      lastMessage: { 
-        text: type === 'text' ? processedText : `Sent an ${type}`, 
-        senderId: user.uid, 
-        timestamp: serverTimestamp(),
-        status: 'sent'
-      }, 
-      updatedAt: serverTimestamp() 
-    });
+      const chatUpdatePromise = updateDoc(doc(db, 'chats', selectedChat.id), { 
+        lastMessage: { 
+          text: type === 'text' ? processedText : `Sent an ${type}`, 
+          senderId: user.uid, 
+          timestamp: serverTimestamp(),
+          status: 'sent'
+        }, 
+        updatedAt: serverTimestamp() 
+      });
 
       const otherId = selectedChat.participants.find(p => p !== user.uid);
-    let notificationPromise: Promise<any> = Promise.resolve();
-    let unreadUpdatePromise: Promise<any> = Promise.resolve();
-    
-    if (otherId) {
-      // Increment unread count for recipient
-      const unreadKey = `unreadCount.${otherId}`;
+      let notificationPromise: Promise<any> = Promise.resolve();
+      let unreadUpdatePromise: Promise<any> = Promise.resolve();
       
-      unreadUpdatePromise = updateDoc(doc(db, 'chats', selectedChat.id), {
-        [unreadKey]: increment(1)
-      });
-      
-      notificationPromise = notifyUser({
-        userId: otherId,
-        fromId: user.uid,
-        fromName: user.displayName,
-        type: 'message',
-        text: `${processedText.substring(0, 30)}${processedText.length > 30 ? '...' : ''}`,
-        relatedId: selectedChat.id
-      }).catch(e => {
-        console.warn("Notification failed:", e);
-        return null;
-      });
-      
-      // If phone number or sensitive word was detected, send warning notification
-      if (text !== processedText) {
-        notifyUser({
-          userId: user.uid,
-          fromId: 'system',
-          fromName: 'Heart Connect',
+      if (otherId) {
+        // Increment unread count for recipient
+        const unreadKey = `unreadCount.${otherId}`;
+        
+        unreadUpdatePromise = updateDoc(doc(db, 'chats', selectedChat.id), {
+          [unreadKey]: increment(1)
+        });
+        
+        notificationPromise = notifyUser({
+          userId: otherId,
+          fromId: user.uid,
+          fromName: user.displayName,
           type: 'message',
-          title: 'Direct Contact Warning',
-          text: 'Please Use Heart Connect for chats. Phone numbers are scrambled for your safety.'
-        }).catch(() => {});
+          text: `${processedText.substring(0, 30)}${processedText.length > 30 ? '...' : ''}`,
+          relatedId: selectedChat.id
+        }).catch(e => {
+          console.warn("Notification failed:", e);
+          return null;
+        });
+        
+        // If phone number or sensitive word was detected, send warning notification
+        if (text !== processedText) {
+          notifyUser({
+            userId: user.uid,
+            fromId: 'system',
+            fromName: 'Heart Connect',
+            type: 'message',
+            title: 'Direct Contact Warning',
+            text: 'Please Use Heart Connect for chats. Phone numbers are scrambled for your safety.'
+          }).catch(() => {});
+        }
       }
-    }
 
-    try {
-      await Promise.all([messagePromise, userUpdatePromise, chatUpdatePromise, notificationPromise, unreadUpdatePromise].filter(Boolean));
+      await Promise.all([messagePromise, userUpdatePromise, chatUpdatePromise, notificationPromise, unreadUpdatePromise]);
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `chats/${selectedChat.id}/messages`);
     }
@@ -4453,7 +4453,9 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
       
       const userDocRef = doc(db, 'users', user.uid);
       const { increment } = await import('firebase/firestore');
-      await updateDoc(userDocRef, { uploadCount: increment(1) });
+      await updateDoc(userDocRef, { uploadCount: increment(1) }).catch(e => {
+        handleFirestoreError(e, OperationType.WRITE, 'users/uploadCount');
+      });
       setUser(prev => prev ? { ...prev, uploadCount: (prev.uploadCount || 0) + 1 } : null);
     } catch (error: any) {
       toast.error(appSettings?.siteName || "Heart Connect", { description: "Upload failed: " + (error.message || "Unknown error") });
@@ -4484,7 +4486,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
       const durationMs = statusDuration === '24h' ? 24 * 60 * 60 * 1000 : statusDuration === '1w' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
       const expiresAt = new Date(Date.now() + durationMs);
       
-      const newStatus = await addDoc(collection(db, 'statuses'), {
+      await addDoc(collection(db, 'statuses'), {
         userId: user?.uid || 'unknown',
         type,
         content: mediaUrl || statusText,
@@ -4516,7 +4518,7 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
           body: JSON.stringify({
             title: `Announcement from ${user.displayName}`,
             message: type === 'text' ? (statusText.substring(0, 100) || "New status from admin") : "Check out my new status update!",
-            data: { type: 'status_broadcast' }
+            data: { type: 'broadcast' }
           })
         }).catch(e => console.warn("Broadcast failed:", e));
       }
@@ -4525,13 +4527,8 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
       setStatusText('');
       setStatusCaption('');
       return true;
-    } catch (error: any) {
-      console.error("Status error:", error);
-      if (!isExternalUpload) {
-        toast.error(appSettings?.siteName || "Heart Connect", { 
-          description: "Failed to create status: " + (error.message || "Unknown error") 
-        });
-      }
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'statuses');
       return false;
     } finally {
       if (!isExternalUpload) setUploading(false);
@@ -7224,14 +7221,18 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
   }, []);
 
   const saveSettings = async (newSettings: AppSettings) => {
-    const sSnap = await getDocs(collection(db, 'settings'));
-    if (!sSnap.empty) {
-      await updateDoc(doc(db, 'settings', sSnap.docs[0].id), newSettings as any);
-    } else {
-      await addDoc(collection(db, 'settings'), newSettings);
+    try {
+      const sSnap = await getDocs(collection(db, 'settings'));
+      if (!sSnap.empty) {
+        await updateDoc(doc(db, 'settings', sSnap.docs[0].id), newSettings as any);
+      } else {
+        await addDoc(collection(db, 'settings'), newSettings);
+      }
+      setSettings(newSettings);
+      toast.success(appSettings?.siteName || "Heart Connect", { description: "Settings saved successfully!" });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'settings');
     }
-    setSettings(newSettings);
-    toast.success(appSettings.siteName || "Heart Connect", { description: "Settings saved successfully!" });
   };
 
   const approvePayment = async (proof: PaymentProof) => {
@@ -7275,9 +7276,14 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
   };
 
   const deleteAd = async (adId: string) => {
-    await deleteDoc(doc(db, 'posts', adId));
-    setAds(ads.filter(a => a.id !== adId));
-    setStats({ ...stats, activeAds: stats.activeAds - 1 });
+    try {
+      await deleteDoc(doc(db, 'posts', adId));
+      setAds(ads.filter(a => a.id !== adId));
+      setStats({ ...stats, activeAds: stats.activeAds - 1 });
+      toast.success("Ad deleted successfully");
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, `posts/${adId}`);
+    }
   };
 
   const toggleUserRole = async (targetUser: User) => {
