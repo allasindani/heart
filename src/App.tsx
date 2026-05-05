@@ -3783,14 +3783,14 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
     
     if (!isTyping) {
       setIsTyping(true);
-      updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: true });
+      updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: true }).catch(() => {});
     }
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     
     typingTimeoutRef.current = setTimeout(() => {
       setIsTyping(false);
-      updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false });
+      updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false }).catch(() => {});
     }, 3000);
   };
 
@@ -4128,7 +4128,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
                   onSendMessage(input); 
                   setInput(''); 
                   setIsTyping(false);
-                  updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false });
+                  updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false }).catch(() => {});
                 } 
               }} 
             />
@@ -4144,7 +4144,7 @@ const ChatView = ({ user, chat, messages, onBack, onSendMessage, onUserClick, on
                 onSendMessage(input); 
                 setInput(''); 
                 setIsTyping(false);
-                updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false });
+                updateDoc(doc(db, 'chats', chat.id), { [`typing.${user.uid}`]: false }).catch(() => {});
               } 
             }}
             className="w-12 h-12 bg-[#00a884] rounded-full flex items-center justify-center text-white active:scale-95 transition-transform shrink-0 shadow-lg shadow-[#00a884]/20"
@@ -4285,27 +4285,32 @@ const StatusAndWallView = ({ user, statuses, posts, jobs, activeTab, searchQuery
 
   const handleLike = async (post: Post) => {
     if (!user) return;
-    const postRef = doc(db, 'posts', post.id);
-    const safeLikes = post.likes || [];
-    const isLiked = safeLikes.includes(user.uid);
-    const { arrayUnion, arrayRemove } = await import('firebase/firestore');
-    
-    await updateDoc(postRef, {
-      likes: isLiked ? arrayRemove(user.uid) : arrayUnion(user.uid)
-    });
+    try {
+      const postRef = doc(db, 'posts', post.id);
+      const safeLikes = post.likes || [];
+      const isLiked = safeLikes.includes(user.uid);
+      const { arrayUnion, arrayRemove } = await import('firebase/firestore');
+      
+      await updateDoc(postRef, {
+        likes: isLiked ? arrayRemove(user.uid) : arrayUnion(user.uid)
+      });
 
-    if (!isLiked) {
-      awardPoints(appSettings?.pointsPerLike || 0);
-      // Notify author
-      if (post.userId !== user.uid) {
-        await notifyUser({
-          userId: post.userId,
-          fromId: user.uid,
-          fromName: user.displayName,
-          type: 'like',
-          text: 'liked your post'
-        });
+      if (!isLiked) {
+        awardPoints(appSettings?.pointsPerLike || 0);
+        // Notify author
+        if (post.userId !== user.uid) {
+          await notifyUser({
+            userId: post.userId,
+            fromId: user.uid,
+            fromName: user.displayName,
+            type: 'like',
+            text: 'liked your post'
+          });
+        }
       }
+    } catch (e) {
+      console.error("Like error:", e);
+      handleFirestoreError(e, OperationType.UPDATE, `posts/${post.id}`);
     }
   };
 
@@ -7196,29 +7201,43 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
   };
 
   const approvePayment = async (proof: PaymentProof) => {
-    await updateDoc(doc(db, 'payment_proofs', proof.id), { status: 'approved' });
-    
-    if ((proof as any).type === 'ad' && (proof as any).adData) {
-      const adData = (proof as any).adData;
-      await addDoc(collection(db, 'posts'), {
-        userId: proof.userId,
-        content: adData.content,
-        media: [adData.mediaUrl],
-        adLink: adData.link,
-        adCost: adData.cost,
-        isAd: true,
-        likes: [],
-        commentCount: 0,
-        createdAt: serverTimestamp(),
-        user: { displayName: proof.userName, photoURL: users.find(u => u.uid === proof.userId)?.photoURL }
-      });
-      toast.success(appSettings?.siteName || "Heart Connect", { description: "Ad approved and published!" });
-    } else {
-      await updateDoc(doc(db, 'users', proof.userId), { category: proof.tier });
-      toast.success(appSettings?.siteName || "Heart Connect", { description: "Payment approved and user tier updated!" });
+    try {
+      await updateDoc(doc(db, 'payment_proofs', proof.id), { status: 'approved' });
+      
+      if ((proof as any).type === 'ad' && (proof as any).adData) {
+        const adData = (proof as any).adData;
+        await addDoc(collection(db, 'posts'), {
+          userId: proof.userId,
+          content: adData.content,
+          media: [adData.mediaUrl],
+          adLink: adData.link,
+          adCost: adData.cost,
+          isAd: true,
+          likes: [],
+          commentCount: 0,
+          createdAt: serverTimestamp(),
+          user: { displayName: proof.userName, photoURL: users.find(u => u.uid === proof.userId)?.photoURL }
+        });
+        toast.success(appSettings?.siteName || "Heart Connect", { description: "Ad approved and published!" });
+      } else {
+        await updateDoc(doc(db, 'users', proof.userId), { category: proof.tier });
+        toast.success(appSettings?.siteName || "Heart Connect", { description: "Payment approved and user tier updated!" });
+      }
+      
+      setPaymentProofs(paymentProofs.map(p => p.id === proof.id ? { ...p, status: 'approved' } : p));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `payment_proofs/${proof.id}`);
     }
-    
-    setPaymentProofs(paymentProofs.map(p => p.id === proof.id ? { ...p, status: 'approved' } : p));
+  };
+
+  const rejectPayment = async (proof: PaymentProof) => {
+    try {
+      await updateDoc(doc(db, 'payment_proofs', proof.id), { status: 'rejected' });
+      setPaymentProofs(paymentProofs.map(p => p.id === proof.id ? { ...p, status: 'rejected' } : p));
+      toast.success(appSettings?.siteName || "Heart Connect", { description: "Payment rejected" });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `payment_proofs/${proof.id}`);
+    }
   };
 
   const deleteAd = async (adId: string) => {
@@ -7228,32 +7247,53 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
   };
 
   const toggleUserRole = async (targetUser: User) => {
-    const newRole = targetUser.role === 'admin' ? 'user' : 'admin';
-    await updateDoc(doc(db, 'users', targetUser.uid), { role: newRole });
-    setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, role: newRole as any } : u));
+    try {
+      const newRole = targetUser.role === 'admin' ? 'user' : 'admin';
+      await updateDoc(doc(db, 'users', targetUser.uid), { role: newRole });
+      setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, role: newRole as any } : u));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `users/${targetUser.uid}`);
+    }
   };
 
   const setUserCategory = async (targetUser: User, category: string) => {
-    await updateDoc(doc(db, 'users', targetUser.uid), { category });
-    setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, category: category as any } : u));
+    try {
+      await updateDoc(doc(db, 'users', targetUser.uid), { category });
+      setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, category: category as any } : u));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `users/${targetUser.uid}`);
+    }
   };
 
   const toggleUserSuspension = async (targetUser: User) => {
-    const newSuspended = !targetUser.suspended;
-    await updateDoc(doc(db, 'users', targetUser.uid), { suspended: newSuspended });
-    setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, suspended: newSuspended } : u));
+    try {
+      const newSuspended = !targetUser.suspended;
+      await updateDoc(doc(db, 'users', targetUser.uid), { suspended: newSuspended });
+      setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, suspended: newSuspended } : u));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `users/${targetUser.uid}`);
+    }
   };
 
   const toggleUserVerification = async (targetUser: User) => {
-    const newVerified = !targetUser.isVerified;
-    await updateDoc(doc(db, 'users', targetUser.uid), { isVerified: newVerified });
-    setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, isVerified: newVerified } : u));
+    try {
+      const newVerified = !targetUser.isVerified;
+      await updateDoc(doc(db, 'users', targetUser.uid), { isVerified: newVerified });
+      setUsers(users.map(u => u.uid === targetUser.uid ? { ...u, isVerified: newVerified } : u));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `users/${targetUser.uid}`);
+    }
   };
 
   const deleteUser = async (targetUser: User) => {
-    await deleteDoc(doc(db, 'users', targetUser.uid));
-    setUsers(users.filter(u => u.uid !== targetUser.uid));
-    setStats({ ...stats, totalUsers: stats.totalUsers - 1 });
+    if (!confirm(`Are you sure you want to delete ${targetUser.displayName}? This cannot be undone.`)) return;
+    try {
+      await deleteDoc(doc(db, 'users', targetUser.uid));
+      setUsers(users.filter(u => u.uid !== targetUser.uid));
+      setStats({ ...stats, totalUsers: stats.totalUsers - 1 });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, `users/${targetUser.uid}`);
+    }
   };
 
   const broadcastNotification = async (title: string, body: string) => {
@@ -7880,20 +7920,24 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
                         onClick={async () => {
                           const comment = prompt("Enter your response:", ticket.adminComment || "");
                           if (comment === null) return;
-                          await updateDoc(doc(db, 'support_tickets', ticket.id!), { adminComment: comment, updatedAt: serverTimestamp() });
-                          setTickets(tickets.map(t => t.id === ticket.id ? { ...t, adminComment: comment } : t));
-                          
-                          // Notify user
-                          await notifyUser({
-                            userId: ticket.userId,
-                            fromId: user.uid,
-                            fromName: 'Heart Connect Support',
-                            type: 'broadcast',
-                            text: `Support Response: ${comment}`,
-                            title: `Update on: ${ticket.subject}`
-                          });
-                          
-                          toast.success("Response added and user notified!");
+                          try {
+                            await updateDoc(doc(db, 'support_tickets', ticket.id!), { adminComment: comment, updatedAt: serverTimestamp() });
+                            setTickets(tickets.map(t => t.id === ticket.id ? { ...t, adminComment: comment } : t));
+                            
+                            // Notify user
+                            await notifyUser({
+                              userId: ticket.userId,
+                              fromId: user.uid,
+                              fromName: 'Heart Connect Support',
+                              type: 'broadcast',
+                              text: `Support Response: ${comment}`,
+                              title: `Update on: ${ticket.subject}`
+                            });
+                            
+                            toast.success("Response added and user notified!");
+                          } catch (e) {
+                            handleFirestoreError(e, OperationType.UPDATE, `support_tickets/${ticket.id}`);
+                          }
                         }}
                         className="bg-[#00a884] text-white text-[10px] font-bold uppercase px-3 py-2 rounded-lg"
                       >
@@ -7902,23 +7946,27 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
 
                       <button 
                         onClick={async () => {
-                          // Open chat with user
-                          const participants = [user.uid, ticket.userId].sort();
-                          const q = query(collection(db, 'chats'), where('participants', '==', participants), limit(1));
-                          const snap = await getDocs(q);
-                          let chat: Chat;
-                          if (snap.empty) {
-                            const newChatRef = await addDoc(collection(db, 'chats'), {
-                              participants,
-                              updatedAt: serverTimestamp(),
-                              lastMessage: { text: "Regarding your ticket: " + ticket.subject, senderId: user.uid, timestamp: serverTimestamp(), status: 'sent' }
-                            });
-                            chat = { id: newChatRef.id, participants } as any;
-                          } else {
-                            chat = { id: snap.docs[0].id, ...snap.docs[0].data() } as Chat;
+                          try {
+                            // Open chat with user
+                            const participants = [user.uid, ticket.userId].sort();
+                            const q = query(collection(db, 'chats'), where('participants', '==', participants), limit(1));
+                            const snap = await getDocs(q);
+                            let chat: Chat;
+                            if (snap.empty) {
+                              const newChatRef = await addDoc(collection(db, 'chats'), {
+                                participants,
+                                updatedAt: serverTimestamp(),
+                                lastMessage: { text: "Regarding your ticket: " + ticket.subject, senderId: user.uid, timestamp: serverTimestamp(), status: 'sent' }
+                              });
+                              chat = { id: newChatRef.id, participants } as any;
+                            } else {
+                              chat = { id: snap.docs[0].id, ...snap.docs[0].data() } as Chat;
+                            }
+                            onBack(); // Close admin
+                            onSelectChat(chat);
+                          } catch (e) {
+                            handleFirestoreError(e, OperationType.WRITE, 'chats');
                           }
-                          onBack(); // Close admin
-                          onSelectChat(chat);
                         }}
                         className="bg-blue-500 text-white text-[10px] font-bold uppercase px-3 py-2 rounded-lg flex items-center gap-2"
                       >
@@ -7958,7 +8006,7 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
                   {proof.status === 'pending' && (
                     <div className="flex gap-2">
                       <button onClick={() => approvePayment(proof)} className="flex-1 bg-[#00a884] text-white py-2 rounded-xl text-xs font-bold">Approve</button>
-                      <button onClick={() => updateDoc(doc(db, 'payment_proofs', proof.id), { status: 'rejected' })} className="flex-1 bg-red-50 dark:bg-red-900/20 text-red-500 py-2 rounded-xl text-xs font-bold">Reject</button>
+                      <button onClick={() => rejectPayment(proof)} className="flex-1 bg-red-50 dark:bg-red-900/20 text-red-500 py-2 rounded-xl text-xs font-bold">Reject</button>
                     </div>
                   )}
                 </div>
@@ -7988,8 +8036,13 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
                     <button 
                       onClick={async () => {
                         if (confirm('Delete this job?')) {
-                          await deleteDoc(doc(db, 'jobs', job.id));
-                          setJobs(jobs.filter(j => j.id !== job.id));
+                          try {
+                            await deleteDoc(doc(db, 'jobs', job.id));
+                            setJobs(jobs.filter(j => j.id !== job.id));
+                            toast.success("Job deleted successfully");
+                          } catch (e) {
+                            handleFirestoreError(e, OperationType.DELETE, `jobs/${job.id}`);
+                          }
                         }
                       }} 
                       className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full"
