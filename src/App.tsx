@@ -188,11 +188,18 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   // User-friendly mapping
   let userFriendly = errorMessage;
   if (errorMessage.includes('permission-denied')) userFriendly = 'Permission denied. You might need to sign in or upgrade your tier.';
-  if (errorMessage.includes('quota-exceeded')) userFriendly = 'Database quota exceeded. The app will reset soon.';
+  if (errorMessage.includes('quota-exceeded')) userFriendly = 'Database daily quota reached. The daily limit for the Spark free plan has been hit. Please wait until tomorrow (GMT reset) or upgrade the plan.';
   if (errorMessage.includes('offline')) userFriendly = 'Connection lost. Please check your internet.';
   
-  const msg = `Action failed: ${userFriendly}`;
+  const msg = `Alert: ${userFriendly}`;
   console.error('Firestore Error:', { error: errorMessage, operationType, path });
+  if (msg.includes('quota')) {
+    // If quota exceeded, show a persistent toast
+    toast.error("Database Quota Limit", {
+      description: userFriendly,
+      duration: 15000,
+    });
+  }
   if (firestoreErrorHandler) firestoreErrorHandler(msg);
 }
 
@@ -383,27 +390,37 @@ const getAIMatchSuggestions = async (user: User, allUsers: User[]) => {
 const AdSenseSlot = ({ code, id, className }: { code?: string, id: string, className?: string }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [canLoad, setCanLoad] = useState(false);
+  const [showPlaceholder, setShowPlaceholder] = useState(false);
 
   useEffect(() => {
-    // Progressive loading: Wait 1 second after component mount before attempting to inject ad scripts
-    const timer = setTimeout(() => setCanLoad(true), 1000);
-    return () => clearTimeout(timer);
+    // Show placeholder if it takes more than 500ms to start loading
+    const pTimer = setTimeout(() => setShowPlaceholder(true), 500);
+    
+    // Progressive loading: Wait until idle before attempting to inject ad scripts
+    const idleCallback = (window as any).requestIdleCallback || ((cb: any) => setTimeout(cb, 1000));
+    const handle = idleCallback(() => {
+      clearTimeout(pTimer);
+      setShowPlaceholder(false);
+      setCanLoad(true);
+    });
+    return () => {
+      clearTimeout(pTimer);
+      if ((window as any).cancelIdleCallback) (window as any).cancelIdleCallback(handle);
+      else clearTimeout(handle);
+    };
   }, []);
 
   useEffect(() => {
     if (canLoad && code && containerRef.current) {
       const container = containerRef.current;
-      // Clear previous content to ensure a fresh state
       container.innerHTML = '';
       
-      // Temporary div to parse the code string
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = code;
       
       const scripts = tempDiv.getElementsByTagName('script');
       const scriptList = Array.from(scripts);
       
-      // Move non-script elements first (ins tags, etc)
       while (tempDiv.firstChild) {
         if (!(tempDiv.firstChild instanceof HTMLScriptElement)) {
           container.appendChild(tempDiv.firstChild);
@@ -418,54 +435,62 @@ const AdSenseSlot = ({ code, id, className }: { code?: string, id: string, class
           newScript.setAttribute(attr.name, attr.value);
         });
         
-        // Handle external script loading
         if (newScript.src && newScript.src.includes('adsbygoogle.js')) {
-          if (document.querySelector('script[src*="adsbygoogle.js"]')) {
-            return; // Already in page
-          }
+          if (document.querySelector('script[src*="adsbygoogle.js"]')) return;
           newScript.async = true;
           newScript.crossOrigin = "anonymous";
         }
         
         if (oldScript.textContent && oldScript.textContent.includes('push')) {
-          // Double safety: Timeout + try/catch
           newScript.textContent = `
             (function() {
               var attempts = 0;
-              var maxAttempts = 10;
+              var maxAttempts = 15;
               function tryPush() {
                 try {
                   if (window.adsbygoogle && typeof window.adsbygoogle.push === 'function') {
                     ${oldScript.textContent}
-                    console.log('AdSense Slot [${id}]: push successful');
                   } else if (attempts < maxAttempts) {
                     attempts++;
-                    setTimeout(tryPush, 500);
+                    setTimeout(tryPush, 1000);
                   }
-                } catch (e) {
-                  if (window.console) console.info('AdSense Slot [${id}] suppressed: ' + e.message);
-                }
+                } catch (e) {}
               }
-              tryPush();
+              if (window.requestIdleCallback) window.requestIdleCallback(tryPush);
+              else setTimeout(tryPush, 800);
             })();
           `;
         } else {
           newScript.textContent = oldScript.textContent;
         }
-        
         container.appendChild(newScript);
       });
     }
-
-    return () => {
-      // Don't fully clear on unmount if it's a quick toggle, but for safety in SPA we usually do
-      // However, AdSense doesn't like same-id re-injection too fast
-    };
-  }, [canLoad, code, id]);
+  }, [canLoad, code]);
 
   if (!code) return null;
   return (
-    <div ref={containerRef} id={id} className={cn("flex justify-center min-h-[90px] overflow-hidden rounded-xl transition-opacity duration-700", canLoad ? "opacity-100" : "opacity-0", className)} />
+    <div 
+      ref={containerRef} 
+      id={id} 
+      className={cn(
+        "flex flex-col items-center justify-center min-h-[90px] overflow-hidden rounded-xl transition-all duration-700 bg-gray-50 dark:bg-white/5", 
+        canLoad ? "opacity-100" : "opacity-50", 
+        className
+      )} 
+      style={{ 
+        contain: 'layout size', 
+        contentVisibility: 'auto',
+        containIntrinsicSize: '0 90px'
+      }} 
+    >
+      {showPlaceholder && !canLoad && (
+        <div className="flex flex-col items-center gap-2 animate-pulse">
+          <Megaphone className="w-5 h-5 text-gray-300" />
+          <span className="text-[8px] font-bold text-gray-300 uppercase tracking-widest">Sponsored content loading...</span>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -1096,6 +1121,20 @@ const AuthScreen = ({ settings }: { settings: AppSettings | null }) => {
   );
 };
 
+const GlobalExceptionHandler = () => {
+  useEffect(() => {
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      console.warn('Unhandled promise rejection:', event.reason);
+      if (event.reason?.message?.includes('quota')) {
+        toast.error("Daily technical limit reached. Please try again tomorrow.");
+      }
+    };
+    window.addEventListener('unhandledrejection', handleRejection);
+    return () => window.removeEventListener('unhandledrejection', handleRejection);
+  }, []);
+  return null;
+};
+
 export default function App() {
   console.log("App component rendering...");
   const [user, setUser] = useState<User | null>(null);
@@ -1218,7 +1257,10 @@ export default function App() {
         timestamp: serverTimestamp()
       };
       
-      const docRef = await addDoc(collection(db, 'calls'), callData);
+      const docRef = await addDoc(collection(db, 'calls'), callData).catch(e => {
+        handleFirestoreError(e, OperationType.CREATE, 'calls');
+        throw e;
+      });
       
       setCallState({
         isActive: true,
@@ -1748,7 +1790,11 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'users'), limit(500));
+    const q = query(
+      collection(db, 'users'), 
+      orderBy('lastSeen', 'desc'),
+      limit(100)
+    );
     const unsubscribe = onSnapshot(q, (snap) => {
       const allUsers = snap.docs.map(d => {
         const data = d.data();
@@ -1759,7 +1805,7 @@ export default function App() {
         } as User;
       });
       
-      // Sort users by signup date (createdAt) descending
+      // Sort users by signup date (createdAt) descending for the internal state
       const sortedUsers = allUsers.sort((a, b) => {
         const timeA = a.createdAt?.toMillis?.() || 0;
         const timeB = b.createdAt?.toMillis?.() || 0;
@@ -1767,7 +1813,16 @@ export default function App() {
       });
       
       setUsers(sortedUsers);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+    }, (error) => {
+      // Re-try with simpler query if index is missing
+      if (error.message?.includes('index')) {
+        onSnapshot(query(collection(db, 'users'), limit(50)), (s) => {
+           setUsers(s.docs.map(d => ({ uid: d.id, ...d.data() } as any)));
+        }, (e) => handleFirestoreError(e, OperationType.LIST, 'users-simpler'));
+      } else {
+        handleFirestoreError(error, OperationType.LIST, 'users');
+      }
+    });
     return unsubscribe;
   }, [user?.uid]);
 
@@ -1887,10 +1942,9 @@ export default function App() {
               setLoading(false);
             }
           };
-          loadUser();
+          loadUser().catch(e => console.error("loadUser async failure:", e));
         }, (error) => {
-          console.error("Firestore user listener error:", error);
-          // If we have an existing user state, don't clear it immediately to avoid 'reverts'
+          handleFirestoreError(error, OperationType.GET, `users/${firebaseUser.uid}`);
           setLoading(false);
         });
 
@@ -1935,43 +1989,23 @@ export default function App() {
           lastSeen: serverTimestamp() 
         }).catch(() => {});
       }
-    }, 120000); // 2 minutes heartbeat
+    }, 240000); // 4 minutes heartbeat
 
     const handleVisibilityChange = () => {
       const isOnline = document.visibilityState === 'visible';
-      // Immediate update when coming back or leaving
-      updateDoc(userDocRef, { isOnline, lastSeen: serverTimestamp() }).catch(() => {});
-    };
-
-    const handleBlur = () => {
-      // Small delay for blur to avoid flicker when clicking between windows
-      setTimeout(() => {
-        if (!document.hasFocus()) {
-          updateDoc(userDocRef, { isOnline: false, lastSeen: serverTimestamp() }).catch(() => {});
+      // Immediate update when coming back or leaving, but catch quota errors
+      updateDoc(userDocRef, { isOnline, lastSeen: serverTimestamp() }).catch(e => {
+        if (e.message?.includes('quota')) {
+          handleFirestoreError(e, OperationType.UPDATE, 'users/status');
         }
-      }, 5000);
+      });
     };
 
-    const handleFocus = () => {
-      updateDoc(userDocRef, { isOnline: true, lastSeen: serverTimestamp() }).catch(() => {});
-    };
-
-    const handleUnload = () => {
-      // beforeunload update (experimental/best effort)
-      updateDoc(userDocRef, { isOnline: false, lastSeen: serverTimestamp() }).catch(() => {});
-    };
-
-    window.addEventListener('focus', handleFocus);
-    window.addEventListener('blur', handleBlur);
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('beforeunload', handleUnload);
 
     return () => {
       clearInterval(heartbeat);
-      window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('blur', handleBlur);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('beforeunload', handleUnload);
     };
   }, [user?.uid]);
 
@@ -2706,7 +2740,7 @@ export default function App() {
       setShowProfile(true);
       
       // Formal Notification
-      await addDoc(collection(db, 'notifications'), {
+      addDoc(collection(db, 'notifications'), {
         userId: user.uid,
         fromId: 'system',
         fromName: appSettings?.siteName || 'Heart Connect',
@@ -2715,7 +2749,7 @@ export default function App() {
         title: 'Photo Required',
         read: false,
         timestamp: serverTimestamp()
-      });
+      }).catch(e => console.warn("Failed to send photo requirement notification:", e));
       return;
     }
 
@@ -2728,7 +2762,7 @@ export default function App() {
       setShowUpgrade(true);
       
       // Formal Notification
-      await addDoc(collection(db, 'notifications'), {
+      addDoc(collection(db, 'notifications'), {
         userId: user.uid,
         fromId: 'system',
         fromName: appSettings?.siteName || 'Heart Connect',
@@ -2737,7 +2771,7 @@ export default function App() {
         title: 'Upgrade Required',
         read: false,
         timestamp: serverTimestamp()
-      });
+      }).catch(e => console.warn("Failed to send upgrade notification:", e));
       return;
     }
 
@@ -2837,6 +2871,7 @@ export default function App() {
 
   return (
     <div className="h-screen bg-white dark:bg-[#111b21] flex flex-col overflow-hidden max-w-md mx-auto shadow-2xl border-x border-gray-200 dark:border-gray-800 relative transition-colors duration-300">
+      <GlobalExceptionHandler />
       {/* Root level visibility check */}
       <div className="sr-only">App Rendered: {user?.displayName}</div>
       
@@ -2946,6 +2981,22 @@ export default function App() {
             user={user} 
             onBack={() => setShowProfile(false)} 
             onUpdate={(updatedUser: User) => setUser(updatedUser)} 
+            onDeleteAccount={async () => {
+              if (!confirm("Are you sure you want to permanently delete your account? This will erase all your messages, posts, and profile data forever. This action cannot be undone.")) return;
+              
+              toast.loading("Deleting profile...", { id: 'delete-profile' });
+              try {
+                // 1. Delete user from Firestore
+                await deleteDoc(doc(db, 'users', user.uid));
+                
+                // 2. Clear local session
+                toast.success("Account deleted successfully.", { id: 'delete-profile' });
+                handleSignOut();
+              } catch (e) {
+                console.error("Deletion failed:", e);
+                toast.error("Failed to delete account. Please try again.", { id: 'delete-profile' });
+              }
+            }}
             darkMode={darkMode}
             setDarkMode={setDarkMode}
             settings={appSettings}
@@ -3111,12 +3162,39 @@ export default function App() {
                 />
               </div>
             )}
-            {/* Tabs */}
-            <div className="flex text-center font-medium text-sm uppercase tracking-wider">
-              <button onClick={() => setActiveTab('chats')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'chats' ? "border-white" : "border-transparent opacity-70")}>Chats</button>
-              <button onClick={() => setActiveTab('status')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'status' ? "border-white" : "border-transparent opacity-70")}>Status & Updates</button>
-              <button onClick={() => setActiveTab('dating')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'dating' ? "border-white" : "border-transparent opacity-70")}>Dating</button>
-              <button onClick={() => setActiveTab('jobs')} className={cn("flex-1 pb-3 border-b-4 transition-colors", activeTab === 'jobs' ? "border-white" : "border-transparent opacity-70")}>Jobs</button>
+            {/* Tab Navigation Icons - Bottom Fixed for better Mobile Accessibility */}
+            <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/80 dark:bg-[#202c33]/80 backdrop-blur-xl border-t border-gray-100 dark:border-gray-800 flex justify-around py-3 px-2 z-50 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] transition-all">
+              <button 
+                onClick={() => setActiveTab('chats')} 
+                className={cn("flex flex-col items-center gap-1 transition-all", activeTab === 'chats' ? "text-[#00a884] scale-110" : "text-gray-400 opacity-60 hover:opacity-100")}
+              >
+                <MessageCircle className={cn("w-6 h-6", activeTab === 'chats' && "fill-current")} />
+                <span className="text-[10px] font-black uppercase tracking-tighter">Chats</span>
+                {activeTab === 'chats' && <motion.div layoutId="tab-underline" className="w-1 h-1 bg-[#00a884] rounded-full mt-0.5" />}
+              </button>
+              <button 
+                onClick={() => setActiveTab('status')} 
+                className={cn("flex flex-col items-center gap-1 transition-all", activeTab === 'status' ? "text-[#00a884] scale-110" : "text-gray-400 opacity-60 hover:opacity-100")}
+              >
+                <CircleDashed className={cn("w-6 h-6", activeTab === 'status' && "fill-current")} />
+                <span className="text-[10px] font-black uppercase tracking-tighter">Status</span>
+                {activeTab === 'status' && <motion.div layoutId="tab-underline" className="w-1 h-1 bg-[#00a884] rounded-full mt-0.5" />}
+              </button>
+              <button 
+                onClick={() => setActiveTab('dating')} 
+                className={cn("flex-1 max-w-[64px] -mt-6 bg-[#00a884] shadow-[0_8px_20px_rgba(0,168,132,0.3)] w-14 h-14 rounded-full flex flex-col items-center justify-center gap-0.5 border-4 border-white dark:border-[#111b21] transition-transform active:scale-90", activeTab === 'dating' ? "scale-110" : "opacity-90")}
+              >
+                <Heart className={cn("w-6 h-6 text-white", activeTab === 'dating' && "fill-white")} />
+                <span className="text-[8px] font-black uppercase text-white tracking-widest leading-none">Date</span>
+              </button>
+              <button 
+                onClick={() => setActiveTab('jobs')} 
+                className={cn("flex flex-col items-center gap-1 transition-all", activeTab === 'jobs' ? "text-[#00a884] scale-110" : "text-gray-400 opacity-60 hover:opacity-100")}
+              >
+                <Briefcase className={cn("w-6 h-6", activeTab === 'jobs' && "fill-current")} />
+                <span className="text-[10px] font-black uppercase tracking-tighter">Jobs</span>
+                {activeTab === 'jobs' && <motion.div layoutId="tab-underline" className="w-1 h-1 bg-[#00a884] rounded-full mt-0.5" />}
+              </button>
             </div>
           </div>
 
@@ -3126,7 +3204,7 @@ export default function App() {
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21] overscroll-contain scroll-smooth custom-scrollbar relative pb-[60px]"
+            className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21] overscroll-contain scroll-smooth custom-scrollbar relative pb-[80px]"
           >
             {/* Pull to Refresh Indicator */}
             <motion.div 
@@ -3176,8 +3254,16 @@ export default function App() {
               )}
             </AnimatePresence>
 
-            {activeTab === 'chats' && (
-              <div className="flex flex-col min-h-full">
+            <AnimatePresence mode="wait">
+              {activeTab === 'chats' && (
+                <motion.div 
+                  key="chats-tab"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex flex-col min-h-full"
+                >
                 {/* Unified Support / Welcome Section */}
                 {(() => {
                   const supportChat = chats.find(c => c.participants.includes(SUPPORT_UID));
@@ -3387,71 +3473,107 @@ export default function App() {
                   })
                 )}
               </div>
-            </div>
+            </motion.div>
           )}
-            {activeTab === 'status' && <StatusAndWallView 
-              user={user} 
-              statuses={statuses} 
-              posts={posts} 
-              jobs={jobs} 
-              activeTab={activeTab}
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              onUserClick={(u: User) => handleViewUser(u)} 
-              awardPoints={awardPoints} 
-              appSettings={appSettings} 
-              showStatusModal={showStatusModal} 
-              setShowStatusModal={setShowStatusModal} 
-              showPostModal={showPostModal}
-              setShowPostModal={setShowPostModal}
-              setShowCreateAd={setShowCreateAd} 
-              setAdContent={setAdContent} 
-              setAdMediaUrl={setAdMediaUrl} 
-              setUploading={setUploading} 
-              setUploadProgress={setUploadProgress} 
-              uploadProgress={uploadProgress}
-              setUser={setUser} 
-              uploading={uploading} 
-              usersMap={usersMap} 
-              onSelectJob={setSelectedJob} 
-              onFollowEmployer={handleFollowEmployer} 
-              targetPostId={targetPostId}
-              isRefreshing={isRefreshing}
-              deferredPrompt={deferredPrompt}
-              handleInstallClick={handleInstallClick}
-              onSupportClick={handleContactSupport}
-            />}
-          {activeTab === 'dating' && (
-            <DatingView 
-              user={user} 
-              filters={datingFilters} 
-              onUpdateFilters={setDatingFilters} 
-              onUserClick={(u: User) => handleViewUser(u)} 
-              searchQuery={searchQuery} 
-              onOpenProfile={() => setShowProfile(true)} 
-              setUser={setUser} 
-              appSettings={appSettings}
-              deferredPrompt={deferredPrompt}
-              handleInstallClick={handleInstallClick}
-              onSupportClick={handleContactSupport}
-            />
-          )}
-          {activeTab === 'jobs' && (
-            <JobsView 
-              user={user} 
-              jobs={jobs} 
-              applications={applications} 
-              onApply={handleApplyJob} 
-              onCreateClick={() => setShowCreateJob(true)} 
-              onSelectJob={setSelectedJob} 
-              onUpdateStatus={handleUpdateApplicationStatus}
-              onDeleteJob={handleDeleteJob}
-              onEditJob={(j: Job) => { setEditingJob(j); setShowCreateJob(true); }}
-              activeTab={activeTab} 
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-            />
-          )}
+        </AnimatePresence>
+            <AnimatePresence mode="wait">
+              {activeTab === 'status' && (
+                <motion.div 
+                  key="status-tab"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{ duration: 0.2 }}
+                  className="min-h-full"
+                >
+                  <StatusAndWallView 
+                    user={user} 
+                    statuses={statuses} 
+                    posts={posts} 
+                    jobs={jobs} 
+                    activeTab={activeTab}
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                    onUserClick={(u: User) => handleViewUser(u)} 
+                    awardPoints={awardPoints} 
+                    appSettings={appSettings} 
+                    showStatusModal={showStatusModal} 
+                    setShowStatusModal={setShowStatusModal} 
+                    showPostModal={showPostModal}
+                    setShowPostModal={setShowPostModal}
+                    setShowCreateAd={setShowCreateAd} 
+                    setAdContent={setAdContent} 
+                    setAdMediaUrl={setAdMediaUrl} 
+                    setUploading={setUploading} 
+                    setUploadProgress={setUploadProgress} 
+                    uploadProgress={uploadProgress}
+                    setUser={setUser} 
+                    uploading={uploading} 
+                    usersMap={usersMap} 
+                    onSelectJob={setSelectedJob} 
+                    onFollowEmployer={handleFollowEmployer} 
+                    targetPostId={targetPostId}
+                    isRefreshing={isRefreshing}
+                    deferredPrompt={deferredPrompt}
+                    handleInstallClick={handleInstallClick}
+                    onSupportClick={handleContactSupport}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence mode="wait">
+              {activeTab === 'dating' && (
+                <motion.div 
+                  key="dating-tab"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{ duration: 0.2 }}
+                  className="min-h-full"
+                >
+                  <DatingView 
+                    user={user} 
+                    filters={datingFilters} 
+                    onUpdateFilters={setDatingFilters} 
+                    onUserClick={(u: User) => handleViewUser(u)} 
+                    searchQuery={searchQuery} 
+                    onOpenProfile={() => setShowProfile(true)} 
+                    setUser={setUser} 
+                    appSettings={appSettings}
+                    deferredPrompt={deferredPrompt}
+                    handleInstallClick={handleInstallClick}
+                    onSupportClick={handleContactSupport}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence mode="wait">
+              {activeTab === 'jobs' && (
+                <motion.div 
+                  key="jobs-tab"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{ duration: 0.2 }}
+                  className="min-h-full"
+                >
+                  <JobsView 
+                    user={user} 
+                    jobs={jobs} 
+                    applications={applications} 
+                    onApply={handleApplyJob} 
+                    onCreateClick={() => setShowCreateJob(true)} 
+                    onSelectJob={setSelectedJob} 
+                    onUpdateStatus={handleUpdateApplicationStatus}
+                    onDeleteJob={handleDeleteJob}
+                    onEditJob={(j: Job) => { setEditingJob(j); setShowCreateJob(true); }}
+                    activeTab={activeTab} 
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
         </div>
         
         {/* Floating Action Button */}
@@ -6990,6 +7112,7 @@ const PointsLeaderboard = ({ onBack }: any) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let unsubFallback: (() => void) | null = null;
     const q = query(collection(db, 'users'), where('isVerified', '==', true), orderBy('points', 'desc'), limit(20));
     const unsub = onSnapshot(q, (snap) => {
       setLeaders(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
@@ -6998,13 +7121,16 @@ const PointsLeaderboard = ({ onBack }: any) => {
       console.error("Leaderboard error:", err);
       // Fallback if index is missing
       const qFallback = query(collection(db, 'users'), orderBy('points', 'desc'), limit(50));
-      onSnapshot(qFallback, (s) => {
+      unsubFallback = onSnapshot(qFallback, (s) => {
         const filtered = s.docs.map(d => ({ uid: d.id, ...d.data() } as User)).filter(u => u.isVerified);
         setLeaders(filtered.slice(0, 20));
         setLoading(false);
       }, (e) => handleFirestoreError(e, OperationType.LIST, 'users/fallback'));
     });
-    return unsub;
+    return () => {
+      unsub();
+      if (unsubFallback) (unsubFallback as any)();
+    };
   }, []);
 
   return (
@@ -7865,6 +7991,9 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
                             const compressed = await compressImage(file);
                             const url = await uploadFileToServer(compressed, (p) => setUploadProgress(p));
                             setSettings({...settings, logoUrl: url});
+                          } catch (err) {
+                             toast.error("Logo upload failed");
+                             console.error(err);
                           } finally {
                             setUploading(false);
                           }
@@ -7892,6 +8021,9 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
                           try {
                             const url = await uploadFileToServer(file, (p) => setUploadProgress(p));
                             setSettings({...settings, faviconUrl: url});
+                          } catch (err) {
+                             toast.error("Favicon upload failed");
+                             console.error(err);
                           } finally {
                             setUploading(false);
                           }
@@ -7973,9 +8105,13 @@ const AdminDashboard = ({ user, onBack, appSettings, onSelectChat }: any) => {
                         value={ticket.status}
                         onChange={async (e) => {
                           const newStatus = e.target.value as any;
-                          await updateDoc(doc(db, 'support_tickets', ticket.id!), { status: newStatus, updatedAt: serverTimestamp() });
-                          setTickets(tickets.map(t => t.id === ticket.id ? { ...t, status: newStatus } : t));
-                          toast.success("Status updated to " + newStatus);
+                          try {
+                            await updateDoc(doc(db, 'support_tickets', ticket.id!), { status: newStatus, updatedAt: serverTimestamp() });
+                            setTickets(tickets.map(t => t.id === ticket.id ? { ...t, status: newStatus } : t));
+                            toast.success("Status updated to " + newStatus);
+                          } catch (err) {
+                            handleFirestoreError(err, OperationType.UPDATE, `support_tickets/${ticket.id}`);
+                          }
                         }}
                         className="bg-gray-50 dark:bg-[#202c33] text-[10px] font-bold uppercase p-2 rounded-lg border-none dark:text-white"
                       >
@@ -8304,10 +8440,11 @@ const HeaderRotatingBanner = ({ deferredPrompt, onInstall, appSettings, onSuppor
   );
 };
 
-const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settings }: { 
+const ProfileSettings = ({ user, onBack, onUpdate, onDeleteAccount, darkMode, setDarkMode, settings }: { 
   user: User, 
   onBack: () => void, 
   onUpdate: (u: User) => void,
+  onDeleteAccount?: () => void,
   darkMode?: boolean,
   setDarkMode?: (v: boolean) => void,
   settings: AppSettings
@@ -8723,6 +8860,9 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
                             const compressed = await compressImage(file);
                             const url = await uploadFileToServer(compressed, (p) => setUploadProgress(p));
                             setDatingPhotos(prev => [...prev, url]);
+                          } catch (err) {
+                            toast.error("Photo upload failed");
+                            console.error(err);
                           } finally {
                             setUploading(false);
                           }
@@ -8846,6 +8986,22 @@ const ProfileSettings = ({ user, onBack, onUpdate, darkMode, setDarkMode, settin
           >
             {saving ? "Saving..." : "Save Profile"}
           </button>
+
+          {onDeleteAccount && (
+            <div className="pt-8 border-t border-gray-100 dark:border-gray-800">
+              <div className="bg-red-50 dark:bg-red-900/10 p-4 rounded-2xl border border-red-100 dark:border-red-800/20">
+                <h4 className="text-sm font-bold text-red-600 dark:text-red-400 mb-1">Danger Zone</h4>
+                <p className="text-[11px] text-red-500/80 mb-4 font-medium">Deleting your profile will permanently remove all your data, posts, chats, and account settings. This action is irreversible.</p>
+                <button 
+                  onClick={onDeleteAccount}
+                  className="w-full bg-red-600 text-white py-3 rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete My Account
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
